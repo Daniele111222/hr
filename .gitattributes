@@ -1,0 +1,9 @@
+* text=auto
+
+# Excel 与二进制文件不做行尾转换
+*.xlsx binary
+*.xls binary
+*.png binary
+*.jpg binary
+*.ico binary
+*.db binary

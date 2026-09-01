@@ -1,0 +1,41 @@
+# --- Python ---
+__pycache__/
+*.py[cod]
+*.egg-info/
+.eggs/
+build/
+dist/
+.venv/
+venv/
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.coverage
+htmlcov/
+
+# --- Node ---
+node_modules/
+npm-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+
+# --- 本地数据库（数据不出本机） ---
+*.db
+*.sqlite
+*.sqlite3
+
+# --- 环境变量 ---
+.env
+.env.*
+!.env.example
+
+# --- IDE / 编辑器 ---
+.idea/
+.vscode/
+*.swp
+*.swo
+
+# --- 操作系统 ---
+.DS_Store
+Thumbs.db
+desktop.ini
