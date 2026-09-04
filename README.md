@@ -28,6 +28,10 @@
 
 Python 3.12 + FastAPI + SQLite + React (Ant Design)，PyInstaller 打包单 exe。
 
+## 项目文档
+
+产品路线、功能优先级、数据模型和里程碑见 [docs/product.md](docs/product.md)。
+
 ## License
 
 [MIT](LICENSE)
