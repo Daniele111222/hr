@@ -1,0 +1,5 @@
+interface:
+  display_name: "AGENTS.md Writer"
+  short_description: "Generate AI-facing project development rules."
+  default_prompt: "Use $agents-md-writer to generate a verified AGENTS.md for this codebase."
+

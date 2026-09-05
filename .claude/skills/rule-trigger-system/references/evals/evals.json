@@ -1,0 +1,149 @@
+{
+  "skill_name": "rule-trigger-system",
+  "scoring_config": {
+    "version": "1.0",
+    "description": "评分机制: score = sum(weight_i * pass_i) / sum(weight_i), eval_pass = score >= pass_threshold",
+    "weight_scale": {
+      "critical": 3,
+      "important": 2,
+      "nice_to_have": 1
+    },
+    "pass_threshold_per_eval": 0.75,
+    "suite_pass_threshold": 0.80,
+    "calculation": {
+      "eval_score": "sum(weight_i * expectation_pass_i) / sum(weight_i) for all expectations",
+      "overall_score": "mean(eval_score_i) for all eval cases",
+      "suite_pass": "overall_score >= suite_pass_threshold AND all critical expectations pass"
+    }
+  },
+  "evals": [
+    {
+      "id": 1,
+      "prompt": "帮我创建一个 React TypeScript 用户卡片组件，显示头像、姓名、邮箱和角色标签。需要使用 Tailwind CSS 进行样式设计，包含悬停效果和响应式布局。组件必须包含完整的 Props 接口定义和适当的类型注解。",
+      "expected_output": "创建一个 UserCard 组件，包含：1) 完整的 TypeScript Props 接口；2) Tailwind CSS 样式，包括响应式布局；3) 悬停效果；4) 正确的类型定义；5) 遵循 React 函数组件模式",
+      "files": [],
+      "pass_threshold": 0.75,
+      "expectations": [
+        { "text": "组件使用 TypeScript 并定义明确的 Props 接口", "weight": 3, "category": "critical" },
+        { "text": "使用 Tailwind CSS 进行样式设计", "weight": 3, "category": "critical" },
+        { "text": "包含响应式类名（如 md:, lg: 等）", "weight": 2, "category": "important" },
+        { "text": "包含悬停效果（hover:）", "weight": 2, "category": "important" },
+        { "text": "使用函数组件和 React.FC 或纯函数形式", "weight": 3, "category": "critical" }
+      ]
+    },
+    {
+      "id": 2,
+      "prompt": "为下面的 API 工具函数编写单元测试：\n\n```typescript\n// utils/api.ts\nexport async function fetchUser(userId: string): Promise<User> {\n  const response = await fetch(`/api/users/${userId}`);\n  if (!response.ok) {\n    throw new Error(`Failed to fetch user: ${response.status}`);\n  }\n  return response.json();\n}\n```\n\n要求：1) 使用 Vitest 和 MSW (Mock Service Worker)；2) 测试成功和失败场景；3) 包含加载状态测试；4) 遵循 AAA (Arrange-Act-Assert) 模式。",
+      "expected_output": "创建完整的测试文件，包含：1) MSW 设置和处理器；2) 成功场景测试；3) 失败场景测试（404、500 等）；4) 加载状态验证；5) 遵循 AAA 模式",
+      "files": [],
+      "pass_threshold": 0.75,
+      "expectations": [
+        { "text": "使用 Vitest 作为测试框架", "weight": 3, "category": "critical" },
+        { "text": "使用 MSW 进行 API Mock", "weight": 3, "category": "critical" },
+        { "text": "包含成功和失败场景的测试", "weight": 3, "category": "critical" },
+        { "text": "遵循 AAA (Arrange-Act-Assert) 模式", "weight": 2, "category": "important" },
+        { "text": "包含错误处理测试", "weight": 2, "category": "important" }
+      ]
+    },
+    {
+      "id": 3,
+      "prompt": "我需要为现有的 Button 组件添加暗色模式支持。当前组件使用 Tailwind CSS，支持多种变体（primary、secondary、danger）和尺寸（sm、md、lg）。\n\n要求：1) 使用 Tailwind 的 dark: 修饰符；2) 支持系统偏好检测；3) 提供手动切换能力；4) 确保良好的对比度（符合 WCAG AA 标准）；5) 包含过渡动画。\n\n请提供：1) 更新后的 Button 组件代码；2) 暗色模式切换组件；3) 在 tailwind.config.ts 中需要的配置。",
+      "expected_output": "提供完整的暗色模式实现，包含：1) 支持 dark: 修饰符的 Button 组件；2) ThemeProvider 和切换组件；3) tailwind.config.ts 的 darkMode 配置；4) 系统偏好检测；5) 过渡动画",
+      "files": [],
+      "pass_threshold": 0.75,
+      "expectations": [
+        { "text": "使用 Tailwind 的 dark: 修饰符", "weight": 3, "category": "critical" },
+        { "text": "支持系统偏好检测（prefers-color-scheme）", "weight": 2, "category": "important" },
+        { "text": "提供手动切换暗色模式的能力", "weight": 2, "category": "important" },
+        { "text": "确保良好的对比度", "weight": 3, "category": "critical" },
+        { "text": "包含过渡动画效果", "weight": 1, "category": "nice_to_have" }
+      ]
+    },
+    {
+      "id": 4,
+      "category": "negative",
+      "prompt": "帮我查一下今天北京的天气怎么样？",
+      "expected_output": "不加载任何规则文件，使用全局默认原则直接回答",
+      "files": [],
+      "pass_threshold": 1.0,
+      "expectations": [
+        { "text": "不触发任何规则加载", "weight": 3, "category": "critical" },
+        { "text": "不使用 references/rules 路径", "weight": 3, "category": "critical" }
+      ]
+    },
+    {
+      "id": 5,
+      "category": "error_handling",
+      "prompt": "请按照 /unknown-rule 命令加载规则并审核代码",
+      "expected_output": "检测到未知命令，优雅降级到全局默认原则，显示警告提示",
+      "files": [],
+      "pass_threshold": 0.75,
+      "expectations": [
+        { "text": "声明资源文件不存在/未知", "weight": 3, "category": "critical" },
+        { "text": "回退到全局默认原则", "weight": 3, "category": "critical" },
+        { "text": "在输出末尾添加警告提示", "weight": 2, "category": "important" }
+      ]
+    },
+    {
+      "id": 6,
+      "category": "boundary",
+      "prompt": "创建一个 TypeScript 工具函数，处理字符串类型的输入并返回格式化结果。必须使用 interface 定义输入输出类型。",
+      "expected_output": "只加载 ts-strict 规则，不加载 react-patterns（因为是 .ts 文件而非 .tsx）",
+      "files": ["src/utils/formatter.ts"],
+      "pass_threshold": 0.75,
+      "expectations": [
+        { "text": "触发 ts-strict 规则（因为 .ts + type/interface）", "weight": 3, "category": "critical" },
+        { "text": "不触发 react-patterns（因为没有 .tsx 扩展）", "weight": 3, "category": "critical" },
+        { "text": "使用明确的 interface 定义类型", "weight": 3, "category": "critical" },
+        { "text": "不使用 any 类型", "weight": 3, "category": "critical" }
+      ]
+    },
+    {
+      "id": 7,
+      "category": "conflict",
+      "prompt": "在 src/components/UserProfile.tsx 文件中，创建一个 React 组件，使用 TypeScript interface 定义 Props 类型。",
+      "expected_output": "react-patterns 和 ts-strict 都会被触发，但 react-patterns (priority:95) 优先于 ts-strict (priority:90)",
+      "files": ["src/components/UserProfile.tsx"],
+      "pass_threshold": 0.75,
+      "expectations": [
+        { "text": "加载 react-patterns 规则（.tsx + interface）", "weight": 3, "category": "critical" },
+        { "text": "同时加载 ts-strict 规则（.tsx + interface）", "weight": 3, "category": "critical" },
+        { "text": "按 priority 顺序应用规则（react-patterns 覆盖 ts-strict 冲突项）", "weight": 2, "category": "important" },
+        { "text": "使用函数组件而非类组件", "weight": 3, "category": "critical" }
+      ]
+    },
+    {
+      "id": 8,
+      "category": "conflict",
+      "prompt": "优化 API 请求的 bundle 体积，并确保敏感数据加密传输。",
+      "expected_output": "security-compliance (priority:100) 覆盖 performance-tuning (priority:80)，安全规则最高优先级",
+      "files": [],
+      "pass_threshold": 0.75,
+      "expectations": [
+        { "text": "触发 security-compliance 规则（api + security/encrypt 关键词）", "weight": 3, "category": "critical" },
+        { "text": "同时触发 performance-tuning 规则（performance + bundle 关键词）", "weight": 2, "category": "important" },
+        { "text": "security-compliance 的规则覆盖 performance-tuning 的冲突项", "weight": 3, "category": "critical" },
+        { "text": "使用安全存储 token（如内存存储或 httpOnly cookie）", "weight": 3, "category": "critical" }
+      ]
+    },
+    {
+      "id": 9,
+      "category": "review",
+      "prompt": "/review 审查以下代码的 TypeScript 类型使用是否规范：\n\n```typescript\nfunction processData(data: any): any {\n  return data.value;\n}\n```",
+      "expected_output": "加载所有 6 个规则文件，按 priority 顺序应用（security:100 > react:95 > ts-strict:90 = ui:90 > testing:85 > performance:80）",
+      "files": [],
+      "pass_threshold": 0.75,
+      "expectations": [
+        { "text": "检测到 /review 命令，声明加载所有规则", "weight": 3, "category": "critical" },
+        { "text": "加载 react-patterns.md", "weight": 2, "category": "important" },
+        { "text": "加载 ts-strict.md", "weight": 2, "category": "important" },
+        { "text": "加载 ui-system.md", "weight": 2, "category": "important" },
+        { "text": "加载 security-compliance.md", "weight": 2, "category": "important" },
+        { "text": "加载 testing-strategy.md", "weight": 2, "category": "important" },
+        { "text": "加载 performance-tuning.md", "weight": 2, "category": "important" },
+        { "text": "识别出 any 类型的错误使用", "weight": 3, "category": "critical" },
+        { "text": "给出具体的类型修复建议", "weight": 2, "category": "important" }
+      ]
+    }
+  ]
+}
