@@ -1,0 +1,519 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>PayLite 后端代码审查 · 14 个问题详解</title>
+<style>
+  :root {
+    --bg: #faf9f7;
+    --card: #ffffff;
+    --ink: #1c1917;
+    --ink-soft: #57534e;
+    --line: #e7e5e4;
+    --accent: #0f766e;
+    --accent-soft: #ccfbf1;
+    --high: #dc2626;
+    --high-bg: #fef2f2;
+    --mid: #d97706;
+    --mid-bg: #fffbeb;
+    --low: #64748b;
+    --low-bg: #f8fafc;
+    --code-bg: #1e293b;
+    --code-ink: #e2e8f0;
+    --code-dim: #94a3b8;
+    --code-key: #7dd3fc;
+    --code-str: #fbbf24;
+  }
+  * { box-sizing: border-box; }
+  html { scroll-behavior: smooth; }
+  body {
+    margin: 0;
+    background: var(--bg);
+    color: var(--ink);
+    font-family: -apple-system, "Segoe UI", "Microsoft YaHei", "PingFang SC", sans-serif;
+    font-size: 16px;
+    line-height: 1.75;
+  }
+  code, pre, .mono {
+    font-family: Consolas, "Cascadia Code", "JetBrains Mono", monospace;
+  }
+
+  .wrap { max-width: 920px; margin: 0 auto; padding: 0 24px 96px; }
+
+  /* ---------- header ---------- */
+  header.hero { padding: 64px 0 32px; border-bottom: 1px solid var(--line); margin-bottom: 32px; }
+  .eyebrow {
+    color: var(--accent); font-weight: 700; letter-spacing: .12em;
+    font-size: 13px; text-transform: uppercase; margin: 0 0 10px;
+  }
+  h1 { font-size: 34px; line-height: 1.3; margin: 0 0 14px; }
+  .lede { color: var(--ink-soft); font-size: 17px; margin: 0; max-width: 640px; }
+  .legend { display: flex; gap: 10px; margin-top: 22px; flex-wrap: wrap; }
+  .chip {
+    display: inline-flex; align-items: center; gap: 7px;
+    font-size: 13px; padding: 4px 12px; border-radius: 999px; border: 1px solid var(--line);
+    background: var(--card); color: var(--ink-soft);
+  }
+  .dot { width: 9px; height: 9px; border-radius: 50%; display: inline-block; }
+  .dot.high { background: var(--high); }
+  .dot.mid  { background: var(--mid); }
+  .dot.low  { background: var(--low); }
+
+  /* ---------- toc ---------- */
+  nav.toc {
+    position: sticky; top: 0; z-index: 5;
+    background: var(--bg);
+    padding: 14px 0;
+    border-bottom: 1px solid var(--line);
+    display: flex; gap: 8px; flex-wrap: wrap;
+    margin-bottom: 40px;
+  }
+  nav.toc a {
+    font-size: 13.5px; color: var(--ink-soft); text-decoration: none;
+    padding: 5px 13px; border-radius: 999px; border: 1px solid var(--line); background: var(--card);
+  }
+  nav.toc a:hover { color: var(--accent); border-color: var(--accent); }
+
+  /* ---------- sections ---------- */
+  h2.sec {
+    font-size: 24px; margin: 64px 0 8px; padding-top: 8px;
+  }
+  .sec-sub { color: var(--ink-soft); margin: 0 0 24px; }
+
+  /* ---------- concept cards ---------- */
+  .concepts { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; }
+  @media (max-width: 720px) { .concepts { grid-template-columns: 1fr; } }
+  .concept {
+    background: var(--card); border: 1px solid var(--line); border-radius: 12px; padding: 20px 22px;
+  }
+  .concept h3 { margin: 0 0 8px; font-size: 16.5px; }
+  .concept p { margin: 0; font-size: 14.5px; color: var(--ink-soft); }
+  .concept .mono { color: var(--accent); font-size: 13.5px; }
+  .concept table { margin-top: 10px; border-collapse: collapse; font-size: 13px; width: 100%; }
+  .concept td, .concept th { border: 1px solid var(--line); padding: 5px 8px; text-align: left; }
+  .concept th { background: #f5f5f4; font-weight: 600; }
+
+  /* ---------- issue cards ---------- */
+  article.issue {
+    background: var(--card); border: 1px solid var(--line); border-radius: 14px;
+    padding: 26px 28px; margin: 0 0 22px;
+    box-shadow: 0 1px 2px rgba(0,0,0,.03);
+    break-inside: avoid;
+  }
+  .issue-head { display: flex; align-items: baseline; gap: 12px; margin-bottom: 4px; flex-wrap: wrap; }
+  .prio {
+    flex: none; font-size: 12px; font-weight: 700; letter-spacing: .08em;
+    padding: 3px 10px; border-radius: 6px; transform: translateY(-2px);
+  }
+  .prio.high { color: var(--high); background: var(--high-bg); border: 1px solid #fecaca; }
+  .prio.mid  { color: var(--mid);  background: var(--mid-bg);  border: 1px solid #fde68a; }
+  .prio.low  { color: var(--low);  background: var(--low-bg);  border: 1px solid #e2e8f0; }
+  .issue-head h3 { font-size: 19px; margin: 0; }
+  .files { font-size: 13px; color: var(--ink-soft); margin: 2px 0 14px; }
+  .files code { background: #f5f5f4; padding: 1px 6px; border-radius: 5px; font-size: 12.5px; }
+
+  .issue h4 {
+    font-size: 13px; letter-spacing: .1em; text-transform: uppercase;
+    color: var(--accent); margin: 20px 0 8px;
+  }
+  .issue p { margin: 0 0 10px; }
+  .hurt {
+    border-left: 3px solid var(--high); background: var(--high-bg);
+    padding: 12px 16px; border-radius: 0 8px 8px 0; margin: 12px 0;
+    font-size: 15px;
+  }
+  .hurt strong { color: var(--high); }
+  .learn {
+    margin-top: 18px; background: var(--accent-soft);
+    border: 1px solid #99f6e4; border-radius: 10px; padding: 12px 16px; font-size: 14.5px;
+  }
+  .learn b { color: var(--accent); }
+
+  .grid2 { display: grid; grid-template-columns: 1fr 1fr; gap: 18px; }
+  @media (max-width: 760px) { .grid2 { grid-template-columns: 1fr; } }
+  pre {
+    background: var(--code-bg); color: var(--code-ink);
+    border-radius: 10px; padding: 16px 18px; overflow-x: auto;
+    font-size: 13px; line-height: 1.65; margin: 8px 0;
+  }
+  pre .c  { color: var(--code-dim); font-style: italic; }
+  pre .k  { color: var(--code-key); }
+  pre .s  { color: var(--code-str); }
+  pre .bad  { color: #fca5a5; }
+  pre .good { color: #86efac; }
+
+  /* ---------- overlap diagram ---------- */
+  .timeline {
+    background: #f5f5f4; border: 1px solid var(--line); border-radius: 10px;
+    padding: 18px 20px; margin: 10px 0 4px;
+  }
+  .tl-row { display: flex; align-items: center; gap: 12px; margin: 8px 0; }
+  .tl-label { flex: none; width: 62px; font-size: 13px; color: var(--ink-soft); font-weight: 600; }
+  .tl-bar {
+    height: 34px; border-radius: 7px; display: flex; align-items: center;
+    padding: 0 12px; font-size: 12.5px; color: #fff; white-space: nowrap; overflow: hidden;
+  }
+  .tl-bar.a { width: 100%; background: #0f766e; }
+  .tl-bar.b { width: 46%; margin-left: 26%; background: #d97706; }
+  .tl-warn { font-size: 13.5px; color: var(--high); margin-top: 10px; font-weight: 600; }
+
+  /* ---------- misc ---------- */
+  .note {
+    background: var(--card); border: 1px dashed var(--mid); border-radius: 12px;
+    padding: 18px 22px; font-size: 15px;
+  }
+  footer {
+    margin-top: 72px; padding-top: 24px; border-top: 1px solid var(--line);
+    color: var(--ink-soft); font-size: 13.5px;
+  }
+  footer dt { font-weight: 700; color: var(--ink); margin-top: 10px; }
+  footer dd { margin: 2px 0 0; }
+  ul.tight { margin: 6px 0; padding-left: 22px; }
+  ul.tight li { margin: 3px 0; }
+  @media print {
+    nav.toc { display: none; }
+    article.issue { border: 1px solid #ccc; }
+  }
+</style>
+</head>
+<body>
+<div class="wrap">
+
+<header class="hero">
+  <p class="eyebrow">Code Review Explained · 2026-09-14</p>
+  <h1>PayLite 后端代码审查：14 个问题详解</h1>
+  <p class="lede">每个问题是什么意思、用大白话讲清楚，背后的数据库与工程基础知识，以及如果不修会发生什么坏事。所有代码片段都来自本仓库的真实文件。</p>
+  <div class="legend">
+    <span class="chip"><span class="dot high"></span>高：现在不修以后会疼（数据完整性 / 删库风险）</span>
+    <span class="chip"><span class="dot mid"></span>中：随业务代码一起处理</span>
+    <span class="chip"><span class="dot low"></span>低：先记账，影响很小</span>
+  </div>
+</header>
+
+<nav class="toc">
+  <a href="#basics">先看：5 个基础概念</a>
+  <a href="#high">高优先级 #1–#3</a>
+  <a href="#mid">中优先级 #4–#8</a>
+  <a href="#low">低优先级 #9–#14</a>
+  <a href="#verify">验证状态</a>
+  <a href="#glossary">术语表</a>
+</nav>
+
+<!-- ================================================================ -->
+<section id="basics">
+  <h2 class="sec">开始之前：5 个基础概念</h2>
+  <p class="sec-sub">后面的每个问题都会用到这些概念，先花两分钟建立共同语言。</p>
+
+  <div class="concepts">
+    <div class="concept">
+      <h3>① ORM：用 Python 类描述数据库表</h3>
+      <p>ORM（对象关系映射）= 把数据库的表翻译成编程语言里的类。<br>
+      <span class="mono">models.py</span> 里的 <span class="mono">class Employee(Base)</span> 就对应数据库里的 <span class="mono">employee</span> 表；类的属性对应表的列。你操作 Python 对象，SQLAlchemy 在背后帮你生成 SQL 语句发给 PostgreSQL。</p>
+    </div>
+    <div class="concept">
+      <h3>② Alembic：数据库的"版本控制"</h3>
+      <p>代码用 Git 管版本，数据库结构用 Alembic 管版本。<span class="mono">alembic upgrade head</span> = 把库升级到最新结构；<span class="mono">downgrade base</span> = 退回空白库（<b>删光所有表</b>）。当前版本号记录在数据库里一张叫 <span class="mono">alembic_version</span> 的小表中。</p>
+    </div>
+    <div class="concept">
+      <h3>③ 真源（Single Source of Truth）</h3>
+      <p>同一个事实只允许存在一份"权威定义"，其他地方都从它派生。这个项目里"表长什么样"有<b>三份独立描述</b>：models.py、alembic 迁移文件、手写 SQL 文件——人改了其中一份忘了另一份，就叫"漂移（drift）"。问题 #1 就是漂移的实例。</p>
+    </div>
+    <div class="concept">
+      <h3>④ 默认值有两个层次，很容易混淆</h3>
+      <table>
+        <tr><th>写法</th><th>谁生效</th></tr>
+        <tr><td class="mono">default=dict</td><td>只有<b>通过 SQLAlchemy</b> 插入数据时，Python 在内存里先填上值</td></tr>
+        <tr><td class="mono">server_default</td><td>写进表结构（DDL），<b>任何方式</b>插入（包括 psql 手敲 SQL）都生效</td></tr>
+        <tr><td class="mono">onupdate=func.now()</td><td>同样只是 ORM 层，只有通过 SQLAlchemy 更新才触发</td></tr>
+      </table>
+    </div>
+    <div class="concept">
+      <h3>⑤ 数据库约束家族</h3>
+      <table>
+        <tr><th>约束</th><th>管什么</th></tr>
+        <tr><td>UNIQUE</td><td>这列（或列组合）的值不能重复——只比"相等"</td></tr>
+        <tr><td>CHECK</td><td>值必须满足一个表达式，如 <span class="mono">amount &gt;= 0</span></td></tr>
+        <tr><td>FOREIGN KEY</td><td>值必须存在于父表里，防"孤儿数据"</td></tr>
+        <tr><td>EXCLUDE（排他）</td><td>范围之间不能"相交"——UNIQUE 做不到的它能做</td></tr>
+        <tr><td>触发器 Trigger</td><td>插入/更新/删除前后自动执行的自定义逻辑，表达力最强</td></tr>
+      </table>
+    </div>
+    <div class="concept">
+      <h3>⑥ CWD：程序眼中"我在哪"</h3>
+      <p>CWD = 当前工作目录 = <b>你运行命令时所在的目录</b>，而不是代码文件所在的目录。代码里写相对路径 <span class="mono">".env"</span>，找的其实是 CWD 下的 .env。同一个程序，从不同目录启动，行为可能完全不同。</p>
+    </div>
+  </div>
+</section>
+
+<!-- ================================================================ -->
+<section id="high">
+  <h2 class="sec">高优先级（#1 – #3）</h2>
+  <p class="sec-sub">涉及数据完整性和删库风险，建议在写业务代码之前处理。</p>
+
+  <article class="issue" id="issue-1">
+    <div class="issue-head"><span class="prio high">高</span><h3>#1 两份"建表图纸"细节已经对不上了（schema 漂移）</h3></div>
+    <p class="files">涉及：<code>backend/alembic/versions/0001_initial_schema.py:106</code> · <code>backend/sql/001_initial_schema.sql</code> · <code>backend/src/paylite/db/models.py</code></p>
+
+    <h4>大白话</h4>
+    <p>装修时施工队拿图纸 A 干活（Alembic 迁移实际是调用 <span class="mono">models.py</span> 的 <span class="mono">create_all</span> 建表），你自己留档的图纸 B 是手写 SQL 文件，文件开头还写着"两者必须保持行为等价"。但现在两份图纸已经不一致了——JSONB 列的默认值、<span class="mono">updated_at</span> 的自动刷新、表和列的中文注释（COMMENT），SQL 文件里有、模型里没有（或者反过来）。</p>
+
+    <div class="grid2">
+      <div>
+        <h4>具体差异（4 处）</h4>
+        <pre><span class="c"># models.py —— Alembic 真正用来建表的</span>
+field_mapping = mapped_column(
+    JSONB, nullable=False,
+    default=dict   <span class="bad"># ← 只有 Python 插入时才生效</span>
+)
+
+<span class="c"># sql/001_initial_schema.sql —— 留档审查的</span>
+<span class="k">field_mapping</span> JSONB NOT NULL <span class="k">DEFAULT</span> <span class="s">'{}'</span>::jsonb
+<span class="c">#                    ↑ 写进了表结构，谁插入都生效</span></pre>
+        <p>同类差异还有 3 处：<span class="mono">formal_status</span> 的 <span class="mono">DEFAULT FALSE</span>、<span class="mono">updated_at</span> 的自动更新（模型靠 ORM 的 <span class="mono">onupdate</span>，SQL 侧没有触发器）、6 条 <span class="mono">COMMENT ON</span> 语句。</p>
+      </div>
+      <div>
+        <h4>会发生什么</h4>
+        <div class="hurt">
+          <strong>真实后果：</strong>用 Alembic 建出来的库，没有 JSONB 默认值——将来用 psql 手工 INSERT 一行会直接报 NOT NULL 错误；用 SQL 文件建的库，绕过 ORM 更新数据时 <span class="mono">updated_at</span> 不会刷新，审计时间不准。
+        </div>
+        <p>更隐蔽的：以后用 <span class="mono">alembic revision --autogenerate</span> 生成新迁移时，它拿模型和数据库做对比，会把"模型与 SQL 文件的差异"当成新变更，生成莫名其妙的迁移。</p>
+      </div>
+    </div>
+
+    <div class="learn"><b>知识点：</b>真源（概念③）· <span class="mono">create_all</span> 是"照着模型一键建所有表" · ORM 层默认值 vs DDL 层默认值（概念④）。<br><b>修法：</b>二选一——模型补齐 <span class="mono">server_default</span> 和 <span class="mono">comment=</span>，或迁移改成显式 <span class="mono">op.create_table</span> 以 SQL 文件为准。核心是只留一份真源。</div>
+  </article>
+
+  <article class="issue" id="issue-2">
+    <div class="issue-head"><span class="prio high">高</span><h3>#2 跑一次集成测试，可能把开发数据全部删光</h3></div>
+    <p class="files">涉及：<code>backend/tests/test_postgres_integration.py:50</code></p>
+
+    <h4>大白话</h4>
+    <p>测试结束后有个"打扫现场"的动作：<span class="mono">command.downgrade(alembic_config, "base")</span>。<span class="mono">base</span> 的意思是"退回到没有任何表的初始状态"——也就是<b>删光全部表</b>。测试代码假设你给它的 URL 一定指向一次性的测试库，但它没有任何检查，你给什么它删什么。</p>
+
+    <pre><span class="c"># tests/test_postgres_integration.py</span>
+TEST_DATABASE_URL = os.getenv(<span class="s">"PAYLITE_TEST_DATABASE_URL"</span>)
+
+<span class="k">@pytest.fixture</span>(scope=<span class="s">"session"</span>)
+<span class="k">def</span> postgres_engine():
+    command.upgrade(alembic_config, <span class="s">"head"</span>)    <span class="c"># 建所有表</span>
+    <span class="k">yield</span> engine
+    command.downgrade(alembic_config, <span class="s">"base"</span>)  <span class="bad"># ← "base" = 删光所有表，无确认、无回收站</span></pre>
+
+    <div class="hurt"><strong>真实后果：</strong>手滑把 <span class="mono">PAYLITE_TEST_DATABASE_URL</span> 填成开发库 <span class="mono">paylite</span> → 跑一次测试 = 本地所有工资数据清空。没有弹窗，没有提示。</div>
+
+    <div class="learn"><b>知识点：</b>upgrade / downgrade 是一对对称的<b>破坏性操作</b>；测试隔离原则——测试必须永远指向专门的库；防御性编程——代码要假设使用者会犯错，URL 校验就是安全带。<br><b>修法：</b>fixture 开头加检查（比如拒绝库名为 <span class="mono">paylite</span>、或要求 URL 以 <span class="mono">_test</span> 结尾），并在 README 写明测试库约定。</div>
+  </article>
+
+  <article class="issue" id="issue-3">
+    <div class="issue-head"><span class="prio high">高</span><h3>#3 生效区间可以"重叠"，查询会出现两条"当前有效"记录</h3></div>
+    <p class="files">涉及：<code>backend/src/paylite/db/models.py:159,191,216,241,421,464,490</code>（employee_assignment / employee_salary / employee_bank_account / employee_base / social_security_rule / housing_fund_rule / attendance_rule 共 7 张表）</p>
+
+    <h4>大白话</h4>
+    <p>调薪、调岗这类记录都是"从某天到某天有效"的区间数据。现在的约束只挡了一种错误：同一个员工<b>从同一天开始</b>出现两条记录。但它挡不住下面这种：</p>
+
+    <div class="timeline">
+      <div class="tl-row"><span class="tl-label">记录 A</span><div class="tl-bar a">2026-01-01 起，结束日为空 = 一直有效</div></div>
+      <div class="tl-row"><span class="tl-label">记录 B</span><div class="tl-bar b">2026-02-01 ── 2026-03-01</div></div>
+      <div class="tl-warn">⚠ 2026 年 2 月任何一天，两条记录同时"有效"。问"员工 2 月 15 日的工资是多少"→ 系统拿到两个答案。</div>
+    </div>
+
+    <p>为什么会漏？因为 <span class="mono">UNIQUE</span> 只会比较"值相不相等"，不会比较"区间相不相交"。这正是排他约束（EXCLUDE）存在的意义。</p>
+
+    <h4>建议的约束写法</h4>
+    <pre><span class="c">-- 先启用扩展（btree_gist 让 gist 索引支持"等于"比较）</span>
+<span class="k">CREATE EXTENSION</span> <span class="k">IF NOT EXISTS</span> btree_gist;
+
+<span class="k">ALTER TABLE</span> employee_salary <span class="k">ADD CONSTRAINT</span> ck_employee_salary_no_overlap
+<span class="k">EXCLUDE USING</span> gist (
+    employee_id <span class="k">WITH</span> =,                       <span class="c">-- 同一员工</span>
+    daterange(effective_from, effective_to) <span class="k">WITH</span> &amp;&amp;   <span class="c">-- 的日期区间不能相交(&amp;&amp;)</span>
+);</pre>
+
+    <div class="hurt"><strong>真实后果：</strong>工资计算要读"员工当前工资"，重叠区间让这个查询返回 2 行——程序要么报错，要么随机挑一条，工资算错且难复现。而工资恰是这个系统最不能错的东西。</div>
+
+    <div class="learn"><b>知识点：</b>概念⑤里的 EXCLUDE 排他约束 · <span class="mono">daterange</span> 把两个日期变成一个"区间值" · <span class="mono">&amp;&amp;</span> 是"相交"运算符 · 涉及这 3 张表的都是工资计算的关键输入（薪酬、城市规则、考勤规则）。</div>
+  </article>
+</section>
+
+<!-- ================================================================ -->
+<section id="mid">
+  <h2 class="sec">中优先级（#4 – #8）</h2>
+  <p class="sec-sub">不致命，但会造成数据不一致或部署时的隐性坑，建议随业务代码一起处理。</p>
+
+  <article class="issue" id="issue-4">
+    <div class="issue-head"><span class="prio mid">中</span><h3>#4 工资记录上的冗余字段没有"对账"约束</h3></div>
+    <p class="files">涉及：<code>backend/src/paylite/db/models.py:560-565</code></p>
+
+    <h4>大白话</h4>
+    <p>工资记录（payroll_record）上同时存了三样东西：属于哪个批次、哪个期间、哪个主体。但"批次"本身就已经写着它属于哪个期间和主体了。同一信息存两份，在数据库设计里叫<b>反规范化</b>——故意为之，为了让"按期间/主体汇总"不用多查一次表，这没问题。<b>问题是：没有规则强制这两份信息一致。</b></p>
+
+    <h4>解法：复合外键</h4>
+    <pre><span class="c">-- 父表先声明一个"身份组合"约束</span>
+<span class="k">ALTER TABLE</span> payroll_batch
+  <span class="k">ADD CONSTRAINT</span> uq_payroll_batch_scope <span class="k">UNIQUE</span> (id, subject_id, payroll_period_id);
+
+<span class="c">-- 子表的三个字段作为整体引用它 → 记录的期间/主体永远等于批次的期间/主体</span>
+<span class="k">ALTER TABLE</span> payroll_record
+  <span class="k">ADD CONSTRAINT</span> fk_payroll_record_batch_scope
+  <span class="k">FOREIGN KEY</span> (payroll_batch_id, subject_id, payroll_period_id)
+  <span class="k">REFERENCES</span> payroll_batch (id, subject_id, payroll_period_id);</pre>
+
+    <div class="hurt"><strong>真实后果：</strong>某段代码单独改了记录上的期间没改批次 → 月底按期间汇总工资时，这笔钱出现在错误的月份，而且没有任何报错。</div>
+
+    <div class="learn"><b>知识点：</b>反规范化（denormalization）= 用冗余换查询速度，代价是要自己保证一致；复合外键（composite FK）= 让数据库替你"对账"。</div>
+  </article>
+
+  <article class="issue" id="issue-5">
+    <div class="issue-head"><span class="prio mid">中</span><h3>#5 工资期间的校验有缝：月份和日期可以对不上</h3></div>
+    <p class="files">涉及：<code>backend/src/paylite/db/models.py:264-266</code></p>
+
+    <h4>大白话</h4>
+    <p>payroll_period 表里有两组信息：<span class="mono">year=2026, month=6</span> 这样的数字，和 <span class="mono">period_start / period_end</span> 两个日期。现在的 CHECK 只保证了"period_start 是 1 号"，但没保证"<b>period_start 的年月 == year 和 month 字段</b>"，也没保证 period_end 是月末。</p>
+
+    <pre><span class="c">-- 现在：只查"是 1 号"</span>
+<span class="k">CHECK</span> (EXTRACT(<span class="k">DAY FROM</span> period_start) = 1)
+<span class="c">-- → year=2026, month=6, period_start=2026-07-01 也能通过 ✗</span>
+
+<span class="c">-- 建议补上跨列一致性：</span>
+<span class="k">CHECK</span> (EXTRACT(<span class="k">YEAR FROM</span> period_start) = year
+   <span class="k">AND</span> EXTRACT(<span class="k">MONTH FROM</span> period_start) = month)</pre>
+
+    <div class="learn"><b>知识点：</b>CHECK 约束也能做<b>跨列比较</b>（同一行内的多个列互相校验）——很多人以为 CHECK 只能检查单列。"自然月"是这个系统的领域约定，约束应该把约定钉死在库层。</div>
+  </article>
+
+  <article class="issue" id="issue-6">
+    <div class="issue-head"><span class="prio mid">中</span><h3>#6 文件指纹全局唯一，和"重复导入要提示用户"的产品规则冲突</h3></div>
+    <p class="files">涉及：<code>backend/src/paylite/db/models.py:335</code> · <code>CONTEXT.md</code>（产品决策）</p>
+
+    <h4>大白话</h4>
+    <p>SHA-256 是文件的"指纹"——内容相同的文件指纹一定相同。现在数据库规定：这个指纹<b>全系统只允许出现一次</b>。而产品文档（CONTEXT.md）写的规则是："重复导入默认作为新批次保存并<b>提示</b>，由用户选择新增或更正。"两条规则打架了。</p>
+
+    <div class="hurt"><strong>冲突场景：</strong>6 月上传过一次空的考勤模板，7 月又上传同一份文件 → 不是进入"提示用户选择"的流程，而是直接被数据库拒绝（报唯一约束错误）。产品预期里这是应该"提示后允许"的操作。</div>
+
+    <h4>两种修法（先做产品决策再动手）</h4>
+    <ul class="tight">
+      <li>按产品规则改约束的作用域：<span class="mono">UNIQUE (payroll_period_id, import_type, file_sha256)</span> —— 同一期间、同一类型内去重，跨期间允许；</li>
+      <li>或承认"全局幂等"是有意设计（同一文件绝不导入第二次），把 CONTEXT.md 的说法改掉。</li>
+    </ul>
+
+    <div class="learn"><b>知识点：</b>唯一约束有<b>作用域</b>：全局唯一 vs 分组唯一，选错作用域 = 把产品规则硬编码进了数据库；<b>幂等</b>（idempotent）= 同一操作执行多次和执行一次效果相同——全局指纹唯一其实是一种防重幂等设计，本身没错，但必须和产品流程对齐。</div>
+  </article>
+
+  <article class="issue" id="issue-7">
+    <div class="issue-head"><span class="prio mid">中</span><h3>#7 用 psql 直接建表后，Alembic 会"失忆"并报错</h3></div>
+    <p class="files">涉及：<code>backend/sql/001_initial_schema.sql</code> · <code>docs/database-design.md</code></p>
+
+    <h4>大白话</h4>
+    <p>Alembic 判断"数据库现在在第几个版本"，靠的不是看表结构，而是查库里那张 <span class="mono">alembic_version</span> 小表。用 psql 执行 SQL 文件建表时，<b>这张表不会被创建</b>——于是 Alembic 认为库还是空白，下次 <span class="mono">upgrade head</span> 会把所有表再建一遍，报"table already exists"。</p>
+
+    <pre>psql <span class="s">"$PAYLITE_DATABASE_URL"</span> -f backend/sql/001_initial_schema.sql
+<span class="c"># 表建好了，但 alembic_version 不存在 → Alembic 以为一切还没发生</span>
+
+cd backend &amp;&amp; alembic <span class="k">stamp</span> head
+<span class="c"># stamp = "别动手改结构，只在账本上把版本号标成最新"</span>
+<span class="c"># 打完 stamp 之后，upgrade head 才不会重复建表</span></pre>
+
+    <div class="learn"><b>知识点：</b><span class="mono">stamp</span> 和 <span class="mono">upgrade</span> 的区别——upgrade 真的执行迁移改结构，stamp 只改"账本"不动表。文档里两条初始化路径（psql 直执行 / alembic upgrade）并列，但必须补一句"走 psql 路径后要 stamp head"。</div>
+  </article>
+
+  <article class="issue" id="issue-8">
+    <div class="issue-head"><span class="prio mid">中</span><h3>#8 .env 按相对路径找，换个目录启动就"静默失联"</h3></div>
+    <p class="files">涉及：<code>backend/src/paylite/config.py:12</code></p>
+
+    <h4>大白话</h4>
+    <p><span class="mono">env_file=".env"</span> 是相对路径。相对谁？相对<b>你运行命令时所在的目录</b>（CWD，概念⑥），不是 config.py 所在的目录。在 <span class="mono">backend/</span> 里启动能找到；在仓库根目录启动就找不到——而且 pydantic 找不到<b>不报错</b>，静默跳过，用代码里写死的默认连接串。本地默认串恰好也能连上，所以你毫无察觉。</p>
+
+    <pre><span class="c"># 现在：跟着 CWD 走，随启动目录漂移</span>
+env_file=<span class="s">".env"</span>
+
+<span class="c"># 建议：锚定到 config.py 自己的位置，从哪启动都一样</span>
+<span class="k">from</span> pathlib <span class="k">import</span> Path
+BASE_DIR = Path(__file__).resolve().parents[2]  <span class="c"># → backend/</span>
+env_file=BASE_DIR / <span class="s">".env"</span></pre>
+
+    <div class="hurt"><strong>真实后果：</strong>你现在以为程序读的是 .env，实际可能读的是代码里的默认值。等部署到服务器、或者改了 .env 发现"怎么不生效"，才会暴露。</div>
+
+    <div class="learn"><b>知识点：</b>CWD（概念⑥）· <span class="mono">Path(__file__)</span> 是"以代码文件自身为锚点"的标准手法 · "静默失败"（fail silently）是最危险的失败方式——宁可启动时报错，也不要带着错误配置继续跑。</div>
+  </article>
+</section>
+
+<!-- ================================================================ -->
+<section id="low">
+  <h2 class="sec">低优先级（#9 – #14）</h2>
+  <p class="sec-sub">不影响正确性或本机单人场景下影响很小，属于代码卫生，先记账即可。</p>
+
+  <article class="issue" id="issue-9">
+    <div class="issue-head"><span class="prio low">低</span><h3>#9 future=True 是过时的开关</h3></div>
+    <p class="files">涉及：<code>backend/src/paylite/db/session.py:12</code></p>
+    <p><b>是什么：</b>SQLAlchemy 从 1.4 过渡到 2.0 时，提供了 <span class="mono">future=True</span> 让你提前用上 2.0 的新行为。项目现在用的就是 2.x，行为<b>永远</b>是"future"的，这个参数成了死代码。<br>
+    <b>知识点：</b>这类"过渡期开关"要随版本升级清理掉，不是错误，是噪音——它让读者误以为还有"非 future"模式可选。</p>
+  </article>
+
+  <article class="issue" id="issue-10">
+    <div class="issue-head"><span class="prio low">低</span><h3>#10 外键列没有索引</h3></div>
+    <p class="files">涉及：<code>backend/src/paylite/db/models.py:174,566</code> 等（大量 FK 列）</p>
+    <p><b>是什么：</b>PostgreSQL 声明外键时<b>不会</b>自动给外键列建索引（很多人以为会）。没有索引的后果：按这列查询慢（全表扫描）；删除/更新父表行时，数据库要全表扫描子表来检查引用。<br>
+    <b>为什么是低优先级：</b>本机单人、数据量小，现在毫无感觉。<b>知识点：</b>惯例是"每个 FK 列手动配一个索引"，数据量上来之前先记账。</p>
+  </article>
+
+  <article class="issue" id="issue-11">
+    <div class="issue-head"><span class="prio low">低</span><h3>#11 部门树防了"自己当自己的爹"，防不了"循环收养"</h3></div>
+    <p class="files">涉及：<code>backend/src/paylite/db/models.py:81-83</code></p>
+    <p><b>是什么：</b>CHECK 约束只能看到<b>当前这一行</b>的数据。<span class="mono">parent_id &lt;&gt; id</span> 挡住了"部门的上级是它自己"，但挡不住"A 的上级是 B、B 的上级是 A"——每行单看都合法，整棵树却成了环。<br>
+    <b>知识点：</b>跨行的规则（环检测）超出 CHECK 的能力，要用触发器或应用层递归检查。部门树是查询汇总的维度，成环会让递归查询死循环。</p>
+  </article>
+
+  <article class="issue" id="issue-12">
+    <div class="issue-head"><span class="prio low">低</span><h3>#12 版本号写了三处</h3></div>
+    <p class="files">涉及：<code>backend/pyproject.toml:7</code> · <code>backend/src/paylite/main.py:6</code> · <code>backend/src/paylite/__init__.py:3</code></p>
+    <p><b>是什么：</b>把版本从 0.1.0 升到 0.2.0 要同时改三个文件，漏一处就会出现"API 文档显示 0.1.0、包其实是 0.2.0"。<br>
+    <b>知识点：</b>又是"真源"问题（概念③）。Python 3.8+ 有现成解法：在 pyproject 里配 <span class="mono">dynamic = ["version"]</span>，代码里用 <span class="mono">importlib.metadata.version()</span> 读取，只留一份。</p>
+  </article>
+
+  <article class="issue" id="issue-13">
+    <div class="issue-head"><span class="prio low">低</span><h3>#13 python-multipart 装了但没人用</h3></div>
+    <p class="files">涉及：<code>backend/pyproject.toml:15</code></p>
+    <p><b>是什么：</b>FastAPI 处理文件上传（<span class="mono">UploadFile</span>）必须有这个库，但现在后端还没有上传接口——属于"提前采购"。<br>
+    <b>知识点：</b>依赖要么删掉、要么留注释说明用途。这个项目马上要做 Excel 导入，留着合理，但应该知道它为什么在清单里，避免将来"清理依赖"时误删。</p>
+  </article>
+
+  <article class="issue" id="issue-14">
+    <div class="issue-head"><span class="prio low">低</span><h3>#14 类名和表名对不上</h3></div>
+    <p class="files">涉及：<code>backend/src/paylite/db/models.py:238-239</code></p>
+    <p><b>是什么：</b>Python 类叫 <span class="mono">EmployeeBaseLocation</span>，对应的表却叫 <span class="mono">employee_base</span>。SQLAlchemy 以 <span class="mono">__tablename__</span> 为准，功能没问题；但读代码的人每次都要在脑内做一次"翻译"。<br>
+    <b>知识点：</b>命名一致性是小团队的"隐性税"——单人项目里成本不大，一旦有第二个人读代码，这类不一致会持续消耗注意力。</p>
+  </article>
+</section>
+
+<!-- ================================================================ -->
+<section id="verify">
+  <h2 class="sec">验证状态：哪些结论是实测的，哪些是推断的</h2>
+  <div class="note">
+    <p style="margin-top:0"><b>已实测：</b>6 个单元测试全部通过（模型契约 + /health 端点），<span class="mono">ruff check</span> 全部通过。</p>
+    <p><b>未实测：</b>7 个集成测试<b>没能运行</b>——审查环境里没有 Docker、5432 端口也没有 PostgreSQL，连接超时。也就是说，#2（删库流程）和 #3（区间约束）相关的行为目前只经过代码推演，没有被真实数据库验证过。</p>
+    <p style="margin-bottom:0"><b>你修复后的验收动作：</b>在本机起好 PostgreSQL 后，用独立的测试库跑<br>
+    <span class="mono">PAYLITE_TEST_DATABASE_URL=postgresql+psycopg://paylite:paylite_dev@127.0.0.1:5432/paylite_test pytest tests/test_postgres_integration.py</span><br>
+    7 个测试全部通过，才算真正闭环。</p>
+  </div>
+</section>
+
+<!-- ================================================================ -->
+<footer id="glossary">
+  <h2 style="font-size:20px; margin:0 0 8px;">术语表</h2>
+  <dl>
+    <dt>DDL（Data Definition Language）</dt><dd>定义结构的 SQL：CREATE TABLE、ALTER TABLE、CREATE INDEX。"默认值写进 DDL"= 默认值属于表结构本身。</dd>
+    <dt>迁移（Migration）</dt><dd>数据库结构的一次受控变更，像 Git commit 一样按顺序排列，可前进（upgrade）也可回退（downgrade）。</dd>
+    <dt>真源（Single Source of Truth）</dt><dd>同一事实只有一份权威定义。它的反面是"多份手工同步的副本"，问题 #1、#12 都源于此。</dd>
+    <dt>反规范化（Denormalization）</dt><dd>故意把同一信息存两份，换取更快的查询。代价：需要约束或触发器保证两份一致（问题 #4）。</dd>
+    <dt>幂等（Idempotent）</dt><dd>同一操作执行多次与执行一次效果相同。唯一约束是一种强制幂等的手段（问题 #6）。</dd>
+    <dt>排他约束（EXCLUDE Constraint）</dt><dd>PostgreSQL 特有：要求多行之间的某个"范围值"互不相交，UNIQUE 只能比相等，它能比相交（问题 #3）。</dd>
+    <dt>触发器（Trigger）</dt><dd>挂在表上、在 INSERT/UPDATE/DELETE 时自动执行的自定义函数，本项目用它实现了"工资锁定后不可变"。</dd>
+    <dt>CWD（Current Working Directory）</dt><dd>当前工作目录：你运行命令时所在的目录，相对路径都以它为基准（问题 #8）。</dd>
+  </dl>
+  <p style="margin-top:28px; font-size:12.5px;">PayLite 后端代码审查详解 · 生成于 2026-09-14 · 对应审查对象：backend/ 目录（paylite 0.1.0）</p>
+</footer>
+
+</div>
+</body>
+</html>
