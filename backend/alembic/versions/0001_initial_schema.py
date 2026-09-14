@@ -78,7 +78,7 @@ def load_initial_schema_statements() -> list[str]:
 def upgrade() -> None:
     connection = op.get_bind()
     for statement in load_initial_schema_statements():
-        connection.exec_driver_sql(statement)
+        connection.exec_driver_sql(statement.replace("Payroll record %", "Payroll record %%"))
 
 
 def downgrade() -> None:

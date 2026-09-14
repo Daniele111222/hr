@@ -1,0 +1,13 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+changed_files="$(git diff-tree --no-commit-id --name-only -r HEAD)"
+
+if ! printf '%s\n' "$changed_files" | grep -qE '^(backend/|docker-compose\.yml)'; then
+    exit 0
+fi
+
+printf '%s\n' "Backend changes detected; rebuilding local backend image..."
+docker compose build backend
+docker compose up -d --no-deps backend
+printf '%s\n' "Local backend container updated."
