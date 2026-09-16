@@ -51,11 +51,14 @@ CI 包含：
 
 1. Python 3.13 环境安装后端依赖。
 2. Ruff lint 和格式检查。
-3. Python 编译检查。
-4. 使用 PostgreSQL 16 service container 运行完整测试，包括集成测试。
-5. 测试通过后构建 `paylite-backend:${{ github.sha }}` 镜像。
+3. `lint-imports` 检查已落地的数据库层与应用/HTTP 层导入禁令。
+4. Python 编译检查。
+5. 使用 PostgreSQL 16 service container 运行完整测试，包括集成测试。
+6. 测试通过后构建 `paylite-backend:${{ github.sha }}` 镜像。
 
 当前 workflow 只验证和构建镜像，不推送 GHCR/Docker Hub，也不自动部署生产环境。
+
+后端分层、应用工厂、ORM 按主题分包、三种数据形态和事务边界见 [后端架构](backend-architecture.md)。当前架构检查只约束已经存在的模块；`services`、`domain`、`excel` 在对应业务竖切实现前不预建空目录。
 
 ## 提交失败或容器未更新
 

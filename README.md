@@ -39,6 +39,8 @@
 
 产品路线、功能优先级、数据模型和里程碑见 [docs/product.md](docs/product.md)。
 
+后端分层、ORM 分包、事务生命周期和业务规则落地差距见 [docs/backend-architecture.md](docs/backend-architecture.md)。
+
 ## License
 
 [MIT](LICENSE)

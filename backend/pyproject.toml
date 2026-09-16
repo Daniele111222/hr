@@ -21,6 +21,7 @@ dependencies = [
 [project.optional-dependencies]
 dev = [
     "httpx>=0.27,<1",
+    "import-linter>=2.3,<3",
     "pytest>=8.3,<9",
     "pytest-cov>=6,<7",
     "ruff>=0.9,<1",
@@ -44,3 +45,18 @@ src = ["src", "tests"]
 
 [tool.ruff.lint]
 select = ["E", "F", "I", "UP"]
+
+[tool.importlinter]
+root_packages = ["paylite"]
+
+[[tool.importlinter.contracts]]
+name = "Database layer stays independent from HTTP and app composition"
+type = "forbidden"
+source_modules = ["paylite.db"]
+forbidden_modules = ["paylite.api", "paylite.application", "paylite.main"]
+
+[[tool.importlinter.contracts]]
+name = "ORM models stay independent from configuration and sessions"
+type = "forbidden"
+source_modules = ["paylite.db.models"]
+forbidden_modules = ["paylite.config", "paylite.db.session"]

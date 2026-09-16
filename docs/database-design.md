@@ -6,7 +6,7 @@ PayLite 当前使用本机 PostgreSQL 保存单一目标公司的工资数据。
 
 ## 目录
 
-- `backend/src/paylite/db/models.py`：规范化 SQLAlchemy 模型。
+- `backend/src/paylite/db/models/`：按主题拆分的规范化 SQLAlchemy 模型；`models/__init__.py` 保持公开导入路径。
 - `backend/alembic/versions/0001_initial_schema.py`：应用迁移入口。
 - `backend/sql/001_initial_schema.sql`：可独立审查和执行的 PostgreSQL DDL，保留具体 SQL 语句。
 

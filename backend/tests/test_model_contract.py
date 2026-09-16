@@ -3,8 +3,14 @@ from pathlib import Path
 from fastapi.testclient import TestClient
 from sqlalchemy import Numeric, Text
 
+from paylite.application import create_app
+from paylite.config import Settings
 from paylite.db.base import Base
-from paylite.db.models import Employee, ImportBatch, PayrollPeriod, PayrollRecord
+from paylite.db.models import Employee, ImportBatch, PayrollPeriod, PayrollRecord, primary_key
+from paylite.db.models.common import primary_key as primary_key_from_module
+from paylite.db.models.employees import Employee as EmployeeFromModule
+from paylite.db.models.imports import ImportBatch as ImportBatchFromModule
+from paylite.db.models.payroll import PayrollRecord as PayrollRecordFromModule
 from paylite.main import app
 
 EXPECTED_TABLES = {
@@ -39,7 +45,14 @@ EXPECTED_TABLES = {
 
 class TestModelContract:
     def test_all_domain_tables_are_registered(self) -> None:
-        assert EXPECTED_TABLES <= set(Base.metadata.tables)
+        assert set(Base.metadata.tables) == EXPECTED_TABLES
+        assert {mapper.class_.__tablename__ for mapper in Base.registry.mappers} == EXPECTED_TABLES
+
+    def test_public_model_imports_remain_compatible(self) -> None:
+        assert Employee is EmployeeFromModule
+        assert ImportBatch is ImportBatchFromModule
+        assert PayrollRecord is PayrollRecordFromModule
+        assert primary_key is primary_key_from_module
 
     def test_business_identifier_and_money_types(self) -> None:
         assert isinstance(Employee.__table__.c.id_number.type, Text)
@@ -97,5 +110,16 @@ def test_health_endpoint() -> None:
     with TestClient(app) as client:
         response = client.get("/health")
 
+    assert response.status_code == 200
+    assert response.json() == {"status": "ok"}
+
+
+def test_application_factory_uses_explicit_settings() -> None:
+    application = create_app(Settings(app_name="PayLite Test"))
+
+    with TestClient(application) as client:
+        response = client.get("/health")
+
+    assert application.title == "PayLite Test"
     assert response.status_code == 200
     assert response.json() == {"status": "ok"}
