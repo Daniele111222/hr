@@ -41,6 +41,10 @@
 
 后端分层、ORM 分包、事务生命周期和业务规则落地差距见 [docs/backend-architecture.md](docs/backend-architecture.md)。
 
+前端模块、状态职责、OpenAPI 契约和本地运行边界见 [docs/frontend-architecture.md](docs/frontend-architecture.md)。
+
+开发阶段、16 项正式任务、依赖关系及验收标准见 [docs/development-plan.md](docs/development-plan.md)。
+
 ## License
 
 [MIT](LICENSE)

@@ -1,0 +1,82 @@
+.shell {
+  min-height: 100vh;
+}
+
+.sidebar {
+  background: #ffffff !important;
+  border-right: 1px solid #dfe4e8;
+}
+
+.brand {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  height: 88px;
+  padding: 20px 24px;
+  border-bottom: 1px solid #edf0f2;
+}
+
+.brandMark {
+  display: grid;
+  width: 36px;
+  height: 36px;
+  color: #ffffff;
+  font-weight: 700;
+  place-items: center;
+  background: #176b87;
+  border-radius: 4px;
+}
+
+.brandTitle,
+.period {
+  margin: 0 !important;
+}
+
+.brandSubtitle {
+  color: #75818b;
+  font-size: 12px;
+  letter-spacing: 0.08em;
+}
+
+.menu {
+  padding: 12px;
+  border-inline-end: 0 !important;
+}
+
+.localNote {
+  position: absolute;
+  bottom: 20px;
+  left: 24px;
+  color: #75818b;
+  font-size: 12px;
+}
+
+.header {
+  display: flex;
+  height: 72px;
+  padding: 14px 32px;
+  background: #ffffff;
+  border-bottom: 1px solid #dfe4e8;
+}
+
+.period {
+  margin-top: 2px !important;
+}
+
+.content {
+  padding: 32px;
+}
+
+.routeLoading {
+  color: #75818b;
+}
+
+@media (max-width: 768px) {
+  .header {
+    padding-inline: 20px;
+  }
+
+  .content {
+    padding: 20px;
+  }
+}

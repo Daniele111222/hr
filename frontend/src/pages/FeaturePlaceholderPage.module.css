@@ -1,0 +1,14 @@
+.page {
+  width: min(1120px, 100%);
+  margin: 0 auto;
+}
+
+.empty {
+  display: grid;
+  min-height: 360px;
+  margin-top: 28px;
+  background: #ffffff;
+  border: 1px solid #dfe4e8;
+  border-radius: 6px;
+  place-items: center;
+}

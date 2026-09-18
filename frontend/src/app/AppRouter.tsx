@@ -1,0 +1,68 @@
+import { lazy } from "react";
+import { BrowserRouter, Navigate, Route, Routes } from "react-router-dom";
+import { AppLayout } from "./AppLayout.tsx";
+
+const OverviewPage = lazy(() =>
+  import("../pages/OverviewPage.tsx").then((module) => ({
+    default: module.OverviewPage,
+  })),
+);
+
+const FeaturePlaceholderPage = lazy(() =>
+  import("../pages/FeaturePlaceholderPage.tsx").then((module) => ({
+    default: module.FeaturePlaceholderPage,
+  })),
+);
+
+const placeholders = [
+  {
+    path: "employees",
+    title: "员工管理",
+    description: "维护员工主档、任职信息和薪酬标准。",
+  },
+  {
+    path: "imports",
+    title: "数据导入",
+    description: "导入并校验考勤、绩效及员工数据。",
+  },
+  {
+    path: "payroll",
+    title: "工资核算",
+    description: "按期间执行试算、确认、锁定和更正。",
+  },
+  {
+    path: "rules",
+    title: "规则维护",
+    description: "维护城市社保基数和公积金规则。",
+  },
+  {
+    path: "exports",
+    title: "结果导出",
+    description: "生成工资表、代发文件和人工成本表。",
+  },
+] as const;
+
+export function AppRouter() {
+  return (
+    <BrowserRouter>
+      <Routes>
+        <Route element={<AppLayout />}>
+          <Route index element={<OverviewPage />} />
+          {placeholders.map((item) => (
+            <Route
+              key={item.path}
+              path={item.path}
+              element={
+                <FeaturePlaceholderPage
+                  title={item.title}
+                  description={item.description}
+                />
+              }
+            />
+          ))}
+          <Route path="*" element={<Navigate to="/" replace />} />
+        </Route>
+      </Routes>
+    </BrowserRouter>
+  );
+}
