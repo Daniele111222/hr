@@ -3,19 +3,19 @@ import { BrowserRouter, Navigate, Route, Routes } from "react-router-dom";
 import { AppLayout } from "./AppLayout.tsx";
 
 const OverviewPage = lazy(() =>
-  import("../pages/OverviewPage.tsx").then((module) => ({
+  import("../pages/overview/index.tsx").then((module) => ({
     default: module.OverviewPage,
   })),
 );
 
 const FeaturePlaceholderPage = lazy(() =>
-  import("../pages/FeaturePlaceholderPage.tsx").then((module) => ({
+  import("../pages/feature-placeholder/index.tsx").then((module) => ({
     default: module.FeaturePlaceholderPage,
   })),
 );
 
-const OrganizationPage = lazy(() => import("../pages/OrganizationPage.tsx").then((module) => ({ default: module.OrganizationPage })));
-const EmployeesPage = lazy(() => import("../pages/EmployeesPage.tsx").then((module) => ({ default: module.EmployeesPage })));
+const OrganizationPage = lazy(() => import("../pages/organization/index.tsx").then((module) => ({ default: module.OrganizationPage })));
+const EmployeesPage = lazy(() => import("../pages/employees/index.tsx").then((module) => ({ default: module.EmployeesPage })));
 
 const placeholders = [
   {

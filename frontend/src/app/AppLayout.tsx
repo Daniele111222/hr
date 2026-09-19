@@ -2,7 +2,7 @@ import { Layout, Menu, Typography } from "antd";
 import type { MenuProps } from "antd";
 import { Suspense } from "react";
 import { Outlet, useLocation, useNavigate } from "react-router-dom";
-import styles from "./AppLayout.module.css";
+import styles from "./AppLayout.module.less";
 
 const navigation: MenuProps["items"] = [
   { key: "/", label: "工作台" },

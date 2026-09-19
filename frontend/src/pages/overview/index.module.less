@@ -1,5 +1,9 @@
+@color-brand: #176b87;
+@color-surface: #ffffff;
+@page-width: 1120px;
+
 .page {
-  width: min(1120px, 100%);
+  width: min(@page-width, 100%);
   margin: 0 auto;
 }
 
@@ -7,10 +11,12 @@
   margin-bottom: 32px;
 }
 
-.heading h1 {
-  margin-bottom: 8px;
-  font-size: clamp(28px, 3vw, 40px);
-  letter-spacing: -0.03em;
+.heading {
+  h1 {
+    margin-bottom: 8px;
+    font-size: clamp(28px, 3vw, 40px);
+    letter-spacing: -0.03em;
+  }
 }
 
 .intro {
@@ -21,13 +27,15 @@
 
 .workflow {
   padding: 28px;
-  background: #ffffff;
-  border-top: 4px solid #176b87;
+  background: @color-surface;
+  border-top: 4px solid @color-brand;
   border-radius: 6px;
 }
 
-.workflow h3 {
-  margin-bottom: 4px;
+.workflow {
+  h3 {
+    margin-bottom: 4px;
+  }
 }
 
 .steps {

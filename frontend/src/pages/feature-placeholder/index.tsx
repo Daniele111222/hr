@@ -1,5 +1,5 @@
 import { Empty, Typography } from "antd";
-import styles from "./FeaturePlaceholderPage.module.css";
+import styles from "./index.module.less";
 
 type FeaturePlaceholderPageProps = {
   title: string;

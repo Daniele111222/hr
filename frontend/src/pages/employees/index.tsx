@@ -1,8 +1,8 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Alert, App, Button, Drawer, Form, Input, InputNumber, Select, Space, Table, Tag, Typography } from "antd";
 import { useState } from "react";
-import { resources, type Employee } from "../shared/api/resources";
-import styles from "./EmployeesPage.module.css";
+import { resources, type Employee } from "../../shared/api/resources";
+import styles from "./index.module.less";
 
 export function EmployeesPage() {
   const { message } = App.useApp();

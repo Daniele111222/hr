@@ -1,8 +1,8 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Alert, App, Button, Card, Drawer, Form, Input, Popconfirm, Select, Space, Table, Typography } from "antd";
 import { useState } from "react";
-import { resources, type City, type Department, type Subject, type SubjectDepartment } from "../shared/api/resources";
-import styles from "./OrganizationPage.module.css";
+import { resources, type City, type Department, type Subject, type SubjectDepartment } from "../../shared/api/resources";
+import styles from "./index.module.less";
 
 type Kind = "city" | "subject" | "department" | "relation";
 type Row = City | Subject | Department | SubjectDepartment;

@@ -1,10 +1,14 @@
+@color-border: #dfe4e8;
+@color-muted: #75818b;
+@color-brand: #176b87;
+
 .shell {
   min-height: 100vh;
 }
 
 .sidebar {
   background: #ffffff !important;
-  border-right: 1px solid #dfe4e8;
+  border-right: 1px solid @color-border;
 }
 
 .brand {
@@ -23,7 +27,7 @@
   color: #ffffff;
   font-weight: 700;
   place-items: center;
-  background: #176b87;
+  background: @color-brand;
   border-radius: 4px;
 }
 
@@ -33,7 +37,7 @@
 }
 
 .brandSubtitle {
-  color: #75818b;
+  color: @color-muted;
   font-size: 12px;
   letter-spacing: 0.08em;
 }
@@ -47,7 +51,7 @@
   position: absolute;
   bottom: 20px;
   left: 24px;
-  color: #75818b;
+  color: @color-muted;
   font-size: 12px;
 }
 
@@ -56,7 +60,7 @@
   height: 72px;
   padding: 14px 32px;
   background: #ffffff;
-  border-bottom: 1px solid #dfe4e8;
+  border-bottom: 1px solid @color-border;
 }
 
 .period {
@@ -68,7 +72,7 @@
 }
 
 .routeLoading {
-  color: #75818b;
+  color: @color-muted;
 }
 
 @media (max-width: 768px) {

@@ -1,7 +1,7 @@
 import { useQuery } from "@tanstack/react-query";
 import { Alert, Flex, Steps, Tag, Typography } from "antd";
-import { systemHealthQueryOptions } from "../shared/api/system.ts";
-import styles from "./OverviewPage.module.css";
+import { systemHealthQueryOptions } from "../../shared/api/system.ts";
+import styles from "./index.module.less";
 
 const payrollSteps = [
   { title: "准备基础数据", content: "员工、城市规则" },

@@ -15,9 +15,17 @@
 frontend/src/
 ├── app/          # 应用启动、Provider、路由和整体布局
 ├── pages/        # 页面级组装，不承载可复用业务规则
+│   ├── overview/            # index.tsx + index.module.less
+│   ├── organization/        # index.tsx + index.module.less
+│   ├── employees/           # index.tsx + index.module.less
+│   └── feature-placeholder/ # index.tsx + index.module.less
 ├── features/     # 按员工、导入、工资、规则、导出等业务能力组织
 └── shared/       # API 客户端、通用 UI、格式化和配置
 ```
+
+页面目录使用“一个页面一个文件夹”的约束：页面入口、页面私有组件和 `*.module.less` 放在同一目录；路由只负责懒加载页面入口。页面之间不得通过相对路径引用其他页面的私有文件，需要复用时下沉到 `features` 或 `shared`，并先确认复用边界。
+
+样式统一使用 Less：全局样式使用 `src/index.less`，应用壳层使用 `*.module.less`，页面和业务模块使用局部 `*.module.less`。Less 变量只在所属样式模块内定义；跨模块稳定复用的设计 token 再提升到共享主题文件，避免建立一个包含大量隐式全局变量的样式目录。
 
 新增业务优先放入对应 `features` 模块。只有两个以上业务模块稳定复用的内容才进入 `shared`，避免预建空目录和浅层转发模块。
 

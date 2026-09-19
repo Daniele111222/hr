@@ -1,6 +1,10 @@
+@color-text: #17212b;
+@color-background: #f3f5f7;
+@color-focus: rgba(23, 107, 135, 0.35);
+
 :root {
-  color: #17212b;
-  background: #f3f5f7;
+  color: @color-text;
+  background: @color-background;
   font-family:
     -apple-system, BlinkMacSystemFont, "Segoe UI", "PingFang SC",
     "Hiragino Sans GB", "Microsoft YaHei", sans-serif;
@@ -34,6 +38,6 @@ select {
 }
 
 :focus-visible {
-  outline: 3px solid rgba(23, 107, 135, 0.35);
+  outline: 3px solid @color-focus;
   outline-offset: 2px;
 }

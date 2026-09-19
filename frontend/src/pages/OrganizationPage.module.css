@@ -1,3 +1,0 @@
-.page { width: min(1120px, 100%); margin: 0 auto; }
-.grid { width: 100%; margin-top: 20px; }
-.grid :global(.ant-card) { flex: 1 1 480px; min-width: 360px; }
