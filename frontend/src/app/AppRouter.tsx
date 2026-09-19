@@ -14,6 +14,9 @@ const FeaturePlaceholderPage = lazy(() =>
   })),
 );
 
+const OrganizationPage = lazy(() => import("../pages/OrganizationPage.tsx").then((module) => ({ default: module.OrganizationPage })));
+const EmployeesPage = lazy(() => import("../pages/EmployeesPage.tsx").then((module) => ({ default: module.EmployeesPage })));
+
 const placeholders = [
   {
     path: "employees",
@@ -48,7 +51,9 @@ export function AppRouter() {
       <Routes>
         <Route element={<AppLayout />}>
           <Route index element={<OverviewPage />} />
-          {placeholders.map((item) => (
+          <Route path="organization" element={<OrganizationPage />} />
+          <Route path="employees" element={<EmployeesPage />} />
+          {placeholders.filter((item) => item.path !== "employees").map((item) => (
             <Route
               key={item.path}
               path={item.path}

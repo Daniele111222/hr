@@ -6,6 +6,7 @@ import styles from "./AppLayout.module.css";
 
 const navigation: MenuProps["items"] = [
   { key: "/", label: "工作台" },
+  { key: "/organization", label: "公司与组织" },
   { key: "/employees", label: "员工管理" },
   { key: "/imports", label: "数据导入" },
   { key: "/payroll", label: "工资核算" },

@@ -7,11 +7,14 @@ from pathlib import Path
 import pytest
 from alembic import command
 from alembic.config import Config
+from fastapi.testclient import TestClient
 from sqlalchemy import create_engine, select
 from sqlalchemy.engine import URL, make_url
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
+from paylite.api.deps import get_db
+from paylite.application import create_app
 from paylite.config import get_settings
 from paylite.db.models import (
     AttendanceRecord,
@@ -19,6 +22,7 @@ from paylite.db.models import (
     Company,
     CorrectionBatch,
     Employee,
+    EmployeeSalary,
     ImportBatch,
     ImportRow,
     PayrollBatch,
@@ -76,6 +80,24 @@ def db_session(postgres_engine) -> Generator[Session]:
     with Session(postgres_engine) as session:
         yield session
         session.rollback()
+
+
+@pytest.fixture
+def api_client(postgres_engine):
+    application = create_app()
+
+    def override_get_db() -> Generator[Session]:
+        with Session(postgres_engine) as session:
+            try:
+                yield session
+            except Exception:
+                session.rollback()
+                raise
+
+    application.dependency_overrides[get_db] = override_get_db
+    with TestClient(application) as client:
+        yield client
+    application.dependency_overrides.clear()
 
 
 def create_base_records(session: Session) -> tuple[Company, City, Subject, PayrollPeriod, Employee]:
@@ -324,3 +346,94 @@ def test_locked_payroll_record_cannot_be_updated(db_session: Session) -> None:
 
     with pytest.raises(IntegrityError):
         db_session.flush()
+
+
+def test_organization_and_employee_api_flow(api_client: TestClient, postgres_engine) -> None:
+    company = api_client.post("/organization/company", json={"code": "ACME", "name": "示例公司"})
+    assert company.status_code == 201
+    company_id = company.json()["id"]
+
+    city = api_client.post("/organization/cities", json={"code": "BJ", "name": "北京"})
+    subject = api_client.post(
+        "/organization/subjects",
+        json={"company_id": company_id, "code": "MAIN", "name": "主主体"},
+    )
+    department = api_client.post(
+        "/organization/departments",
+        json={"company_id": company_id, "code": "ENG", "name": "研发"},
+    )
+    subject_department = api_client.post(
+        "/organization/subject-departments",
+        json={
+            "company_id": company_id,
+            "subject_id": subject.json()["id"],
+            "department_id": department.json()["id"],
+            "code": "ENG",
+            "name": "研发",
+        },
+    )
+    assert all(
+        response.status_code == 201 for response in (city, subject, department, subject_department)
+    )
+
+    employee_payload = {
+        "company_id": company_id,
+        "id_number": "11010119900101123X",
+        "employee_no": "E001",
+        "name": "测试员工",
+        "employee_type": "employee",
+        "formal_status": True,
+        "probation_status": "confirmed",
+        "hire_date": "2026-01-01",
+        "assignment": {
+            "subject_id": subject.json()["id"],
+            "subject_department_id": subject_department.json()["id"],
+            "position_title": "工程师",
+            "effective_from": "2026-01-01",
+        },
+        "salary": {
+            "fixed_salary": "8000.00",
+            "performance_base": "2000.00",
+            "effective_from": "2026-01-01",
+        },
+        "base": {"city_id": city.json()["id"], "effective_from": "2026-01-01"},
+        "bank_account": {
+            "account_number": "6222000000000001",
+            "account_name": "测试员工",
+            "effective_from": "2026-01-01",
+        },
+    }
+    created = api_client.post("/employees", json=employee_payload)
+    assert created.status_code == 201
+    employee_id = created.json()["id"]
+
+    duplicate = api_client.post("/employees", json={**employee_payload, "employee_no": "E002"})
+    assert duplicate.status_code == 409
+    assert "身份证" in duplicate.json()["detail"]
+
+    updated = api_client.patch(
+        f"/employees/{employee_id}",
+        json={
+            "salary": {
+                "fixed_salary": "8500.00",
+                "performance_base": "2125.00",
+                "effective_from": "2026-07-01",
+            }
+        },
+    )
+    assert updated.status_code == 200
+    assert updated.json()["salary"]["fixed_salary"] == "8500.00"
+
+    with Session(postgres_engine) as session:
+        salary_rows = list(
+            session.scalars(
+                select(EmployeeSalary)
+                .where(EmployeeSalary.employee_id == employee_id)
+                .order_by(EmployeeSalary.effective_from)
+            )
+        )
+        assert salary_rows[0].effective_to == date(2026, 7, 1)
+
+    blocked_delete = api_client.delete(f"/organization/cities/{city.json()['id']}")
+    assert blocked_delete.status_code == 409
+    assert "base 地" in blocked_delete.json()["detail"]
