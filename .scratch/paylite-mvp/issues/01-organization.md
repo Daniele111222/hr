@@ -24,3 +24,9 @@
 - 验证命令与结果：后端 `ruff check src tests` 通过；前端 `tsc -b`、Vitest（1 个测试文件/1 个测试）和 Vite production build 通过；使用隔离 PostgreSQL `paylite_test` 运行后端 pytest：22 passed（含组织/员工 API 流程和数据库约束集成测试）。
 - 审查结论及遗留事项：组织与员工基础维护竖切已完成；工资计算、导入和后续期间流程不属于本需求范围。
 
+## Comments
+
+2026-09-20（索引同步时记录，非实现方）：`Status:` 保持 `completed`，但 development-plan.md 状态列记为**待验收**，理由是验收标准 5 条均未勾选，且第 5 条“页面操作、HTTP 错误映射与数据库约束均有针对性验证”缺前端证据——实测 `frontend/src` 下仅有 `src/app/App.test.tsx`（1 个测试文件 / 1 个测试），`pages/organization/` 无测试文件，与完成记录自述的 Vitest 结果一致。第 1—4 条的后端部分（唯一编码、部门自引用/循环触发器、跨公司关系、被引用数据删除保护、事务回滚）有 `test_postgres_integration.py` 等集成测试支撑，但同样未逐条勾选并标注对应测试。
+
+待办：补组织页面组件测试（加载/空数据/提交成功/错误反馈），逐条勾选验收标准并标注证据，随后把 development-plan.md 状态列转“已完成”。勾选须由实际运行过验证的会话执行。
+

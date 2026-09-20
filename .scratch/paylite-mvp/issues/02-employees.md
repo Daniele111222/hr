@@ -25,3 +25,22 @@
 - 验证命令与结果：后端 `ruff check src tests` 通过；前端 `tsc -b`、Vitest（1 个测试文件/1 个测试）和 Vite production build 通过；使用隔离 PostgreSQL `paylite_test` 运行后端 pytest：22 passed（含员工新增、重复身份证、薪酬生效区间、薪酬结构规则和删除引用保护）。
 - 审查结论及遗留事项：员工与薪酬基础维护竖切已完成；更细的任职变更表单和工资计算属于后续需求。
 
+## Comments
+
+2026-09-20（索引同步时记录，非实现方）：`Status:` 保持 `completed`，development-plan.md 状态列记为**待验收**。按验收标准逐条核对现有证据：
+
+**已有测试支撑：**
+- 第 3 条（薪酬 80%/20%、试用期无绩效）—— `test_business_schemas.py::test_salary_policy_requires_eighty_twenty_and_no_probation_performance` 直接覆盖三种情形：试用期带绩效基数报错、非 80%/20% 报错、合规通过。对应实现在 `api/employees.py::_validate_salary_policy`（以 `performance_base * 4 == fixed_salary` 判定）。
+- 第 1 条（身份证唯一、文本保存）—— `test_postgres_integration.py::test_id_number_is_unique_text`，以及 API flow 中重复身份证返回 409 且 detail 含“身份证”。
+- 生效区间**顺序追加与旧区间关闭** —— API flow 测试断言 PATCH 薪酬后 `salary_rows[0].effective_to == date(2026, 7, 1)`。
+- 生效日期倒置 —— `test_effective_records_reject_reversed_dates`、`test_employee_rejects_invalid_lifecycle_dates`。
+
+**缺测试，且其中一条是验收标准明文要求：**
+- 第 5 条要求“**生效区间冲突有反馈**”。实现存在该路径（`api/employees.py` 的 `_append_effective_record`：新生效日期不晚于当前记录时抛 `HTTPException(400, "新生效日期必须晚于当前记录的生效日期")`），但 `backend/tests/` 下**没有任何 400 断言**，该分支未被执行过。这是已实现未验证，不是未实现。
+- 第 1 条要求“停用员工不删除历史工资”。停用（`active` 更新）路径在测试中**无任何断言**，grep `active=` / `"active"` 在 `backend/tests/` 下无命中。
+- 第 4 条“转正前后固定薪资不变”：`_validate_salary_policy` 的 `preserve_fixed` 分支已接入 API 层 PATCH（`update_employee` 以 `employee.probation_status == "in_probation" and target_status != "in_probation"` 按位传入），但 `test_postgres_integration.py` 的 API flow 测试中员工创建时即为 `probation_status="confirmed"`，该条件恒假，**分支从未被驱动**。`test_business_schemas.py` 只构造 `EmployeeIn`（走 create 路径，`preserve_fixed` 用默认 `False`），同样不覆盖。要验证需构造 in_probation → confirmed 的转正 PATCH。
+- 附带发现（**静态阅读代码所得，未运行验证**）：`update_employee` 的 `elif "probation_status" in values` 分支只传两个参数（`preserve_fixed` 用默认 `False`），即**仅改转正状态、不同时提交新薪酬**时不做固定薪资不变校验。按 `_validate_salary_policy` 的逻辑推演，此时 `current_salary.performance_base` 为 0（试用期无绩效），会落入第二个 if 并因 `0 * 4 != fixed_salary` 抛 400“固定薪资和绩效基数必须按 80%/20% 表达”——错误信息指向薪酬结构而非“转正需一并提交薪酬”，对使用者可能误导。补测试时应固化预期行为（保持 400 但改善文案，或允许沿用原基数），并据此决定是否需要改动。
+- 第 2、6 条的前端部分：`frontend/src/pages/employees/` 下只有 `index.tsx` 与 `index.module.less`，无测试文件；全仓库前端仅 `src/app/App.test.tsx` 一个测试。第 6 条要求“通过页面新增、修改和查询验证实际持久化结果”，当前无页面级证据。
+
+待办：补生效区间冲突的 400 测试、停用路径测试、转正固定薪资不变的 API 层测试、员工页面组件测试，随后逐条勾选验收标准并把 development-plan.md 状态列转“已完成”。勾选须由实际运行过验证的会话执行。
+

@@ -1,24 +1,27 @@
 # PayLite MVP 开发任务计划
 
 > 建立日期：2026-09-17  
-> 状态：16 项任务拆分已确认，已登记为仓库本地任务；尚未开始业务实现。  
+> 最近更新：2026-09-20  
+> 状态：16 项任务拆分已确认；01、02 已实现（见下文遗留事项），03—16 未开始。  
 > 范围：从当前后端基础设施推进至资料维护、月度输入、算薪、确认、更正、补发及四类 Excel 输出。
 
 ## 任务入口与状态
 
 任务采用本地文件管理，每项独立存放于 `.scratch/paylite-mvp/issues/`。本文件是执行索引，不替代各任务的验收标准。
 
-`ready-for-agent` 表示任务已登记且描述可供执行，不表示前置任务或业务决策已全部完成。开始前必须检查 Blocked by 和“开始前需收敛的事项”。当前只有 01 无任务依赖；本次登记不代表任何任务已实现或测试通过。
+`ready-for-agent` 表示任务已登记且描述可供执行，不表示前置任务或业务决策已全部完成。开始前必须检查 Blocked by 和“开始前需收敛的事项”。
+
+当前 frontier（前置票已完成、可立即开工）：**03、04、05**。04、05 另需先收敛各自的业务决策；03 无待收敛决策，按“优先完成 01—03”的口径应最先推进。06、07 需 02 与 05 同时完成。
 
 | 编号 | 任务 | 前置任务 | 执行状态 |
 | --- | --- | --- | --- |
-| 01 | [公司与组织维护](../.scratch/paylite-mvp/issues/01-organization.md) | 无 | 未开始 |
-| 02 | [员工与薪酬维护](../.scratch/paylite-mvp/issues/02-employees.md) | 01 | 未开始 |
-| 03 | [城市及考勤规则维护](../.scratch/paylite-mvp/issues/03-rules.md) | 01 | 未开始 |
-| 04 | [员工 Excel 导入](../.scratch/paylite-mvp/issues/04-employee-import.md) | 02 | 未开始 |
-| 05 | [工资期间与批次工作台](../.scratch/paylite-mvp/issues/05-period-batches.md) | 01 | 未开始 |
-| 06 | [考勤导入与错误修正](../.scratch/paylite-mvp/issues/06-attendance-import.md) | 02、05 | 未开始 |
-| 07 | [绩效导入与错误修正](../.scratch/paylite-mvp/issues/07-performance-import.md) | 02、05 | 未开始 |
+| 01 | [公司与组织维护](../.scratch/paylite-mvp/issues/01-organization.md) | 无 | 待验收 |
+| 02 | [员工与薪酬维护](../.scratch/paylite-mvp/issues/02-employees.md) | 01 | 待验收 |
+| 03 | [城市及考勤规则维护](../.scratch/paylite-mvp/issues/03-rules.md) | 01 ✅ | 未开始 |
+| 04 | [员工 Excel 导入](../.scratch/paylite-mvp/issues/04-employee-import.md) | 02 ✅ | 等待决策 |
+| 05 | [工资期间与批次工作台](../.scratch/paylite-mvp/issues/05-period-batches.md) | 01 ✅ | 未开始 |
+| 06 | [考勤导入与错误修正](../.scratch/paylite-mvp/issues/06-attendance-import.md) | 02 ✅、05 | 未开始 |
+| 07 | [绩效导入与错误修正](../.scratch/paylite-mvp/issues/07-performance-import.md) | 02 ✅、05 | 未开始 |
 | 08 | [普通工资试算与核对](../.scratch/paylite-mvp/issues/08-payroll-trial.md) | 03、06、07 | 未开始 |
 | 09 | [全公司考勤激励](../.scratch/paylite-mvp/issues/09-attendance-incentive.md) | 08 | 未开始 |
 | 10 | [整批确认、锁定与台账](../.scratch/paylite-mvp/issues/10-confirmation-ledger.md) | 09 | 未开始 |
@@ -29,11 +32,33 @@
 | 15 | [人工成本表导出](../.scratch/paylite-mvp/issues/15-labor-cost-export.md) | 13 | 未开始 |
 | 16 | [申报辅助模板导出](../.scratch/paylite-mvp/issues/16-tax-export.md) | 13 | 未开始 |
 
-更新状态时同步修改任务文件和本索引。建议使用“未开始／进行中／等待决策／待验收／已完成”；完成需填写实现摘要、验证证据、审查结论和遗留事项。
+状态取值：未开始／进行中／等待决策／待验收／已完成。前置任务后加 ✅ 表示该前置已完成。更新状态时同步修改任务文件和本索引；完成需填写实现摘要、验证证据、审查结论和遗留事项。
+
+### 01、02 为何是待验收而非已完成
+
+两张票的 `Status:` 已是 `completed`、完成记录四栏均已填写，代码见提交 `08aa5b1`（前端 Less 重构见 `35bacc5`）。但按本文“验证和完成标准”一节，**验收勾选必须有实际证据**，而两票的验收标准复选框一条未勾，且存在已识别缺口：
+
+- **前端页面级测试缺失。** 01 的验收标准要求“页面操作、HTTP 错误映射与数据库约束均有针对性验证”，02 要求“通过页面新增、修改和查询验证实际持久化结果”。实测 `frontend/src` 下仅有 `src/app/App.test.tsx` 一个测试文件、一个测试，`pages/organization/`、`pages/employees/` 均无测试。两票完成记录中自述的“Vitest（1 个测试文件/1 个测试）通过”与此一致。
+- **Playwright 未安装。** “关键闭环使用 Playwright”一项当前无对应工具，`frontend/package.json` 无该依赖。
+- **02 有三条已实现但未验证的分支。** 生效区间冲突的 400 路径、停用（`active`）路径、转正固定薪资不变的 `preserve_fixed` 分支，在 `backend/tests/` 下均无断言。其中生效区间冲突是 02 验收标准第 5 条明文要求。详见该票 `## Comments`。
+
+**后端测试计数已核实，但本次同步未复跑。** 静态核对：`backend/tests/` 下共 **22 个测试函数**（`test_model_contract.py` 9、`test_postgres_integration.py` 8、`test_business_schemas.py` 3、`test_error_mapping.py` 2），与两票完成记录自述的“22 passed”**一致**。完成记录另称 `ruff check src tests` 通过、使用隔离库 `paylite_test` 运行；这两项本次未复跑，转已完成前应实际执行确认。
+
+已确认存在的覆盖：身份证唯一性与文本保存、薪酬 80%/20% 与试用期无绩效、生效区间顺序追加与旧区间关闭、生效日期倒置、被引用数据删除保护（409 且 detail 含“base 地”）、重复身份证 409、锁定后工资记录不可更新、城市与生效起始的规则唯一性、正常批次唯一而补发独立。
+
+因此状态记为待验收，待前端页面测试与 02 三条未覆盖分支补齐、验收标准逐条勾选后转已完成。
+
+02 的“薪酬标准按固定薪资 80%、绩效基数 20% 表达”已由 `test_salary_policy_requires_eighty_twenty_and_no_probation_performance` 覆盖，该项可单独勾选，不受前端缺口影响。
 
 ## 事实基线和设计依据
 
-当前代码包含应用工厂、健康检查、ORM、初始迁移、约束测试及后端 CI；尚无业务接口、算薪核心、Excel 适配器和前端工程。数据库中存在字段不等于对应业务已实现。
+以 2026-09-20 的实际代码为准。
+
+**已有：** 应用工厂、健康检查、ORM、初始迁移（`0001_initial_schema`）、约束测试、后端 CI；业务接口 `api/organization.py`（公司、城市、主体、部门、主体部门关系）与 `api/employees.py`（员工主档、任职、薪酬、base 地、银行卡）；统一错误映射 `api/errors.py`、DTO `api/schemas.py`、会话依赖 `api/deps.py`；前端工程（Vite 8 + React 19 + TypeScript 6 + Less，页面位于 `frontend/src/pages/<name>/index.tsx`）。
+
+**尚无：** `services`、`domain`、`excel` 三个分层模块（按“不预建空目录”的约束，应在对应竖切实现时才创建）；算薪核心；Excel 适配器；`0001` 之后的 Alembic revision；前端页面级测试与 Playwright。
+
+数据库中存在字段不等于对应业务已实现；`api/` 下有文件不等于该业务闭环已验收。
 
 实施依据按以下职责使用：
 
@@ -41,6 +66,8 @@
 - [后端架构](backend-architecture.md)：模块职责、事务、并发、快照与当前 schema 缺口。
 - [数据库说明](database-design.md)：现有约束与迁移方式。
 - [开发与 CI 工作流](development-workflow.md)：本地验证及 CI 门槛。
+- [前端架构](frontend-architecture.md)：Less 模块化、页面目录约定与路由。
+- [Agent 配置](agents/issue-tracker.md)：票的读写方式、triage 状态字符串、领域文档消费规则。
 - Obsidian 的《PayLite 接口文档》《PayLite 数据表文档》作为已阅读的接口与数据模型参考；其中业务接口属于规划，旧版本示例不能覆盖最新决策。本任务计划在仓库内可独立阅读。
 
 旧文档中的“社保按员工固定薪资计算”“普通调薪按操作日分段”“重复正常批次换批次号重试”等表述不作为实现依据。全系统展示与导出需明确“未扣个税金额”，不把未知税额默认为零。
@@ -102,4 +129,6 @@
 ## 登记记录
 
 2026-09-17：用户确认将 16 项草案整理为正式任务并存入仓库。本次仅新增任务与索引，不执行业务实现、不提交 Git、不启动发布流程。登记前已有未跟踪的后端依赖锁文件保持原状。
+
+2026-09-20：同步索引与实际进度。01、02 已于 `08aa5b1` 实现（前端 Less 重构于 `35bacc5`），票文件 `Status:` 已为 `completed`，本索引据实记为**待验收**并列出证据缺口，理由见上文“01、02 为何是待验收而非已完成”。同时更新事实基线为当前代码实况，补记 frontier 为 03、04、05，并登记 `docs/agents/` 配置（issue tracker 为本地 markdown、triage 状态字符串、单上下文领域文档）。本次同步未改动任何业务代码，未对 01、02 的验收标准做勾选——勾选需由实际验证产生。
 
