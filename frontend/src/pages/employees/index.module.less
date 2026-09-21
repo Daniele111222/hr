@@ -1,13 +1,118 @@
-@page-width: 1120px;
-
 .page {
-  width: min(@page-width, 100%);
-  margin: 0 auto;
+    display: flex;
+    flex-direction: column;
+    gap: 14px;
+    width: 100%;
 }
 
-.heading {
-  display: flex;
-  justify-content: space-between;
-  width: 100%;
-  margin-bottom: 18px;
+.pageLead {
+    display: flex;
+    align-items: flex-start;
+    justify-content: space-between;
+    gap: 16px;
+
+    h2 {
+        margin: 0 0 5px;
+        font-size: 20px;
+    }
+
+    p {
+        max-width: 92ch;
+        margin: 0;
+        font-size: 12.5px;
+    }
+}
+
+.filters {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 10px 14px;
+    align-items: flex-end;
+    padding: 12px 14px;
+    background: var(--color-surface);
+    border: 1px solid var(--color-border);
+    border-radius: 10px;
+}
+
+.filter,
+.keywordFilter {
+    display: flex;
+    flex: 0 1 160px;
+    flex-direction: column;
+    gap: 4px;
+
+    label {
+        color: var(--color-muted);
+        font-size: 11.5px;
+    }
+}
+
+.keywordFilter {
+    flex-basis: 260px;
+}
+
+.resetButton {
+    margin-left: auto;
+}
+
+.tableCard {
+    min-width: 0;
+    border-color: var(--color-border);
+
+    :global(.ant-card-body) {
+        padding: 0;
+    }
+}
+
+.cellSub {
+    display: block;
+    color: var(--color-muted);
+    font-family: var(--font-mono);
+    font-size: 11px;
+    font-weight: 400;
+}
+
+.mono {
+    font-family: var(--font-mono);
+    font-variant-numeric: tabular-nums;
+}
+
+.drawerActions {
+    display: flex;
+    justify-content: flex-end;
+    width: 100%;
+}
+
+.formSection {
+    margin: 4px 0 14px;
+    padding-bottom: 9px;
+    font-size: 13px;
+    font-weight: 600;
+    border-bottom: 1px solid var(--color-border);
+}
+
+.formGrid {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 0 16px;
+    margin-bottom: 12px;
+}
+
+.fullWidth {
+    width: 100%;
+}
+
+@media (max-width: 720px) {
+    .filter,
+    .keywordFilter {
+        flex-basis: 100%;
+    }
+
+    .resetButton {
+        margin-left: 0;
+    }
+
+    .formGrid {
+        grid-template-columns: 1fr;
+    }
 }

@@ -1,0 +1,240 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>工资期间与批次 · 轻算薪</title>
+<link rel="stylesheet" href="assets/app.css">
+</head>
+<body data-page="periods" data-crumb="工资核算/工资期间与批次" data-title="工资期间与批次">
+<div class="app">
+  <aside class="sidebar" id="sidebar" data-od-id="sidebar"></aside>
+  <div class="main">
+    <header class="topbar" id="topbar" data-od-id="topbar"></header>
+    <main class="content">
+
+      <section data-od-id="periods-lead">
+        <p class="page-lead">工资期间是工资所属的月份，每个期间下按主体分别生成批次。批次是试算、校验、确认、锁定与导出的最小单位；一旦锁定，本期数据只能通过整批更正生成新版本。</p>
+      </section>
+
+      <section class="card" data-od-id="period-list">
+        <div class="card-head">
+          <h2>工资期间</h2>
+          <span class="sub">共 3 个期间 · 每期独立试算与结算</span>
+          <span class="spacer"></span>
+          <button class="btn btn-sm" data-toast="本期奖金由全公司考勤激励统一计算，无需单独建批次（原型演示）">发起独立补发批次</button>
+        </div>
+        <div class="tbl-wrap">
+          <table class="tbl">
+            <thead>
+              <tr>
+                <th class="sticky-col" style="min-width:158px">工资期间</th>
+                <th>期间状态</th>
+                <th class="n">批次</th>
+                <th class="n">员工数</th>
+                <th class="n">应发金额合计</th>
+                <th class="n">未扣个税金额合计</th>
+                <th class="n">公司成本合计</th>
+                <th style="min-width:180px">操作</th>
+              </tr>
+            </thead>
+            <tbody id="period-rows"></tbody>
+          </table>
+        </div>
+      </section>
+
+      <section class="card" data-od-id="current-batches">
+        <div class="card-head">
+          <h2>2026-08 本期批次</h2>
+          <span class="sub" id="cur-batch-sub"></span>
+          <span class="spacer"></span>
+          <a class="btn btn-sm btn-primary" href="batch-detail.html" data-od-id="btn-goto-batch">进入批次核算</a>
+        </div>
+        <div class="tbl-wrap">
+          <table class="tbl">
+            <thead>
+              <tr>
+                <th class="sticky-col" style="min-width:190px">批次号</th>
+                <th>主体</th>
+                <th class="n">人数</th>
+                <th>数据准备</th>
+                <th>校验结果</th>
+                <th>批次状态</th>
+                <th>发放日期</th>
+                <th style="min-width:150px">操作</th>
+              </tr>
+            </thead>
+            <tbody id="batch-rows"></tbody>
+          </table>
+        </div>
+        <div class="card-body" style="padding-top:0">
+          <div class="callout is-info">
+            <span data-icon="info"></span>
+            <div><b class="callout-title">批次之间的依赖</b>
+              <div>全公司考勤激励需要三个主体的本期数据齐全后才能统一计算，因此三个正常工资批次必须一起确认。缺少最终激励金额的结果不能作为可确认结果。</div>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <section class="card" data-od-id="history-batches">
+        <div class="card-head">
+          <h2>历史批次与更正记录</h2>
+          <span class="sub">2026-07 及更早期间</span>
+          <span class="spacer"></span>
+          <a class="btn btn-sm" href="ledger.html">查看工资台账</a>
+        </div>
+        <div class="tbl-wrap">
+          <table class="tbl">
+            <thead>
+              <tr>
+                <th class="sticky-col" style="min-width:178px">批次号</th>
+                <th>主体</th><th>类型</th><th>版本</th><th class="n">人数</th>
+                <th>批次状态</th><th>发放日期</th><th style="min-width:132px">更正关系</th>
+              </tr>
+            </thead>
+            <tbody id="hist-rows"></tbody>
+          </table>
+        </div>
+        <div class="card-body" style="padding-top:0">
+          <div id="correction-box"></div>
+        </div>
+      </section>
+
+    </main>
+    <footer class="pagefoot"></footer>
+  </div>
+</div>
+<script src="assets/app.js"></script>
+<script>
+(function () {
+  var Q = window.QSX, esc = Q.esc, P = Q.COMPANY.period;
+  Q.qa('[data-icon]').forEach(function (el) { el.innerHTML = Q.icon(el.getAttribute('data-icon')); });
+
+  /* 当前期间用 computeAll（含已计算的激励）；历史期间只做基础重算 */
+  function periodList(code) {
+    if (code === P) return Q.computeAll(code);
+    return Q.ENTITIES.reduce(function (acc, e) { return acc.concat(Q.computeEntity(code, e.code)); }, []);
+  }
+  function periodState(code) {
+    var s = Q.state();
+    if (code !== P) return { key: 'locked', label: '已锁定', note: '已完成发放，内容只读' };
+    if (s.locked) return { key: 'locked', label: '已锁定', note: '内容只读，调整需发起整批更正' };
+    if (s.confirmed) return { key: 'confirmed', label: '已确认', note: '等待锁定' };
+    var blocked = Q.ENTITIES.some(function (e) { return Q.entityStatus(e.code).key === 'blocked'; });
+    if (blocked) return { key: 'prepare', label: '进行中', note: '有阻断项待处理' };
+    return { key: 'trial', label: '进行中', note: '校验通过，待整批确认' };
+  }
+
+  /* ── 期间列表 ───────────────────────────────────────────── */
+  document.getElementById('period-rows').innerHTML = Q.PERIODS.map(function (p) {
+    var sum = Q.summarize(periodList(p.code));
+    var st = periodState(p.code);
+    var batches = Q.BATCHES.filter(function (b) { return b.period === p.code && b.state !== 'superseded'; }).length;
+    var goto = p.code === P ? 'batch-detail.html' : 'ledger.html';
+    return '<tr>' +
+      '<td class="sticky-col"><a class="strong" href="' + goto + '">' + esc(p.label) + '</a><span class="tbl-sub mono">' + p.code + (p.code === P ? ' · 当前期间' : '') + '</span></td>' +
+      '<td>' + Q.badge(st.key, st.label) + '<span class="tbl-sub">' + esc(st.note) + '</span></td>' +
+      '<td class="n mono">' + batches + '</td>' +
+      '<td class="n mono">' + sum.count + '</td>' +
+      '<td class="n mono">' + Q.money(sum.gross) + '</td>' +
+      '<td class="n mono strong">' + Q.money(sum.net) + '</td>' +
+      '<td class="n mono">' + Q.money(sum.cost) + '</td>' +
+      '<td><a class="btn btn-sm' + (p.code === P ? ' btn-primary' : '') + '" href="' + goto + '">' + (p.code === P ? '进入批次核算' : '查看台账') + '</a>' +
+      '<a class="btn btn-sm btn-ghost" href="export-center.html">导出记录</a></td>' +
+      '</tr>';
+  }).join('');
+
+  /* ── 本期批次 ───────────────────────────────────────────── */
+  var cur = Q.BATCHES.filter(function (b) { return b.period === P; });
+  var readyCount = Q.ENTITIES.filter(function (e) { return Q.entityStatus(e.code).key === 'ready'; }).length;
+  document.getElementById('cur-batch-sub').textContent = cur.length + ' 个批次 · ' + readyCount + ' / 3 校验通过';
+
+  function prepareCell(entCode) {
+    var att = Q.IMPORTS.filter(function (r) { return r.period === P && r.entity === entCode && r.type === '月度考勤'; })[0];
+    var perf = Q.IMPORTS.filter(function (r) { return r.period === P && r.entity === entCode && r.type === '月度绩效'; })[0];
+    var s = Q.state();
+    if (entCode === 'SH01' && s.perfFixed && perf) perf = { ok: perf.total, total: perf.total, err: 0 };
+    var parts = [];
+    parts.push(att ? Q.badge(att.ok === att.total ? 'ok' : 'partial', '考勤 ' + att.ok + '/' + att.total) : Q.badge('missing', '考勤未导入'));
+    parts.push(perf ? Q.badge(perf.ok === perf.total ? 'ok' : 'partial', '绩效 ' + perf.ok + '/' + perf.total) : Q.badge('missing', '绩效未导入'));
+    var rules = Q.cityRule(Q.ent(entCode).city, P);
+    parts.push(rules ? Q.badge('ok', '城市规则 ' + rules.version) : Q.badge('expired', '城市规则已过期'));
+    return parts.join(' ');
+  }
+  function verifyCell(st) {
+    if (st.key === 'ready') return Q.badge('ready', '全体校验通过');
+    if (st.key === 'blocked') return Q.badge('blocked', '存在阻断项') + '<span class="tbl-sub">' + esc(st.note) + '</span>';
+    return Q.badge('missing', '待重新试算') + '<span class="tbl-sub">' + esc(st.note) + '</span>';
+  }
+  function batchStateBadge(entCode, st) {
+    var s = Q.state();
+    if (st.key === 'blocked') return Q.badge('prepare', '数据准备中');
+    if (st.key === 'trial') return Q.badge('trial', st.label);
+    if (s.locked) return Q.badge('locked', '已锁定');
+    if (s.confirmed) return Q.badge('confirmed', '已确认');
+    return Q.badge('trial', '试算完成');
+  }
+  document.getElementById('batch-rows').innerHTML = cur.map(function (b) {
+    var st = Q.entityStatus(b.entity);
+    return '<tr>' +
+      '<td class="sticky-col"><a class="mono strong" href="batch-detail.html">' + b.no + '</a><span class="tbl-sub">' + esc(b.kind) + ' · ' + b.version + '</span></td>' +
+      '<td>' + esc(Q.ent(b.entity).short) + '<span class="tbl-sub">' + b.entity + '</span></td>' +
+      '<td class="n mono">' + b.count + '</td>' +
+      '<td>' + prepareCell(b.entity) + '</td>' +
+      '<td>' + verifyCell(st) + '</td>' +
+      '<td>' + batchStateBadge(b.entity, st) + '</td>' +
+      '<td class="mono">' + b.payDate + '</td>' +
+      '<td><a class="btn btn-sm' + (st.key === 'blocked' ? ' btn-primary' : '') + '" href="' + (st.key === 'blocked' ? blockedHref(st.note) : 'batch-detail.html') + '">' + (st.key === 'blocked' ? '去处理' : '详情') + '</a></td>' +
+      '</tr>';
+  }).join('');
+
+  function blockedHref(note) {
+    if (note.indexOf('城市规则') >= 0) return 'city-rules.html';
+    return 'import-batch.html';
+  }
+
+  /* ── 历史批次与更正 ─────────────────────────────────────── */
+  var hist = Q.BATCHES.filter(function (b) { return b.period !== P; });
+  document.getElementById('hist-rows').innerHTML = hist.map(function (b) {
+    var rel = '—';
+    if (b.correctionOf) rel = '<span class="tag is-accent">更正 ' + b.correctionOf + '</span>';
+    else if (b.state === 'superseded') rel = '<span class="tag">已被 V2 替代</span>';
+    return '<tr>' +
+      '<td class="sticky-col"><span class="mono strong">' + b.no + '</span>' + (b.reason ? '<span class="tbl-sub">' + esc(b.reason) + '</span>' : '') + '</td>' +
+      '<td>' + esc(Q.ent(b.entity).short) + '</td>' +
+      '<td>' + esc(b.kind) + '</td>' +
+      '<td class="mono">' + b.version + '</td>' +
+      '<td class="n mono">' + b.count + '</td>' +
+      '<td>' + Q.badge(b.state, b.state === 'superseded' ? '已被替代' : '已锁定') + '</td>' +
+      '<td class="mono">' + b.payDate + '</td>' +
+      '<td>' + rel + '</td>' +
+      '</tr>';
+  }).join('');
+
+  var v1 = Q.summarize(Q.computeEntityVersion('2026-07', 'BJ01', 'V1'));
+  var v2 = Q.summarize(Q.computeEntityVersion('2026-07', 'BJ01', 'V2'));
+  var delta = Q.round2(v2.net - v1.net);
+  document.getElementById('correction-box').innerHTML =
+    '<div class="section-title">2026-07 北京主体整批更正 <span class="meta">PAY-202607-BJ01-V1 → PAY-202607-BJ01-V2</span></div>' +
+    '<div class="callout is-warn" style="margin-bottom:12px">' +
+    '<span data-icon="warn"></span><div><b class="callout-title">更正原因</b>' +
+    '<div>V1 录入时 2 名员工的绩效系数误填为 0.60（应为 1.00），导致该 2 人绩效金额偏低。更正后生成 V2，V1 标记为「已被新版本替代」，不再参与发放与导出。</div></div></div>' +
+    '<dl class="kv is-wide" style="margin-bottom:14px">' +
+    '<dt>有效版本</dt><dd class="mono">PAY-202607-BJ01-V2 <span class="meta">（已锁定）</span></dd>' +
+    '<dt>替代版本</dt><dd class="mono">PAY-202607-BJ01-V1 <span class="meta">（已作废，保留追溯）</span></dd>' +
+    '<dt>涉及员工</dt><dd class="mono">2 人 <span class="meta">（绩效系数 0.60 → 1.00）</span></dd>' +
+    '</dl>' +
+    '<div class="tbl-wrap" style="border:1px solid var(--border);border-radius:var(--radius)">' +
+    '<table class="tbl"><thead><tr><th>口径</th><th class="n">V1（原）</th><th class="n">V2（更正后）</th><th class="n">差异</th></tr></thead><tbody>' +
+    '<tr><td>未扣个税金额合计</td><td class="n mono diff-old">' + Q.money(v1.net) + '</td><td class="n mono diff-new">' + Q.money(v2.net) + '</td><td class="n mono">+' + Q.money(delta) + '</td></tr>' +
+    '<tr><td>应发金额合计</td><td class="n mono diff-old">' + Q.money(v1.gross) + '</td><td class="n mono diff-new">' + Q.money(v2.gross) + '</td><td class="n mono">+' + Q.money(Q.round2(v2.gross - v1.gross)) + '</td></tr>' +
+    '<tr><td>公司成本合计</td><td class="n mono diff-old">' + Q.money(v1.cost) + '</td><td class="n mono diff-new">' + Q.money(v2.cost) + '</td><td class="n mono">+' + Q.money(Q.round2(v2.cost - v1.cost)) + '</td></tr>' +
+    '</tbody></table></div>' +
+    '<div class="callout is-info" style="margin-top:12px"><span data-icon="info"></span>' +
+    '<div>社保与公积金按城市固定基数缴纳，与工资金额无关，因此更正前后个人社保、个人公积金金额不变；差异全部来自绩效金额。</div></div>';
+  Q.qa('[data-icon]').forEach(function (el) { el.innerHTML = Q.icon(el.getAttribute('data-icon')); });
+})();
+</script>
+</body>
+</html>

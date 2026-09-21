@@ -1,0 +1,203 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>组织管理 · 轻算薪</title>
+<link rel="stylesheet" href="assets/app.css">
+</head>
+<body data-page="org" data-crumb="基础资料/组织管理" data-title="组织管理">
+<div class="app">
+  <aside class="sidebar" id="sidebar" data-od-id="sidebar"></aside>
+  <div class="main">
+    <header class="topbar" id="topbar" data-od-id="topbar"></header>
+    <main class="content">
+
+      <section data-od-id="org-lead">
+        <p class="page-lead">本系统只服务一个目标公司，公司下维护多个工资归属主体。部门体系全公司共用，同一部门在各主体下形成独立实例，可分别关联员工。</p>
+      </section>
+
+      <section class="card" data-od-id="org-company">
+        <div class="card-head">
+          <h2>公司基本信息</h2>
+          <span class="sub">单公司模式，不支持多公司切换</span>
+        </div>
+        <div class="card-body grid-4">
+          <dl class="kv is-wide" style="grid-template-columns:86px 1fr; grid-column:span 2">
+            <dt>公司名称</dt><dd>星澜科技（演示）有限公司</dd>
+            <dt>统一社会信用代码</dt><dd class="mono">91310115MA1K3XYZ8T</dd>
+          </dl>
+          <dl class="kv is-wide" style="grid-template-columns:86px 1fr; grid-column:span 2">
+            <dt>在册员工</dt><dd><span class="mono strong">128</span> 人</dd>
+            <dt>工资归属主体</dt><dd><span class="mono strong">3</span> 个</dd>
+          </dl>
+        </div>
+      </section>
+
+      <section class="card" data-od-id="org-entities">
+        <div class="card-head">
+          <h2>主体列表</h2>
+          <span class="sub">正常工资批次按主体分别创建，同一主体同一期间只能有一个正常工资批次</span>
+          <span class="spacer"></span>
+          <button class="btn btn-primary btn-sm" data-open="drawer-entity" data-od-id="btn-add-entity">新增主体</button>
+        </div>
+        <div class="tbl-wrap">
+          <table class="tbl">
+            <thead>
+              <tr>
+                <th class="sticky-col" style="min-width:220px">主体名称</th>
+                <th>编码</th><th>base 城市</th><th>关联部门</th>
+                <th class="n">员工数量</th><th style="min-width:150px">操作</th>
+              </tr>
+            </thead>
+            <tbody id="entity-rows"></tbody>
+          </table>
+        </div>
+      </section>
+
+      <div class="grid-2-1" data-od-id="org-depts">
+        <section class="card" data-od-id="org-dept-tree">
+          <div class="card-head">
+            <h2>共用部门树</h2>
+            <span class="sub">全公司一套部门编码体系</span>
+            <span class="spacer"></span>
+            <button class="btn btn-sm" data-toast="部门新增表单已打开（原型演示）">新增部门</button>
+          </div>
+          <div class="tbl-wrap">
+            <table class="tbl">
+              <thead><tr><th style="min-width:220px">部门名称</th><th>部门编码</th><th>上级部门</th><th class="n">在册人数</th><th style="width:96px"></th></tr></thead>
+              <tbody id="dept-rows"></tbody>
+            </table>
+          </div>
+        </section>
+
+        <div class="stack">
+          <section class="card" data-od-id="org-dept-entity">
+            <div class="card-head"><h2>主体与部门关联</h2></div>
+            <div class="card-body stack" style="gap:12px">
+              <div class="field">
+                <label>选择部门</label>
+                <select class="select" id="dept-picker" data-od-id="dept-picker"></select>
+              </div>
+              <div id="dept-instances"></div>
+            </div>
+          </section>
+          <section class="callout is-info" data-od-id="org-tip">
+            <span class="ci"></span>
+            <div>
+              <div class="callout-title">同一部门体系在不同主体下的实例</div>
+              研发中心在上海、北京、深圳三个主体下分别存在员工实例；部门编码全公司唯一，员工通过「主体 + 部门」共同定位。
+            </div>
+          </section>
+        </div>
+      </div>
+
+    </main>
+    <footer class="pagefoot"></footer>
+  </div>
+</div>
+
+<!-- 新增 / 编辑主体抽屉 -->
+<div class="overlay" id="drawer-entity" data-od-id="drawer-entity">
+  <div class="drawer">
+    <div class="drawer-head">
+      <h2>新增工资归属主体</h2>
+      <span class="spacer"></span>
+      <button class="icon-btn" data-close aria-label="关闭"><span class="ic-x"></span></button>
+    </div>
+    <div class="drawer-body">
+      <div class="form-grid">
+        <div class="field span-2"><label>主体名称<span class="req">*</span></label><input class="input" value="星澜科技（杭州）有限公司"></div>
+        <div class="field"><label>主体编码<span class="req">*</span></label><input class="input" value="HZ01"><span class="hint">全公司唯一，创建后不建议修改</span></div>
+        <div class="field"><label>base 城市<span class="req">*</span></label>
+          <select class="select"><option>上海</option><option>杭州</option><option>北京</option><option>深圳</option></select>
+          <span class="hint">决定该主体员工默认适用的社保与公积金规则</span>
+        </div>
+        <div class="field span-2"><label>关联部门</label>
+          <div class="row-wrap" style="gap:10px; padding:8px 0">
+            <label class="check"><input type="checkbox" checked>研发中心</label>
+            <label class="check"><input type="checkbox">产品设计部</label>
+            <label class="check"><input type="checkbox">市场部</label>
+            <label class="check"><input type="checkbox">销售部</label>
+            <label class="check"><input type="checkbox">财务部</label>
+            <label class="check"><input type="checkbox">人力资源部</label>
+          </div>
+        </div>
+        <div class="field span-2"><label>备注</label><textarea class="textarea" placeholder="选填"></textarea></div>
+      </div>
+      <div class="callout is-warn">
+        <span class="cw"></span>
+        <div>新建主体后，该主体的城市社保与公积金规则需单独确认；若对应城市规则缺失或已过期，该主体的工资批次将无法完成试算。</div>
+      </div>
+    </div>
+    <div class="drawer-foot">
+      <button class="btn" data-close>取消</button>
+      <button class="btn btn-primary" data-close data-toast="主体已保存（原型演示）" data-toast-kind="ok">保存</button>
+    </div>
+  </div>
+</div>
+
+<script src="assets/app.js"></script>
+<script>
+(function () {
+  var Q = window.QSX, esc = Q.esc;
+  Q.q('.ic-x').outerHTML = Q.ICONS.x;
+  Q.q('.ci').outerHTML = Q.ICONS.info;
+  Q.q('.cw').outerHTML = Q.ICONS.warn;
+
+  function countBy(fn) {
+    var m = {};
+    Q.EMPLOYEES.forEach(function (e) { var k = fn(e); if (k != null) m[k] = (m[k] || 0) + 1; });
+    return m;
+  }
+  var byEntity = countBy(function (e) { return e.entity; });
+  var byDept = countBy(function (e) { return e.dept; });
+
+  document.getElementById('entity-rows').innerHTML = Q.ENTITIES.map(function (e) {
+    var ds = Q.ENTITY_DEPTS[e.code].map(function (c) { return Q.dept(c).name; });
+    return '<tr>' +
+      '<td class="sticky-col"><span class="strong">' + esc(e.name) + '</span><span class="tbl-sub">工资归属主体</span></td>' +
+      '<td class="mono">' + e.code + '</td>' +
+      '<td>' + esc(e.city) + '</td>' +
+      '<td class="small">' + esc(ds.join('、')) + '</td>' +
+      '<td class="n mono">' + byEntity[e.code] + '</td>' +
+      '<td><a class="btn btn-sm btn-ghost" href="employees.html">查看员工</a>' +
+      '<button class="btn btn-sm btn-ghost" data-open="drawer-entity">编辑</button></td>' +
+      '</tr>';
+  }).join('');
+
+  var depth = {};
+  Q.DEPTS.forEach(function (d) { depth[d.code] = d.parent ? 1 : 0; });
+  document.getElementById('dept-rows').innerHTML = Q.DEPTS.map(function (d) {
+    var n = byDept[d.code] || 0;
+    var pad = depth[d.code] ? 'padding-left:26px' : 'font-weight:600';
+    return '<tr><td style="' + pad + '">' + (depth[d.code] ? '└ ' : '') + esc(d.name) + '</td>' +
+      '<td class="mono">' + d.code + '</td>' +
+      '<td class="small muted">' + (d.parent ? esc(Q.dept(d.parent).name) : '—') + '</td>' +
+      '<td class="n mono">' + n + '</td>' +
+      '<td><a class="btn btn-sm btn-ghost" href="employees.html">查看员工</a></td></tr>';
+  }).join('');
+
+  var picker = document.getElementById('dept-picker');
+  picker.innerHTML = Q.DEPTS.filter(function (d) { return d.parent; }).map(function (d) {
+    return '<option value="' + d.code + '">' + esc(d.name) + '（' + d.code + '）</option>';
+  }).join('');
+
+  function renderInstances(code) {
+    var rows = Q.ENTITIES.map(function (e) {
+      var enabled = Q.ENTITY_DEPTS[e.code].indexOf(code) >= 0;
+      var n = Q.EMPLOYEES.filter(function (x) { return x.entity === e.code && x.dept === code; }).length;
+      return '<div class="between" style="padding:8px 0; border-bottom:1px solid var(--border)">' +
+        '<div><div class="strong small">' + esc(e.short) + ' · ' + esc(e.name) + '</div>' +
+        '<div class="meta">' + (enabled ? (n + ' 名员工') : '该主体未启用此部门') + '</div></div>' +
+        (enabled ? '<a class="btn btn-sm btn-ghost" href="employees.html">查看员工</a>' : Q.badge('muted', '未启用')) +
+        '</div>';
+    }).join('');
+    document.getElementById('dept-instances').innerHTML = rows;
+  }
+  picker.addEventListener('change', function () { renderInstances(picker.value); });
+  renderInstances(picker.value);
+})();
+</script>
+</body>
+</html>

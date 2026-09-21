@@ -1,7 +1,7 @@
 # PayLite MVP 开发任务计划
 
 > 建立日期：2026-09-17  
-> 最近更新：2026-09-20  
+> 最近更新：2026-09-21
 > 状态：16 项任务拆分已确认；01、02 已实现（见下文遗留事项），03—16 未开始。  
 > 范围：从当前后端基础设施推进至资料维护、月度输入、算薪、确认、更正、补发及四类 Excel 输出。
 
@@ -36,27 +36,25 @@
 
 ### 01、02 为何是待验收而非已完成
 
-两张票的 `Status:` 已是 `completed`、完成记录四栏均已填写，代码见提交 `08aa5b1`（前端 Less 重构见 `35bacc5`）。但按本文“验证和完成标准”一节，**验收勾选必须有实际证据**，而两票的验收标准复选框一条未勾，且存在已识别缺口：
+两张票的 `Status:` 已是 `completed`、完成记录四栏均已填写，代码见提交 `08aa5b1`（前端 Less 重构见 `35bacc5`）。但按本文“验证和完成标准”一节，**验收勾选必须有实际证据**。2026-09-21 已补充部分证据，两票仍有以下缺口：
 
-- **前端页面级测试缺失。** 01 的验收标准要求“页面操作、HTTP 错误映射与数据库约束均有针对性验证”，02 要求“通过页面新增、修改和查询验证实际持久化结果”。实测 `frontend/src` 下仅有 `src/app/App.test.tsx` 一个测试文件、一个测试，`pages/organization/`、`pages/employees/` 均无测试。两票完成记录中自述的“Vitest（1 个测试文件/1 个测试）通过”与此一致。
+- **前端页面级测试已补。** `pages/organization/index.test.tsx` 覆盖加载、空数据初始化、提交成功刷新和后端错误；`pages/employees/index.test.tsx` 覆盖查询、编辑、查询错误、关键词筛选和“试用期转已转正”提交。连同应用测试实测为 3 个测试文件、8 个测试通过，`oxlint`、`tsc -b` 和生产构建通过；Uvicorn `/health` 返回 200，但按用户要求未继续执行 Vite 到后端的代理连通性检查，因此 01 第 1 条仍未勾选。02 的页面证据已补，但对应完整验收项仍依赖 PostgreSQL 持久化结果。
 - **Playwright 未安装。** “关键闭环使用 Playwright”一项当前无对应工具，`frontend/package.json` 无该依赖。
-- **02 有三条已实现但未验证的分支。** 生效区间冲突的 400 路径、停用（`active`）路径、转正固定薪资不变的 `preserve_fixed` 分支，在 `backend/tests/` 下均无断言。其中生效区间冲突是 02 验收标准第 5 条明文要求。详见该票 `## Comments`。
+- **PostgreSQL 验收仍未执行。** 现有 API 流程已增加生效区间冲突 400、停用后资料保留、转正固定薪资保护和合法转正断言，并修复转正状态过早覆盖导致保护失效的根因。用户选择不下载 PostgreSQL，本次 `pytest` 结果为 14 passed、8 skipped，新增及既有持久化断言仍需在专用 `paylite_test` 中执行后才能勾选相应标准。
 
-**后端测试计数已核实，但本次同步未复跑。** 静态核对：`backend/tests/` 下共 **22 个测试函数**（`test_model_contract.py` 9、`test_postgres_integration.py` 8、`test_business_schemas.py` 3、`test_error_mapping.py` 2），与两票完成记录自述的“22 passed”**一致**。完成记录另称 `ruff check src tests` 通过、使用隔离库 `paylite_test` 运行；这两项本次未复跑，转已完成前应实际执行确认。
+**本次已执行非数据库检查。** Ruff lint、改动文件格式检查、`lint-imports`、编译检查通过；pytest 为 14 passed、8 skipped。全仓 Ruff format 仍只命中既有 `backend/src/paylite/__init__.py` 对齐问题，本次未修改无关文件。
 
 已确认存在的覆盖：身份证唯一性与文本保存、薪酬 80%/20% 与试用期无绩效、生效区间顺序追加与旧区间关闭、生效日期倒置、被引用数据删除保护（409 且 detail 含“base 地”）、重复身份证 409、锁定后工资记录不可更新、城市与生效起始的规则唯一性、正常批次唯一而补发独立。
 
-因此状态记为待验收，待前端页面测试与 02 三条未覆盖分支补齐、验收标准逐条勾选后转已完成。
-
-02 的“薪酬标准按固定薪资 80%、绩效基数 20% 表达”已由 `test_salary_policy_requires_eighty_twenty_and_no_probation_performance` 覆盖，该项可单独勾选，不受前端缺口影响。
+因此两票状态继续记为待验收；待专用 PostgreSQL 集成测试实际通过、其余验收标准逐条补齐证据后转已完成。
 
 ## 事实基线和设计依据
 
-以 2026-09-20 的实际代码为准。
+以 2026-09-21 的实际代码为准。
 
 **已有：** 应用工厂、健康检查、ORM、初始迁移（`0001_initial_schema`）、约束测试、后端 CI；业务接口 `api/organization.py`（公司、城市、主体、部门、主体部门关系）与 `api/employees.py`（员工主档、任职、薪酬、base 地、银行卡）；统一错误映射 `api/errors.py`、DTO `api/schemas.py`、会话依赖 `api/deps.py`；前端工程（Vite 8 + React 19 + TypeScript 6 + Less，页面位于 `frontend/src/pages/<name>/index.tsx`）。
 
-**尚无：** `services`、`domain`、`excel` 三个分层模块（按“不预建空目录”的约束，应在对应竖切实现时才创建）；算薪核心；Excel 适配器；`0001` 之后的 Alembic revision；前端页面级测试与 Playwright。
+**尚无：** `services`、`domain`、`excel` 三个分层模块（按“不预建空目录”的约束，应在对应竖切实现时才创建）；算薪核心；Excel 适配器；`0001` 之后的 Alembic revision；Playwright。
 
 数据库中存在字段不等于对应业务已实现；`api/` 下有文件不等于该业务闭环已验收。
 
@@ -131,4 +129,3 @@
 2026-09-17：用户确认将 16 项草案整理为正式任务并存入仓库。本次仅新增任务与索引，不执行业务实现、不提交 Git、不启动发布流程。登记前已有未跟踪的后端依赖锁文件保持原状。
 
 2026-09-20：同步索引与实际进度。01、02 已于 `08aa5b1` 实现（前端 Less 重构于 `35bacc5`），票文件 `Status:` 已为 `completed`，本索引据实记为**待验收**并列出证据缺口，理由见上文“01、02 为何是待验收而非已完成”。同时更新事实基线为当前代码实况，补记 frontier 为 03、04、05，并登记 `docs/agents/` 配置（issue tracker 为本地 markdown、triage 状态字符串、单上下文领域文档）。本次同步未改动任何业务代码，未对 01、02 的验收标准做勾选——勾选需由实际验证产生。
-

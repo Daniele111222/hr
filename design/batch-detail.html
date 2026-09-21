@@ -1,0 +1,642 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>批次核算详情 · 轻算薪</title>
+<link rel="stylesheet" href="assets/app.css">
+</head>
+<body data-page="batch" data-crumb="工资核算/批次核算详情" data-title="批次核算详情" data-scope="payroll">
+<div class="app">
+  <aside class="sidebar" id="sidebar" data-od-id="sidebar"></aside>
+  <div class="main">
+    <header class="topbar" id="topbar" data-od-id="topbar"></header>
+    <main class="content">
+
+      <section class="row between" data-od-id="batch-head">
+        <div>
+          <div class="row" style="gap:8px">
+            <h1 style="font-size:17px" class="mono" id="head-no">PAY-202608-SH01-V1</h1>
+            <span id="head-badge"></span>
+          </div>
+          <p class="page-lead" style="margin-top:4px" id="head-lead"></p>
+        </div>
+        <div class="row">
+          <div class="seg" id="ent-seg" data-od-id="entity-switch"></div>
+          <a class="btn btn-sm btn-ghost" href="periods.html" data-od-id="link-periods">返回工资期间与批次</a>
+        </div>
+      </section>
+
+      <section class="card" data-od-id="batch-steps-card">
+        <div class="card-body" style="padding:14px 16px">
+          <div class="steps" id="steps"></div>
+        </div>
+      </section>
+
+      <section id="gate-callout" data-od-id="batch-gate"></section>
+
+      <section class="card" data-od-id="batch-tabs-card">
+        <div class="tabs" data-tabs="batch">
+          <button data-tab="prepare" class="is-on" data-od-id="tab-prepare">数据准备</button>
+          <button data-tab="trial" data-od-id="tab-trial">试算结果<span class="count" id="cnt-trial"></span></button>
+          <button data-tab="verify" data-od-id="tab-verify">校验与异常<span class="count" id="cnt-verify"></span></button>
+          <button data-tab="version" data-od-id="tab-version">版本与操作记录</button>
+        </div>
+
+        <div class="tabpanel is-on" data-tabpanel="prepare" data-tabgroup="batch">
+          <div class="card-body stack" id="prepare-body"></div>
+        </div>
+
+        <div class="tabpanel" data-tabpanel="trial" data-tabgroup="batch">
+          <div id="trial-body"></div>
+        </div>
+
+        <div class="tabpanel" data-tabpanel="verify" data-tabgroup="batch">
+          <div class="card-body stack" id="verify-body"></div>
+        </div>
+
+        <div class="tabpanel" data-tabpanel="version" data-tabgroup="batch">
+          <div class="card-body stack" id="version-body"></div>
+        </div>
+      </section>
+
+      <section class="actionbar" data-od-id="batch-actionbar">
+        <a class="btn btn-sm btn-ghost" href="ledger.html">查看工资台账</a>
+        <button class="btn btn-sm" id="btn-correct" data-od-id="btn-correct" hidden>发起整批更正</button>
+        <span class="spacer"></span>
+        <span class="reason" id="bar-reason"></span>
+        <a class="btn btn-sm" id="btn-export" href="export-center.html" data-od-id="btn-export" hidden>导出工资表</a>
+        <a class="btn btn-sm" id="btn-incentive" href="incentive.html" data-od-id="btn-incentive" hidden>计算考勤激励</a>
+        <a class="btn btn-sm" id="btn-fix" href="#" data-od-id="btn-fix" hidden>去修复</a>
+        <button class="btn btn-sm" id="btn-recalc" data-od-id="btn-recalc" hidden>重新试算</button>
+        <button class="btn btn-sm btn-primary" id="btn-confirm" data-od-id="btn-confirm" hidden>整批确认</button>
+        <button class="btn btn-sm btn-primary" id="btn-lock" data-od-id="btn-lock" hidden>锁定本期批次</button>
+      </section>
+
+    </main>
+    <footer class="pagefoot"></footer>
+  </div>
+</div>
+
+<div class="overlay is-center" id="modal-confirm" data-od-id="modal-confirm-batch">
+  <div class="modal is-wide">
+    <div class="drawer-head">
+      <h2>整批确认本期工资</h2><span class="spacer"></span>
+      <button class="icon-btn" data-close aria-label="关闭"><span data-icon="x"></span></button>
+    </div>
+    <div class="drawer-body" id="confirm-body"></div>
+    <div class="drawer-foot">
+      <button class="btn" data-close>取消</button>
+      <button class="btn btn-primary" id="confirm-go">确认三个批次</button>
+    </div>
+  </div>
+</div>
+
+<div class="overlay is-center" id="modal-lock" data-od-id="modal-lock-batch">
+  <div class="modal">
+    <div class="drawer-head">
+      <h2>锁定本期批次</h2><span class="spacer"></span>
+      <button class="icon-btn" data-close aria-label="关闭"><span data-icon="x"></span></button>
+    </div>
+    <div class="drawer-body">
+      <div class="callout is-warn"><span data-icon="warn"></span><div>
+        <b class="callout-title">锁定后本期工资内容将不可修改</b>
+        <div>锁定表示本期已完成核对并进入发放。锁定后如需调整，只能对已锁定批次发起<b>整批更正</b>，系统会生成新版本并重新核对全体员工，旧版本保留用于追溯。</div>
+      </div></div>
+      <dl class="kv is-wide">
+        <dt>锁定批次</dt><dd class="mono">PAY-202608-SH01-V1、PAY-202608-BJ01-V1、PAY-202608-SZ01-V1</dd>
+        <dt>涉及员工</dt><dd class="mono">128 人</dd>
+        <dt>锁定后状态</dt><dd>只读 · 可导出 · 可发起整批更正</dd>
+      </dl>
+    </div>
+    <div class="drawer-foot">
+      <button class="btn" data-close>取消</button>
+      <button class="btn btn-primary" id="lock-go">确认锁定</button>
+    </div>
+  </div>
+</div>
+
+<div class="overlay" id="drawer-correct" data-od-id="drawer-correct-batch">
+  <div class="drawer">
+    <div class="drawer-head">
+      <h2>发起整批更正</h2><span class="spacer"></span>
+      <button class="icon-btn" data-close aria-label="关闭"><span data-icon="x"></span></button>
+    </div>
+    <div class="drawer-body">
+      <div class="callout is-info"><span data-icon="info"></span><div>
+        整批更正<b>不会修改原批次</b>，而是生成一个新的版本，并对全体员工重新试算与核对。更正生效后，台账与导出一律采用最新有效版本，避免旧版本重复计入。
+      </div></div>
+      <dl class="kv is-wide">
+        <dt>原批次</dt><dd class="mono" id="correct-from"></dd>
+        <dt>新版本</dt><dd class="mono" id="correct-to"></dd>
+        <dt>更正范围</dt><dd class="mono">全体员工 · 重新核对</dd>
+      </dl>
+      <div class="field"><label>更正原因<span class="req">*</span></label>
+        <textarea class="textarea" id="correct-reason" rows="3" placeholder="例如：3 名员工绩效系数录入有误，需修正后重新核算"></textarea>
+        <span class="hint">更正原因会写入版本记录，便于后续追溯。</span>
+        <span class="err" id="correct-err" hidden></span></div>
+      <div class="callout is-warn"><span data-icon="warn"></span><div>
+        <b class="callout-title">已实际发薪后的差额</b>
+        <div>若本期工资已实际发放，更正产生的差额需在<b>线下处理</b>，系统不会自动生成下月补发或扣回。</div>
+      </div></div>
+    </div>
+    <div class="drawer-foot">
+      <button class="btn" data-close>取消</button>
+      <button class="btn btn-primary" id="correct-go">生成新版本</button>
+    </div>
+  </div>
+</div>
+
+<script src="assets/app.js"></script>
+<script>
+(function () {
+  var Q = window.QSX, esc = Q.esc;
+  var P = Q.COMPANY.period;
+  var ENT = 'SH01';
+  var PAGE = 1, SIZE = 12;
+  var STEPS = ['数据准备', '普通试算', '考勤激励', '核对确认', '锁定', '导出'];
+
+  function batchOf(ent) {
+    var list = Q.BATCHES.filter(function (b) { return b.period === P && b.entity === ent; });
+    return list[0];
+  }
+  function importOf(ent, type) {
+    return Q.IMPORTS.filter(function (r) { return r.period === P && r.entity === ent && r.type === type; })[0];
+  }
+  function entityLabel(ent) { return Q.ent(ent).short; }
+
+  /* ── 各主体的试算与阻断状态 ─────────────────────────────── */
+  function trialInfo(ent) {
+    var s = Q.state();
+    var blockedInput = Q.missingRuleIn(P, ent).length && !s.szRuleAdded;
+    if (blockedInput) {
+      return { key: 'blocked', label: '存在阻断项', note: '缺有效城市规则，无法完成试算', show: true };
+    }
+    if (ent === 'SH01' && !s.perfFixed) {
+      return { key: 'partial', label: '部分员工试算完成', note: '绩效导入 3 行错误待修复，2 名员工暂无法核算', show: true };
+    }
+    if (!s.recalculated) {
+      return { key: 'invalid', label: '试算已失效', note: '输入已更新，原试算结果不再有效，请重新试算', show: true };
+    }
+    return { key: 'trial', label: '试算完成', note: '全体员工试算成功，结果有效', show: true };
+  }
+  function gateReason() {
+    var s = Q.state();
+    if (s.locked) return '本期已锁定，内容只读；如需调整请发起整批更正。';
+    if (s.confirmed) return '本期已确认，等待锁定后即可导出。';
+    var blocked = Q.ENTITIES.filter(function (e) { return Q.entityStatus(e.code).key === 'blocked'; });
+    if (blocked.length) {
+      return blocked.map(function (e) { return entityLabel(e.code) + '：' + Q.entityStatus(e.code).note; }).join('；') + '。';
+    }
+    if (!s.recalculated) return '输入已更新，原试算已失效，请重新试算后再确认。';
+    if (!Q.incentiveDone()) return '全公司考勤激励尚未计算，缺少最终激励金额，无法确认。';
+    return '';
+  }
+  function canConfirm() {
+    var s = Q.state();
+    if (s.confirmed || s.locked) return false;
+    if (!s.recalculated) return false;
+    if (!Q.incentiveDone()) return false;
+    return Q.ENTITIES.every(function (e) { return Q.entityStatus(e.code).key === 'ready'; });
+  }
+  function stepState(i) {
+    var s = Q.state();
+    var blocked = Q.ENTITIES.some(function (e) { return Q.entityStatus(e.code).key === 'blocked'; });
+    var cur = blocked ? 0 : (!s.recalculated ? 1 : (!Q.incentiveDone() ? 2 : (!s.confirmed ? 3 : (!s.locked ? 4 : 5))));
+    if (s.locked && i === 5) return 'current';
+    if (i < cur) return 'done';
+    if (i === cur) return blocked && i === 0 ? 'blocked' : 'current';
+    return '';
+  }
+
+  /* ── 渲染：头部与步骤 ───────────────────────────────────── */
+  function renderSeg() {
+    document.getElementById('ent-seg').innerHTML = Q.ENTITIES.map(function (e) {
+      return '<button data-ent="' + e.code + '"' + (e.code === ENT ? ' class="is-on"' : '') + '>' + esc(e.short) + '</button>';
+    }).join('');
+  }
+  function renderHead() {
+    var b = batchOf(ENT);
+    document.getElementById('head-no').textContent = b.no;
+    document.getElementById('head-lead').innerHTML =
+      esc(Q.ent(ENT).name) + ' · 2026 年 8 月 · 正常工资 · ' + b.version +
+      ' · 员工 ' + b.count + ' 人 · 计划发放日 <span class="mono">' + b.payDate + '</span>（演示数据）';
+  }
+  function renderSteps() {
+    document.getElementById('steps').innerHTML = STEPS.map(function (s, i) {
+      var st = stepState(i);
+      return (i ? '<span class="step-line"></span>' : '') +
+        '<span class="step ' + (st ? 'is-' + st : '') + '">' +
+        '<span class="step-dot">' + (st === 'done' ? Q.icon('check') : i + 1) + '</span>' +
+        '<span class="step-label">' + s + '</span></span>';
+    }).join('');
+  }
+  function renderGate() {
+    var el = document.getElementById('gate-callout');
+    var s = Q.state(), r = gateReason();
+    if (s.locked) {
+      el.innerHTML = '<div class="callout is-ok"><span>' + Q.icon('lock') + '</span><div><b class="callout-title">本期已锁定，工资内容只读</b>' +
+        '<div>三个主体的批次均已锁定并可在导出中心生成工资表。如需调整本期金额，请发起整批更正生成新版本。</div></div></div>';
+      return;
+    }
+    if (s.confirmed) {
+      el.innerHTML = '<div class="callout is-info"><span>' + Q.icon('check') + '</span><div><b class="callout-title">本期三个批次已整批确认</b>' +
+        '<div>确认后工资内容只读。锁定后即可导出工资表、代发工资表、人工成本表与个税申报辅助模板。</div></div></div>';
+      return;
+    }
+    if (r) {
+      var kind = Q.ENTITIES.some(function (e) { return Q.entityStatus(e.code).key === 'blocked'; }) ? 'is-danger' : 'is-warn';
+      el.innerHTML = '<div class="callout ' + kind + '"><span>' + Q.icon(kind === 'is-danger' ? 'block' : 'warn') + '</span><div>' +
+        '<b class="callout-title">当前阻塞原因</b><div>' + esc(r) + '</div></div></div>';
+      return;
+    }
+    el.innerHTML = '<div class="callout is-ok"><span>' + Q.icon('check') + '</span><div><b class="callout-title">三个主体均已满足确认条件</b>' +
+      '<div>全体员工校验通过、全公司考勤激励已计算、最新试算已查看，可以整批确认。</div></div></div>';
+  }
+
+  /* ── Tab 1：数据准备 ────────────────────────────────────── */
+  function renderPrepare() {
+    var s = Q.state();
+    var att = importOf(ENT, '月度考勤'), perf = importOf(ENT, '月度绩效');
+    var perfOk = perf ? (ENT === 'SH01' && s.perfFixed ? perf.total : perf.ok) : 0;
+    var perfBad = perf ? perf.total - perfOk : 0;
+    var rule = Q.cityRule(Q.ent(ENT).city, P);
+    var missing = Q.missingRuleIn(P, ENT);
+    var roster = Q.scope(P, ENT);
+
+    var rows = [
+      {
+        name: '员工名册', state: 'ok', detail: Q.ent(ENT).short + ' 主体共 ' + roster.length + ' 人',
+        sub: '含在职与本期离职、试用与转正', href: 'employees.html', hrefText: '查看员工'
+      },
+      {
+        name: '月度考勤导入', state: att && att.ok === att.total ? 'ok' : (att ? 'partial' : 'missing'),
+        detail: att ? att.ok + ' / ' + att.total + ' 行入库' : '尚未导入',
+        sub: att ? '<span class="mono">' + att.id + '</span> · ' + att.time : '前往导入中心上传考勤表',
+        href: att ? 'import-batch.html' : 'import-center.html', hrefText: att ? '查看导入批次' : '去导入'
+      },
+      {
+        name: '月度绩效导入', state: perfBad ? 'partial' : 'ok',
+        detail: perf ? perfOk + ' / ' + perf.total + ' 行入库' : '尚未导入',
+        sub: perf ? '<span class="mono">' + perf.id + '</span> · ' + (perfBad ? perfBad + ' 行待修正' : '全部成功') : '前往导入中心上传绩效表',
+        href: perfBad ? 'import-batch.html' : 'import-center.html', hrefText: perfBad ? '去修正错误行' : '查看导入批次'
+      },
+      {
+        name: '城市社保与公积金规则', state: rule ? 'ok' : 'expired',
+        detail: rule ? Q.ent(ENT).city + ' · 缴费基数 ' + Q.money(rule.base) : Q.ent(ENT).city + ' · 无本期有效规则',
+        sub: rule ? '规则版本 <span class="mono">' + rule.version + '</span> · 有效期 ' + rule.validFrom + ' ~ ' + rule.validTo : '需先维护本期生效的城市规则',
+        href: 'city-rules.html', hrefText: '维护规则'
+      }
+    ];
+    if (missing.length) {
+      rows.push({
+        name: '员工 base 城市规则匹配', state: s.szRuleAdded ? 'ok' : 'blocked',
+        detail: missing.length + ' 名员工 base 城市缺本期有效规则',
+        sub: s.szRuleAdded ? '规则已补齐，可正常试算' : '社保与公积金无法计算，将阻断本批次试算',
+        href: 'city-rules.html', hrefText: '去处理'
+      });
+    }
+
+    document.getElementById('prepare-body').innerHTML =
+      '<div class="tbl-wrap"><table class="tbl"><thead><tr>' +
+      '<th style="min-width:170px">输入项</th><th style="width:110px">就绪情况</th><th style="min-width:200px">明细</th>' +
+      '<th style="min-width:280px">说明</th><th style="width:120px">操作</th></tr></thead><tbody>' +
+      rows.map(function (r) {
+        return '<tr><td class="strong">' + esc(r.name) + '</td>' +
+          '<td>' + Q.badge(r.state, r.state === 'ok' ? '就绪' : (r.state === 'partial' ? '部分就绪' : (r.state === 'blocked' ? '阻断' : '已过期'))) + '</td>' +
+          '<td class="mono">' + r.detail + '</td>' +
+          '<td class="small">' + r.sub + '</td>' +
+          '<td><a class="btn btn-sm' + (r.state === 'ok' ? '' : ' btn-primary') + '" href="' + r.href + '">' + esc(r.hrefText) + '</a></td></tr>';
+      }).join('') + '</tbody></table></div>' +
+      '<div class="section-title" style="margin-top:6px">本期试算口径 <span class="meta">与「考勤与薪酬规则」一致</span></div>' +
+      '<div class="calc">固定薪资　　= 薪酬标准 × 80% × (计薪天数 ÷ 21)　<span class="cm">// 入离职当月按实际计薪天数折算，转正前后固定薪资不变</span>\n' +
+      '绩效金额　　= 薪酬标准 × 20% × 绩效系数　<span class="cm">// 试用期无绩效；转正当月按转正后整月标准</span>\n' +
+      '考勤扣款　　= (迟到分钟 + 早退分钟) × 分钟单价 + 忘打卡次数 × 30　<span class="cm">// P7 及以上不参与</span>\n' +
+      '应发金额　　= 固定薪资 + 绩效金额 + 考勤激励 − 考勤扣款\n' +
+      '未扣个税金额 = 应发金额 − 个人社保 − 个人公积金　<span class="cm">// 个税请在导出后于 Excel 中手工计算</span>\n' +
+      '公司成本　　= 应发金额 + 公司社保 + 公司公积金</div>' +
+      '<div class="callout is-info"><span>' + Q.icon('info') + '</span><div>员工名册以<b>本期全部应发薪员工</b>为准，而不是仅以导入成功的行数为准；因此导入部分成功时，名单不会缩小。</div></div>';
+  }
+
+  /* ── Tab 2：试算结果 ────────────────────────────────────── */
+  function resolvedList() {
+    return Q.computeEntityFull(P, ENT);
+  }
+  function renderTrial() {
+    var info = trialInfo(ENT);
+    var list = resolvedList();
+    var sum = Q.summarize(list);
+    var s = Q.state();
+    var stale = info.key === 'invalid';
+
+    var banner = '';
+    if (info.key === 'invalid') {
+      banner = '<div class="card-body"><div class="callout is-warn"><span>' + Q.icon('warn') + '</span><div>' +
+        '<b class="callout-title">输入已更新，原试算已失效，请重新试算</b>' +
+        '<div>下表为上一次试算结果，仅供查看，不能用于确认。重新试算后金额会重算。</div></div></div></div>';
+    } else if (info.key === 'partial') {
+      banner = '<div class="card-body"><div class="callout is-danger"><span>' + Q.icon('block') + '</span><div>' +
+        '<b class="callout-title">2 名员工无法参与试算，结果不完整</b>' +
+        '<div>上海绩效导入仍有 3 行错误（含 2 名员工绩效系数异常）。下表已展示其余 ' + sum.ok + ' 名员工的试算结果，但<b>未通过整批校验前不能确认</b>。</div>' +
+        '<div style="margin-top:6px"><a href="import-batch.html">前往导入批次修正错误行 →</a></div></div></div></div>';
+    }
+
+    document.getElementById('trial-body').innerHTML = banner +
+      '<div class="card-body" style="padding-bottom:0"><div class="metrics is-5">' +
+      '<div class="metric"><div class="metric-label">试算成功人数</div><div class="metric-value mono">' + sum.ok + '</div><div class="metric-foot">本主体员工 ' + sum.count + ' 人</div></div>' +
+      '<div class="metric' + (sum.fail ? ' is-warn' : '') + '"><div class="metric-label">试算失败人数</div><div class="metric-value mono">' + sum.fail + '</div><div class="metric-foot">' + (sum.fail ? '绩效系数异常或城市规则缺失' : '无失败员工') + '</div></div>' +
+      '<div class="metric"><div class="metric-label">应发金额合计</div><div class="metric-value mono">' + Q.money(sum.gross) + '</div><div class="metric-foot">成功员工口径</div></div>' +
+      '<div class="metric is-accent"><div class="metric-label">未扣个税金额合计</div><div class="metric-value mono">' + Q.money(sum.net) + '</div><div class="metric-foot">已扣个人社保与公积金</div></div>' +
+      '<div class="metric"><div class="metric-label">公司成本合计</div><div class="metric-value mono">' + Q.money(sum.cost) + '</div><div class="metric-foot">含公司社保与公积金</div></div>' +
+      '</div></div>' +
+      '<div class="card-body tight" style="padding-top:14px"><div class="tbl-wrap" style="max-height:520px;overflow-y:auto">' +
+      '<table class="tbl"><thead><tr>' +
+      '<th class="sticky-col" style="min-width:132px">员工</th><th>部门</th>' +
+      '<th class="n">固定薪资</th><th class="n">绩效金额</th><th class="n">考勤扣款</th><th class="n">考勤激励</th>' +
+      '<th class="n">应发金额</th><th class="n">个人社保</th><th class="n">个人公积金</th>' +
+      '<th class="n">未扣个税金额</th><th class="n">公司成本</th><th style="width:80px">操作</th>' +
+      '</tr></thead><tbody id="trial-rows"></tbody></table></div></div>' +
+      '<div class="card-body" id="trial-foot"></div>';
+
+    renderTrialRows(list, stale);
+  }
+  function renderTrialRows(list, stale) {
+    var pages = Math.max(1, Math.ceil(list.length / SIZE));
+    if (PAGE > pages) PAGE = pages;
+    var slice = list.slice((PAGE - 1) * SIZE, PAGE * SIZE);
+    document.getElementById('trial-rows').innerHTML = slice.map(function (c) {
+      var dim = stale ? ' style="opacity:.72"' : '';
+      if (!c.ok) {
+        return '<tr class="is-invalid"' + dim + '>' +
+          '<td class="sticky-col"><span class="strong">' + esc(c.emp.name) + '</span><span class="tbl-sub mono">' + c.emp.id + '</span></td>' +
+          '<td>' + esc(Q.dept(c.emp.dept).name) + '</td>' +
+          '<td colspan="9" class="small">' + Q.badge('failed', '试算失败') + ' ' + esc(c.invalid.join('、')) +
+          ' <a href="import-batch.html">前往修复</a></td>' +
+          '<td><a class="btn btn-sm btn-ghost" href="ledger-employee.html?id=' + c.emp.id + '">明细</a></td></tr>';
+      }
+      return '<tr' + dim + '>' +
+        '<td class="sticky-col"><a class="strong" href="ledger-employee.html?id=' + c.emp.id + '">' + esc(c.emp.name) + '</a><span class="tbl-sub mono">' + c.emp.id + ' · ' + c.emp.grade + '</span></td>' +
+        '<td>' + esc(Q.dept(c.emp.dept).name) + '</td>' +
+        '<td class="n mono">' + Q.money(c.fixed) + '</td>' +
+        '<td class="n mono">' + (c.perfAmount ? Q.money(c.perfAmount) : '—') + '</td>' +
+        '<td class="n mono">' + (c.attTotal ? '−' + Q.money(c.attTotal) : '—') + '</td>' +
+        '<td class="n mono">' + (c.incentive ? Q.money(c.incentive) : '—') + '</td>' +
+        '<td class="n mono">' + Q.money(c.gross) + '</td>' +
+        '<td class="n mono">' + Q.money(c.pSI) + '</td>' +
+        '<td class="n mono">' + Q.money(c.pHF) + '</td>' +
+        '<td class="n mono strong">' + Q.money(c.net) + '</td>' +
+        '<td class="n mono">' + Q.money(c.cost) + '</td>' +
+        '<td><a class="btn btn-sm btn-ghost" href="ledger-employee.html?id=' + c.emp.id + '">明细</a></td></tr>';
+    }).join('');
+
+    var btns = '';
+    for (var i = 1; i <= pages; i++) btns += '<button data-page="' + i + '"' + (i === PAGE ? ' class="is-on"' : '') + '>' + i + '</button>';
+    document.getElementById('trial-foot').innerHTML =
+      '<div class="pager"><span class="meta">共 ' + list.length + ' 名员工 · 第 ' + PAGE + ' / ' + pages + ' 页</span><span class="spacer"></span>' +
+      '<div class="pages"><button data-page="' + (PAGE - 1) + '"' + (PAGE <= 1 ? ' disabled' : '') + '>上一页</button>' + btns +
+      '<button data-page="' + (PAGE + 1) + '"' + (PAGE >= pages ? ' disabled' : '') + '>下一页</button></div></div>';
+  }
+
+  /* ── Tab 3：校验与异常 ──────────────────────────────────── */
+  function renderVerify() {
+    var s = Q.state();
+    var list = resolvedList();
+    var sum = Q.summarize(list);
+    var entries = [];
+    var blockedN = Q.missingRuleIn(P, ENT).length;
+    var blockedRows = [];
+    var warns = [], passes = [];
+
+    if (ENT === 'SH01' && !s.perfFixed) {
+      blockedRows.push({
+        t: '绩效导入存在 3 行错误', d: '第 38、59、81 行未通过校验，其中 2 名员工绩效系数缺失或为负数，无法参与本期核算。',
+        href: 'import-batch.html', hrefText: '前往导入批次修正'
+      });
+    }
+    if (blockedN && !s.szRuleAdded) {
+      blockedRows.push({
+        t: blockedN + ' 名员工缺有效城市规则', d: Q.ent(ENT).city + ' 规则在 2026-08 期间无有效版本，社保与公积金无法计算。',
+        href: 'city-rules.html', hrefText: '前往维护城市规则'
+      });
+    }
+    if (!s.recalculated && !blockedRows.length) {
+      blockedRows.push({ t: '输入已更新，原试算已失效', d: '请重新试算后再确认本批次。', href: '#', hrefText: '重新试算', action: 'recalc' });
+    }
+    if (!Q.incentiveDone() && !blockedRows.length) {
+      warns.push({
+        t: '全公司考勤激励尚未计算', d: '本批次数值将在激励计算后更新；缺少最终激励的结果不能作为可确认结果。',
+        href: 'incentive.html', hrefText: '前往计算激励'
+      });
+    }
+
+    if (sum.fail) {
+      warns.push({ t: sum.fail + ' 名员工试算失败', d: list.filter(function (c) { return !c.ok; }).map(function (c) { return c.emp.name + '（' + c.emp.id + '）'; }).join('、') + '：' + esc(list.filter(function (c) { return !c.ok; })[0].invalid.join('、')), href: 'import-batch.html', hrefText: '查看明细' });
+    }
+    var bankGap = list.filter(function (c) { return c.ok && !c.emp.bankVerified; }).length;
+    if (bankGap) warns.push({ t: bankGap + ' 名员工银行卡资料待校验', d: '不影响工资计算与确认，但可能影响代发工资表导出。', href: 'employees.html', hrefText: '查看员工' });
+    var noAtt = list.filter(function (c) { return c.ok && !c.att.hasRecord; }).length;
+    if (noAtt) warns.push({ t: noAtt + ' 名员工本期无考勤记录', d: '按规则不参与考勤激励，工资照常计算。', href: 'incentive.html', hrefText: '查看激励资格' });
+    var p7 = list.filter(function (c) { return c.ok && !c.penalized; }).length;
+    if (p7) passes.push({ t: p7 + ' 名 P7 及以上员工已正确排除考勤罚款与激励', d: '按职级规则处理，已通过校验。' });
+    passes.push({ t: '员工名单完整，无重复员工', d: '本期名册 ' + sum.count + ' 人，与组织管理中的主体人数一致。' });
+    passes.push({ t: '固定薪资与绩效结构校验通过', d: '全体正式员工固定薪资 = 薪酬标准 × 80%，绩效基数 = 20%。' });
+    if (!blockedRows.length) passes.push({ t: '城市规则命中校验通过', d: '本主体全体员工均匹配到 2026-08 有效规则。' });
+
+    document.getElementById('verify-body').innerHTML =
+      '<div class="section-title">阻断问题 <span class="meta">必须全部解决才能确认</span></div>' +
+      (blockedRows.length ? blockedRows.map(blockRow).join('') :
+        '<div class="callout is-ok"><span>' + Q.icon('check') + '</span><div>本主体没有阻断问题，可继续下一步。</div></div>') +
+      '<div class="section-title" style="margin-top:4px">非阻断提示 <span class="meta">不阻止确认，请知悉</span></div>' +
+      (warns.length ? warns.map(warnRow).join('') :
+        '<div class="callout is-info"><span>' + Q.icon('info') + '</span><div>暂无需要关注的非阻断提示。</div></div>') +
+      '<div class="section-title" style="margin-top:4px">已通过的校验项</div>' +
+      '<div class="card" style="box-shadow:none"><div class="card-body stack" style="gap:9px">' +
+      passes.map(function (p) {
+        return '<div class="row" style="gap:8px;align-items:flex-start"><span style="color:var(--ok);display:flex">' + Q.icon('check') + '</span>' +
+          '<div><div class="strong">' + p.t + '</div><div class="meta">' + p.d + '</div></div></div>';
+      }).join('') + '</div></div>';
+  }
+  function blockRow(b) {
+    return '<div class="callout is-danger"><span>' + Q.icon('block') + '</span><div>' +
+      '<b class="callout-title">' + esc(b.t) + '</b><div>' + b.d + '</div>' +
+      '<div style="margin-top:7px">' + (b.action === 'recalc'
+        ? '<button class="btn btn-sm btn-primary" data-action="recalc">重新试算</button>'
+        : '<a class="btn btn-sm btn-primary" href="' + b.href + '">' + esc(b.hrefText) + ' →</a>') + '</div></div></div>';
+  }
+  function warnRow(w) {
+    return '<div class="callout is-warn"><span>' + Q.icon('warn') + '</span><div>' +
+      '<b class="callout-title">' + esc(w.t) + '</b><div>' + w.d + '</div>' +
+      (w.href && w.href !== '#' ? '<div style="margin-top:7px"><a href="' + w.href + '">' + esc(w.hrefText) + ' →</a></div>' : '') +
+      '</div></div>';
+  }
+
+  /* ── Tab 4：版本与操作记录 ──────────────────────────────── */
+  function versions(ent) {
+    var s = Q.state();
+    var b = batchOf(ent);
+    if (s.corrected) {
+      return [
+        { v: 'V2', state: 'trial', note: '整批更正后重新核对', time: '2026-09-02 15:10', by: '演示操作人', reason: s.correctReason || '更正本期录入错误' },
+        { v: 'V1', state: 'superseded', note: '已被 V2 替代，保留追溯', time: '2026-09-01 09:45', by: '演示操作人', reason: '—' }
+      ];
+    }
+    return [{ v: b.version, state: s.locked ? 'locked' : (s.confirmed ? 'confirmed' : 'trial'), note: s.locked ? '已锁定，内容只读' : (s.confirmed ? '已确认，等待锁定' : '试算中'), time: '2026-09-01 09:52', by: '演示操作人', reason: '—' }];
+  }
+  function renderVersion() {
+    var s = Q.state();
+    var vs = versions(ENT);
+    var items = [
+      { t: '2026-09-01 09:14', x: '导入月度考勤 <span class="mono">' + (importOf(ENT, '月度考勤') || {}).id + '</span>，' + Q.ent(ENT).short + ' 全员入库。' },
+      { t: '2026-09-01 09:31', x: '导入月度绩效 <span class="mono">' + (importOf(ENT, '月度绩效') || {}).id + '</span>' + (ENT === 'SH01' && !s.perfFixed ? '，93 行入库、3 行错误保留待修。' : '，全部行入库。') },
+      { t: '2026-09-01 09:52', x: '执行普通工资试算，输入版本 <span class="mono">IND-2026-08-' + ENT + '-01</span>，规则版本 <span class="mono">v2026.1</span>。' }
+    ];
+    if (ENT === 'SH01' && s.perfFixed) items.push({ t: '2026-09-01 09:45', x: '绩效导入 3 条错误行修正完成，输入版本更新为 <span class="mono">IND-2026-08-SH01-02</span>。' });
+    if (s.szRuleAdded) items.push({ t: '2026-09-01 10:20', x: '深圳社保与公积金规则补齐本期有效版本，受影响员工恢复可算。' });
+    if (s.recalculated) items.push({ t: '2026-09-01 10:26', x: '重新试算完成，试算结果更新为最新输入与规则版本。' });
+    if (Q.incentiveDone()) items.push({ t: '2026-09-01 11:02', x: '全公司考勤激励计算完成并写入各主体工资。' });
+    if (s.confirmed) items.push({ t: '2026-09-02 09:30', x: '<b>整批确认</b>：三个主体一起确认，工资内容转为只读。' });
+    if (s.locked) items.push({ t: '2026-09-02 09:41', x: '<b>锁定</b>：本期批次锁定，可导出并支持整批更正。' });
+    if (s.corrected) items.push({ t: '2026-09-02 15:10', x: '<b>整批更正</b>：生成新版本 ' + batchOf(ENT).version.replace('V1', 'V2') + '，全体员工重新核对，旧版本保留。' });
+    items.reverse();
+
+    document.getElementById('version-body').innerHTML =
+      '<div class="grid-1-2">' +
+      '<div class="card" style="box-shadow:none"><div class="card-body stack">' +
+      '<div class="section-title" style="margin:0">版本</div>' +
+      '<div class="tbl-wrap"><table class="tbl"><thead><tr><th>版本</th><th>状态</th><th>生成时间</th></tr></thead><tbody>' +
+      vs.map(function (x) {
+        return '<tr><td class="mono strong">' + x.v + '</td>' +
+          '<td>' + Q.badge(x.state, x.note) + '</td><td class="mono">' + x.time + '</td></tr>';
+      }).join('') + '</tbody></table></div>' +
+      (s.corrected ? '<div class="callout is-info"><span>' + Q.icon('info') + '</span><div>台账与导出统一采用最新有效版本 <b class="mono">V2</b>，V1 不再计入汇总，避免重复。</div></div>' : '') +
+      '<dl class="kv is-wide"><dt>输入版本</dt><dd class="mono">IND-2026-08-' + ENT + (ENT === 'SH01' && s.perfFixed ? '-02' : '-01') + '</dd>' +
+      '<dt>规则版本</dt><dd class="mono">' + (Q.cityRule(Q.ent(ENT).city, P) ? Q.cityRule(Q.ent(ENT).city, P).version : '—') + '</dd>' +
+      '<dt>最近试算</dt><dd class="mono">' + (s.recalculated ? '2026-09-01 10:26' : '2026-09-01 09:52（已失效）') + '</dd></dl>' +
+      '</div></div>' +
+      '<div class="card" style="box-shadow:none"><div class="card-body">' +
+      '<div class="section-title" style="margin-top:0">操作记录</div>' +
+      '<div class="timeline">' + items.map(function (i) {
+        return '<div class="tl-item"><span class="tl-time">' + i.t + '</span><div>' + i.x + '</div></div>';
+      }).join('') + '</div></div></div></div>';
+  }
+
+  /* ── 操作栏与弹窗 ───────────────────────────────────────── */
+  function renderBar() {
+    var s = Q.state(), r = gateReason();
+    var blockedEnt = Q.ENTITIES.filter(function (e) { return Q.entityStatus(e.code).key === 'blocked'; })[0];
+    ['btn-fix', 'btn-incentive', 'btn-recalc', 'btn-confirm', 'btn-lock', 'btn-export', 'btn-correct']
+      .forEach(function (id) { document.getElementById(id).hidden = true; });
+
+    function showSlot(id, primary) {
+      var el = document.getElementById(id);
+      el.hidden = false;
+      el.className = 'btn btn-sm' + (primary ? ' btn-primary' : '');
+      return el;
+    }
+    // 同一时刻只保留一个主操作
+    if (s.locked) {
+      showSlot('btn-correct', false);
+      showSlot('btn-export', true);
+      document.getElementById('bar-reason').innerHTML = '';
+      return;
+    }
+    if (s.confirmed) { showSlot('btn-lock', true); }
+    else if (canConfirm()) { showSlot('btn-confirm', true); }
+    else if (blockedEnt) {
+      var fix = showSlot('btn-fix', true);
+      if (Q.entityStatus(blockedEnt.code).note.indexOf('城市规则') >= 0) { fix.href = 'city-rules.html'; fix.textContent = '去维护城市规则'; }
+      else { fix.href = 'import-batch.html'; fix.textContent = '去修复错误行'; }
+    }
+    else if (!s.recalculated) { showSlot('btn-recalc', true); }
+    else if (!Q.incentiveDone()) { showSlot('btn-incentive', true); }
+    else { showSlot('btn-recalc', false); }
+
+    document.getElementById('bar-reason').innerHTML = r ? Q.icon('warn') + ' <span>' + esc(r) + '</span>' : '';
+  }
+  function renderConfirm() {
+    var all = Q.computeAll(P);
+    var sum = Q.summarize(all);
+    document.getElementById('confirm-body').innerHTML =
+      '<div class="callout is-info"><span>' + Q.icon('info') + '</span><div>整批确认会同时确认<b>三个主体的正常工资批次</b>。系统不允许只勾选成功员工绕过整批校验。</div></div>' +
+      '<div class="metrics" style="grid-template-columns:repeat(4,minmax(0,1fr))">' +
+      '<div class="metric"><div class="metric-label">确认批次</div><div class="metric-value mono">3</div><div class="metric-foot">上海 / 北京 / 深圳</div></div>' +
+      '<div class="metric"><div class="metric-label">员工人数</div><div class="metric-value mono">' + sum.count + '</div><div class="metric-foot">本期全部应发薪员工</div></div>' +
+      '<div class="metric is-accent"><div class="metric-label">未扣个税金额合计</div><div class="metric-value mono">' + Q.money(sum.net) + '</div><div class="metric-foot">已包含考勤激励</div></div>' +
+      '<div class="metric"><div class="metric-label">公司成本合计</div><div class="metric-value mono">' + Q.money(sum.cost) + '</div><div class="metric-foot">含公司社保与公积金</div></div></div>' +
+      '<div class="section-title">确认前检查</div>' +
+      '<div class="stack" style="gap:8px">' +
+      checkItem('三个主体全体员工校验通过') +
+      checkItem('全公司考勤激励已计算并写入') +
+      checkItem('最新试算结果已查看') +
+      '</div>' +
+      '<div class="callout is-warn"><span>' + Q.icon('warn') + '</span><div><b class="callout-title">确认后工资内容只读</b>' +
+      '<div>确认后本期工资内容不可修改。如需调整，必须对已确认批次发起整批更正并重新核对全体员工。</div></div></div>';
+  }
+  function checkItem(t) {
+    return '<div class="row" style="gap:8px"><span style="color:var(--ok);display:flex">' + Q.icon('check') + '</span><span>' + t + '</span></div>';
+  }
+
+  /* ── 事件 ───────────────────────────────────────────────── */
+  function rerender() {
+    renderHead(); renderSteps(); renderGate(); renderPrepare(); renderTrial(); renderVerify(); renderVersion(); renderBar();
+    renderConfirm();
+  }
+  function setCounts() {
+    var list = resolvedList();
+    document.getElementById('cnt-trial').textContent = list.length;
+    document.getElementById('cnt-verify').textContent = Q.summarize(list).fail +
+      (Q.missingRuleIn(P, ENT).length && !Q.state().szRuleAdded ? Q.missingRuleIn(P, ENT).length : 0);
+  }
+
+  document.addEventListener('click', function (e) {
+    var seg = e.target.closest('[data-ent]');
+    if (seg) { ENT = seg.getAttribute('data-ent'); PAGE = 1; rerender(); setCounts(); return; }
+    var pg = e.target.closest('#trial-foot [data-page]');
+    if (pg && !pg.disabled) { PAGE = Number(pg.getAttribute('data-page')); renderTrial(); setCounts(); return; }
+    var act = e.target.closest('[data-action="recalc"]');
+    if (act) { doRecalc(); return; }
+  });
+  document.getElementById('btn-recalc').addEventListener('click', doRecalc);
+  function doRecalc() {
+    Q.setState({ recalculated: true });
+    rerender(); setCounts();
+    Q.toast('重新试算完成：' + Q.summarize(resolvedList()).ok + ' 名员工试算成功', 'ok');
+  }
+  document.getElementById('btn-confirm').addEventListener('click', function () {
+    if (!canConfirm()) { Q.toast(gateReason(), 'warn'); return; }
+    Q.openOverlay('modal-confirm');
+  });
+  document.getElementById('confirm-go').addEventListener('click', function () {
+    Q.setState({ confirmed: true });
+    Q.closeOverlay('modal-confirm');
+    rerender(); setCounts();
+    Q.toast('三个批次已整批确认，工资内容转为只读', 'ok');
+  });
+  document.getElementById('btn-lock').addEventListener('click', function () { Q.openOverlay('modal-lock'); });
+  document.getElementById('lock-go').addEventListener('click', function () {
+    Q.setState({ locked: true });
+    Q.closeOverlay('modal-lock');
+    rerender(); setCounts();
+    Q.toast('本期批次已锁定，可进入导出中心生成工资表', 'ok');
+  });
+  document.getElementById('btn-correct').addEventListener('click', function () {
+    document.getElementById('correct-from').textContent = batchOf(ENT).no;
+    document.getElementById('correct-to').textContent = batchOf(ENT).no.replace('V1', 'V2');
+    document.getElementById('correct-err').hidden = true;
+    Q.openOverlay('drawer-correct');
+  });
+  document.getElementById('correct-go').addEventListener('click', function () {
+    var ta = document.getElementById('correct-reason'), err = document.getElementById('correct-err');
+    if (!ta.value.trim()) { err.textContent = '请填写更正原因，便于后续追溯。'; err.hidden = false; return; }
+    Q.setState({ corrected: true, correctReason: ta.value.trim(), confirmed: false, locked: false, recalculated: true });
+    Q.closeOverlay('drawer-correct');
+    ta.value = '';
+    rerender(); setCounts();
+    Q.toast('已生成新版本 V2，请重新核对全体员工后再次确认', 'ok');
+  });
+
+  renderSeg(); rerender(); setCounts();
+})();
+</script>
+</body>
+</html>

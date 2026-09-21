@@ -1,0 +1,370 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>城市社保与公积金规则 · 轻算薪</title>
+<link rel="stylesheet" href="assets/app.css">
+</head>
+<body data-page="city-rules" data-crumb="规则维护/城市社保与公积金规则" data-title="城市社保与公积金规则">
+<div class="app">
+  <aside class="sidebar" id="sidebar" data-od-id="sidebar"></aside>
+  <div class="main">
+    <header class="topbar" id="topbar" data-od-id="topbar"></header>
+    <main class="content">
+
+      <section data-od-id="cr-lead">
+        <p class="page-lead">社保与公积金按员工实际 base 城市计算，与工资归属主体无关。规则按城市维护，可保留历史版本：已锁定期间继续命中当时的版本，历史金额不随新规则变化。</p>
+      </section>
+
+      <section id="cr-gate" data-od-id="cr-gate"></section>
+
+      <section class="metrics" data-od-id="cr-metrics">
+        <div class="metric">
+          <div class="metric-label">参与城市</div>
+          <div class="metric-value" id="m-cities">3</div>
+          <div class="metric-foot">上海 · 北京 · 深圳</div>
+        </div>
+        <div class="metric">
+          <div class="metric-label">规则版本</div>
+          <div class="metric-value" id="m-versions">3</div>
+          <div class="metric-foot" id="m-versions-foot">个版本记录</div>
+        </div>
+        <div class="metric" id="m-miss-card">
+          <div class="metric-label">规则缺口影响员工</div>
+          <div class="metric-value" id="m-miss">0</div>
+          <div class="metric-foot" id="m-miss-foot">人</div>
+        </div>
+        <div class="metric">
+          <div class="metric-label">公积金单边比例</div>
+          <div class="metric-value" id="m-hf">5%</div>
+          <div class="metric-foot">按固定薪资计缴，个人与公司一致</div>
+        </div>
+      </section>
+
+      <section data-od-id="cr-cards">
+        <div class="section-title">城市规则明细</div>
+        <div class="grid-3" id="city-cards"></div>
+      </section>
+
+      <section class="card" data-od-id="cr-entities">
+        <div class="card-head">
+          <h2>主体与规则适用</h2>
+          <span class="sub">主体决定默认 base 城市，员工可在主体下单独指定其他 base 城市</span>
+        </div>
+        <div class="tbl-wrap">
+          <table class="tbl">
+            <thead>
+              <tr>
+                <th class="sticky-col" style="min-width:230px">工资归属主体</th>
+                <th>编码</th>
+                <th style="min-width:190px">员工实际 base 城市</th>
+                <th>主体默认城市</th>
+                <th>本期命中版本</th>
+                <th>状态</th>
+              </tr>
+            </thead>
+            <tbody id="ent-rows"></tbody>
+          </table>
+        </div>
+      </section>
+
+      <div class="grid-2-1" data-od-id="cr-versions">
+        <section class="card" data-od-id="cr-versions">
+          <div class="card-head">
+            <h2>规则版本历史</h2>
+            <span class="sub">保留历史版本，按期间自动命中</span>
+          </div>
+          <div class="tbl-wrap">
+            <table class="tbl">
+              <thead>
+                <tr><th style="min-width:74px">城市</th><th>版本</th><th class="n">缴费基数</th><th>有效期</th><th>状态</th><th>本期适用</th></tr>
+              </thead>
+              <tbody id="ver-rows"></tbody>
+            </table>
+          </div>
+        </section>
+
+        <div class="stack">
+          <section class="card" data-od-id="cr-missing">
+            <div class="card-head">
+              <h2>待补规则的员工</h2>
+              <span class="sub">缺少可用城市规则，相关批次无法试算</span>
+            </div>
+            <div class="tbl-wrap">
+              <table class="tbl">
+                <thead><tr><th style="min-width:110px">员工</th><th>主体</th><th>实际 base 城市</th></tr></thead>
+                <tbody id="miss-rows"></tbody>
+              </table>
+            </div>
+          </section>
+          <section class="callout is-info" data-od-id="cr-tip">
+            <span data-icon="info"></span>
+            <div>
+              <div class="callout-title">员工 base 城市可以与主体不同</div>
+              例如上海主体下有员工 base 北京、北京主体下有员工 base 深圳。这类员工的社保与公积金按其实际 base 城市规则计算，因此一个城市规则缺失会同时影响多个主体。
+            </div>
+          </section>
+        </div>
+      </div>
+
+      <section class="actionbar" data-od-id="cr-actions">
+        <span class="reason" id="cr-reason"></span>
+        <span class="spacer"></span>
+        <button class="btn" id="btn-add-rule" data-od-id="btn-add-rule">新增城市规则</button>
+        <button class="btn btn-primary" id="btn-add-sz" data-od-id="btn-add-sz-rule">补齐深圳 2026 年规则</button>
+      </section>
+
+    </main>
+    <footer class="pagefoot"></footer>
+  </div>
+</div>
+
+<!-- 新增城市规则抽屉 -->
+<div class="overlay" id="drawer-rule" data-od-id="drawer-rule">
+  <div class="drawer">
+    <div class="drawer-head">
+      <h2>新增城市社保与公积金规则版本</h2>
+      <span class="spacer"></span>
+      <button class="icon-btn" data-close aria-label="关闭"><span data-icon="x"></span></button>
+    </div>
+    <div class="drawer-body">
+      <div class="form-grid">
+        <div class="field"><label>城市<span class="req">*</span></label>
+          <select class="select"><option>上海</option><option>北京</option><option>深圳</option><option>杭州</option></select></div>
+        <div class="field"><label>版本号<span class="req">*</span></label><input class="input" value="v2026.2"></div>
+        <div class="field"><label>社保缴费基数<span class="req">*</span></label><input class="input mono" value="4772.00"><span class="hint">用于养老、医疗、失业、工伤、生育的计算基数</span></div>
+        <div class="field"><label>生效期间<span class="req">*</span></label>
+          <div class="row" style="gap:8px"><input class="input mono" value="2026-08-01"><span class="meta">至</span><input class="input mono" value="2026-12-31"></div>
+        </div>
+        <div class="field span-2"><label>个人缴纳比例</label>
+          <div class="row-wrap" style="gap:12px">
+            <label class="check"><input type="checkbox" checked>养老 8%</label>
+            <label class="check"><input type="checkbox" checked>医疗 2%</label>
+            <label class="check"><input type="checkbox" checked>失业 0.3%</label>
+          </div>
+        </div>
+        <div class="field span-2"><label>公司缴纳比例</label>
+          <div class="row-wrap" style="gap:12px">
+            <label class="check"><input type="checkbox" checked>养老 15%</label>
+            <label class="check"><input type="checkbox" checked>医疗 5.2%</label>
+            <label class="check"><input type="checkbox" checked>失业 0.7%</label>
+            <label class="check"><input type="checkbox" checked>工伤 0.14%</label>
+            <label class="check"><input type="checkbox" checked>生育 0.45%</label>
+          </div>
+        </div>
+        <div class="field span-2"><label>备注</label><textarea class="textarea" placeholder="选填，例如政策文号或执行说明"></textarea></div>
+      </div>
+      <div class="callout is-warn">
+        <span data-icon="warn"></span>
+        <div>新增版本不会改动历史期间。已锁定批次继续使用当时的规则版本，只有生效期间内的期间会命中新版本。</div>
+      </div>
+    </div>
+    <div class="drawer-foot">
+      <button class="btn" data-close>取消</button>
+      <button class="btn btn-primary" data-close data-toast="城市规则版本已保存（原型演示）" data-toast-kind="ok">保存</button>
+    </div>
+  </div>
+</div>
+
+<script src="assets/app.js"></script>
+<script>
+(function () {
+  var Q = window.QSX, esc = Q.esc;
+  var P = Q.COMPANY.period;
+
+  /* ── 门禁：本期是否存在规则缺口 ─────────────────────────── */
+  function renderGate() {
+    var miss = Q.missingRuleEmployees(P);
+    var el = document.getElementById('cr-gate');
+    var byCity = {};
+    miss.forEach(function (e) { byCity[e.city] = (byCity[e.city] || 0) + 1; });
+    var cities = Object.keys(byCity).map(function (c) { return c + '（' + byCity[c] + ' 人）'; }).join('、');
+    if (miss.length) {
+      el.innerHTML = '<div class="callout is-danger"><span data-icon="block"></span><div>' +
+        '<b class="callout-title">' + esc(P) + ' 有 ' + miss.length + ' 名员工缺少可用的城市规则</b>' +
+        '<div>涉及城市：' + esc(cities) + '。这些员工所在批次的试算会被阻断，需先补齐对应城市的规则版本。</div>' +
+        '<div style="margin-top:6px"><a href="batch-detail.html">查看受影响的批次 →</a></div></div></div>';
+    } else {
+      el.innerHTML = '<div class="callout is-ok"><span data-icon="check"></span><div>' +
+        '<b class="callout-title">' + esc(P) + ' 全部员工的 base 城市均有可用规则</b>' +
+        '<div>社保与公积金可正常计算，工资批次不会因规则缺失被阻断。</div></div></div>';
+    }
+  }
+
+  /* ── 指标 ───────────────────────────────────────────────── */
+  function renderMetrics() {
+    var cities = Object.keys(Q.CITY_RULES);
+    var totalVersions = cities.reduce(function (s, c) { return s + Q.ruleVersions(c).length; }, 0);
+    var miss = Q.missingRuleEmployees(P).length;
+    document.getElementById('m-cities').textContent = cities.length;
+    document.getElementById('m-versions').textContent = totalVersions;
+    document.getElementById('m-versions-foot').textContent = '个版本记录，含历史版本';
+    document.getElementById('m-miss').textContent = miss;
+    var mf = document.getElementById('m-miss-foot');
+    mf.textContent = miss ? '人待补齐规则' : '人，无规则缺口';
+    document.getElementById('m-hf').textContent = Q.pct(Q.HF_RATE);
+    var card = document.getElementById('m-miss-card');
+    card.className = 'metric' + (miss ? ' is-warn' : '');
+  }
+
+  /* ── 单个城市规则卡 ─────────────────────────────────────── */
+  function itemRows(rule) {
+    var keys = [], seen = {};
+    rule.personal.concat(rule.company).forEach(function (x) {
+      if (!seen[x.k]) { seen[x.k] = 1; keys.push(x.k); }
+    });
+    return keys.map(function (k) {
+      var p = rule.personal.filter(function (x) { return x.k === k; })[0];
+      var c = rule.company.filter(function (x) { return x.k === k; })[0];
+      return '<tr><td><span class="strong">' + esc(k) + '</span></td>' +
+        '<td class="n mono">' + (p ? Q.pct(p.r) : '—') + '</td>' +
+        '<td class="n mono">' + (p ? Q.money(Q.round2(rule.base * p.r)) : '—') + '</td>' +
+        '<td class="n mono">' + (c ? Q.pct(c.r) : '—') + '</td>' +
+        '<td class="n mono">' + (c ? Q.money(Q.round2(rule.base * c.r)) : '—') + '</td></tr>';
+    }).join('');
+  }
+  function rateSum(list) { return list.reduce(function (s, x) { return s + x.r; }, 0); }
+  function partSum(list, base) {
+    return list.reduce(function (s, x) { return Q.round2(s + Q.round2(base * x.r)); }, 0);
+  }
+
+  function cityCard(city, rule) {
+    var covers = rule.validFrom <= P + '-01' && rule.validTo >= P + '-01';
+    var pRate = rateSum(rule.personal), cRate = rateSum(rule.company);
+    var pAmt = Q.round2(rule.base * pRate), cAmt = Q.round2(rule.base * cRate);
+    var cParts = partSum(rule.company, rule.base);
+    var diff = Q.round2(cAmt - cParts);
+    var ents = Q.ENTITIES.filter(function (e) { return e.city === city; });
+    var note = diff
+      ? '<div class="meta" style="margin-top:8px">公司分项四舍五入后合计 ' + Q.money(cParts) +
+        ' 元，与「缴费基数 × 公司合计比例」' + Q.money(cAmt) + ' 元相差 ' +
+        Q.money(Math.abs(diff)) + ' 元；系统按合计比例计缴，差额来自分项取整。</div>'
+      : '';
+    return '<section class="card" data-od-id="city-card-' + city + '">' +
+      '<div class="card-head"><h2>' + esc(city) + '</h2>' +
+      Q.badge(covers ? 'valid' : (rule.status === 'expired' ? 'expired' : 'missing'),
+        covers ? '本期生效' : (rule.status === 'expired' ? '已过期' : '本期未生效')) +
+      '</div>' +
+      '<div class="card-body">' +
+      '<dl class="kv is-wide">' +
+      '<dt>规则版本</dt><dd class="mono">' + esc(rule.version) + '</dd>' +
+      '<dt>缴费基数</dt><dd class="mono strong">' + Q.money(rule.base) + ' 元</dd>' +
+      '<dt>有效期</dt><dd class="mono">' + esc(rule.validFrom) + ' 至 ' + esc(rule.validTo) + '</dd>' +
+      '<dt>适用主体</dt><dd>' + (ents.length ? esc(ents.map(function (e) { return e.short; }).join('、')) + '（默认城市）' : '—') + '</dd>' +
+      '</dl></div>' +
+      '<div class="tbl-wrap"><table class="tbl">' +
+      '<thead><tr><th>项目</th><th class="n">个人比例</th><th class="n">个人金额</th>' +
+      '<th class="n">公司比例</th><th class="n">公司金额</th></tr></thead>' +
+      '<tbody>' + itemRows(rule) + '</tbody>' +
+      '<tfoot><tr><td>合计</td><td class="n mono">' + Q.pct(pRate) + '</td>' +
+      '<td class="n mono">' + Q.money(pAmt) + '</td>' +
+      '<td class="n mono">' + Q.pct(cRate) + '</td>' +
+      '<td class="n mono">' + Q.money(cAmt) + '</td></tr></tfoot>' +
+      '</table></div>' + (note ? '<div class="card-body" style="padding-top:0">' + note + '</div>' : '') +
+      '</section>';
+  }
+
+  function renderCards() {
+    var h = '';
+    Object.keys(Q.CITY_RULES).forEach(function (city) {
+      Q.ruleVersions(city).forEach(function (rule) { h += cityCard(city, rule); });
+    });
+    document.getElementById('city-cards').innerHTML = h;
+  }
+
+  /* ── 主体与规则适用 ─────────────────────────────────────── */
+  function renderEntities() {
+    document.getElementById('ent-rows').innerHTML = Q.ENTITIES.map(function (e) {
+      var list = Q.EMPLOYEES.filter(function (x) { return x.entity === e.code; });
+      var byCity = {};
+      list.forEach(function (x) { byCity[x.city] = (byCity[x.city] || 0) + 1; });
+      var cities = Object.keys(byCity).map(function (c) { return c + ' ' + byCity[c]; }).join(' · ');
+      var rule = Q.cityRule(e.city, P);
+      var bad = Q.missingRuleIn(P, e.code).length;
+      return '<tr' + (bad ? ' class="is-invalid"' : '') + '>' +
+        '<td class="sticky-col"><span class="strong">' + esc(e.name) + '</span>' +
+        '<span class="tbl-sub">' + list.length + ' 名在册员工</span></td>' +
+        '<td class="mono">' + e.code + '</td>' +
+        '<td class="small">' + esc(cities) + '</td>' +
+        '<td>' + esc(e.city) + '</td>' +
+        '<td class="mono">' + (rule ? esc(rule.version) : '—') + '</td>' +
+        '<td>' + (bad ? Q.badge('blocked', bad + ' 人缺规则')
+                      : (rule ? Q.badge('ok', '可计算') : Q.badge('missing', '缺规则'))) + '</td>' +
+        '</tr>';
+    }).join('');
+  }
+
+  /* ── 版本历史 ───────────────────────────────────────────── */
+  function renderVersions() {
+    var rows = [];
+    Object.keys(Q.CITY_RULES).forEach(function (city) {
+      Q.ruleVersions(city).forEach(function (rule) {
+        var covers = rule.validFrom <= P + '-01' && rule.validTo >= P + '-01';
+        rows.push('<tr>' +
+          '<td><span class="strong">' + esc(city) + '</span></td>' +
+          '<td class="mono">' + esc(rule.version) + '</td>' +
+          '<td class="n mono">' + Q.money(rule.base) + '</td>' +
+          '<td class="mono small">' + esc(rule.validFrom) + ' 至 ' + esc(rule.validTo) + '</td>' +
+          '<td>' + Q.badge(rule.status === 'valid' ? 'valid' : 'expired') + '</td>' +
+          '<td>' + (covers ? Q.badge('ok', '命中') : Q.badge('muted', '不适用')) + '</td>' +
+          '</tr>');
+      });
+    });
+    document.getElementById('ver-rows').innerHTML = rows.join('');
+  }
+
+  /* ── 待补规则员工 ───────────────────────────────────────── */
+  function renderMissing() {
+    var miss = Q.missingRuleEmployees(P);
+    var host = document.getElementById('miss-rows');
+    if (!miss.length) {
+      host.innerHTML = '<tr><td colspan="3"><div class="tbl-empty">本期没有缺少规则的员工</div></td></tr>';
+      return;
+    }
+    host.innerHTML = miss.map(function (e) {
+      return '<tr><td><span class="strong">' + esc(e.name) + '</span>' +
+        '<span class="tbl-sub mono">' + e.id + '</span></td>' +
+        '<td class="small">' + esc(Q.ent(e.entity).short) + '</td>' +
+        '<td>' + esc(e.city) + '</td></tr>';
+    }).join('');
+  }
+
+  /* ── 操作栏 ─────────────────────────────────────────────── */
+  function renderActions() {
+    var miss = Q.missingRuleEmployees(P);
+    var szPending = !Q.state().szRuleAdded && miss.some(function (e) { return e.city === '深圳'; });
+    var btn = document.getElementById('btn-add-sz');
+    btn.hidden = !szPending;
+    var reason = document.getElementById('cr-reason');
+    if (szPending) {
+      var n = miss.filter(function (e) { return e.city === '深圳'; }).length;
+      reason.textContent = '深圳规则 v2025.1 已于 2026-07-31 到期，' + n + ' 名员工在 ' + P + ' 无可用规则；补齐 v2026.2 后即可试算。';
+    } else if (miss.length) {
+      reason.textContent = '仍有 ' + miss.length + ' 名员工缺少可用城市规则。';
+    } else {
+      reason.textContent = '所有城市规则均已就绪，历史期间继续命中各自版本。';
+    }
+  }
+
+  function rerender() {
+    renderGate(); renderMetrics(); renderCards();
+    renderEntities(); renderVersions(); renderMissing(); renderActions();
+    Q.qa('[data-icon]').forEach(function (el) { el.innerHTML = Q.icon(el.getAttribute('data-icon')); });
+  }
+
+  /* ── 事件 ───────────────────────────────────────────────── */
+  document.getElementById('btn-add-sz').addEventListener('click', function () {
+    Q.setState({ szRuleAdded: true });
+    rerender();
+    Q.toast('已补齐深圳 2026 年规则（v2026.2，基数 ' + Q.money(Q.SZ_RULE_2026.base) + ' 元），历史期间仍命中 v2025.1', 'ok');
+  });
+  document.getElementById('btn-add-rule').addEventListener('click', function () {
+    Q.openOverlay('drawer-rule');
+  });
+
+  rerender();
+})();
+</script>
+</body>
+</html>

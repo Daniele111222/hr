@@ -1,0 +1,256 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>月度工作台 · 轻算薪</title>
+<link rel="stylesheet" href="assets/app.css">
+</head>
+<body data-page="workbench" data-crumb="工作台/月度工作台" data-title="月度工作台" data-scope="payroll">
+<div class="app">
+  <aside class="sidebar" id="sidebar" data-od-id="sidebar"></aside>
+  <div class="main">
+    <header class="topbar" id="topbar" data-od-id="topbar"></header>
+    <main class="content">
+
+      <section data-od-id="workbench-summary">
+        <div class="between" style="align-items:flex-start; flex-wrap:wrap; gap:10px">
+          <p class="page-lead">2026 年 8 月工资期间。三个工资归属主体、128 名员工。下列进度按「资料准备 → 考勤导入 → 绩效导入 → 工资试算 → 考勤激励 → 确认锁定 → 结果导出」推进，红色为阻断项，必须处理完才能整批确认。</p>
+          <div class="anchors">
+            <a href="#progress">主体进度</a>
+            <a href="#todos">待办</a>
+            <a href="#recent">最近记录</a>
+          </div>
+        </div>
+      </section>
+
+      <section class="metrics" data-od-id="workbench-metrics" id="metrics"></section>
+
+      <section class="card" data-od-id="workbench-flow">
+        <div class="card-head">
+          <h2>月度处理流程</h2>
+          <span class="sub">当前期间 2026-08 · 整体进度 3 / 7</span>
+        </div>
+        <div class="card-body">
+          <div class="steps" id="flow"></div>
+        </div>
+      </section>
+
+      <section class="card" data-od-id="workbench-entities" id="progress">
+        <div class="card-head">
+          <h2>各主体进度</h2>
+          <span class="sub">工资主体独立核算，考勤激励由全公司统一计算</span>
+          <span class="spacer"></span>
+          <a class="btn btn-sm" href="periods.html">工资期间与批次</a>
+        </div>
+        <div class="tbl-wrap">
+          <table class="tbl">
+            <thead>
+              <tr>
+                <th class="sticky-col" style="min-width:190px">主体</th>
+                <th class="n">员工数</th>
+                <th>考勤准备</th>
+                <th>绩效准备</th>
+                <th>规则状态</th>
+                <th>工资批次状态</th>
+                <th style="min-width:160px">下一步操作</th>
+              </tr>
+            </thead>
+            <tbody id="entity-rows"></tbody>
+          </table>
+        </div>
+      </section>
+
+      <div class="grid-2-1" data-od-id="workbench-todo-shortcut">
+        <section class="card" id="todos" data-od-id="workbench-todos">
+          <div class="card-head">
+            <h2>待办</h2>
+            <span class="sub" id="todo-count"></span>
+          </div>
+          <div id="todo-list"></div>
+        </section>
+        <div class="stack">
+          <section class="card" data-od-id="workbench-shortcuts">
+            <div class="card-head"><h2>快捷入口</h2></div>
+            <div class="card-body stack" style="gap:8px">
+              <a class="btn" href="employees.html" style="justify-content:flex-start">维护员工资料</a>
+              <a class="btn" href="import-center.html" style="justify-content:flex-start">导入考勤与绩效</a>
+              <a class="btn" href="batch-detail.html" style="justify-content:flex-start">进入批次核算</a>
+              <a class="btn" href="export-center.html" style="justify-content:flex-start">导出结果</a>
+            </div>
+          </section>
+          <section class="callout is-info" data-od-id="workbench-tip">
+            <span id="fi-info"></span>
+            <div>
+              <div class="callout-title">输出口径</div>
+              系统输出的所有金额均为「未扣个税金额」。导出后请在 Excel 中完成个税计算、扣税与核对，系统结果不代表最终实际到账金额。
+            </div>
+          </section>
+        </div>
+      </div>
+
+      <div class="grid-2" data-od-id="workbench-recent" id="recent">
+        <section class="card" data-od-id="workbench-recent-imports">
+          <div class="card-head">
+            <h2>最近导入</h2>
+            <a class="btn btn-sm btn-ghost" href="import-center.html">全部导入</a>
+          </div>
+          <div class="tbl-wrap">
+            <table class="tbl">
+              <thead><tr><th>类型</th><th>主体</th><th>期间</th><th class="n">成功/错误</th><th>时间</th><th>状态</th></tr></thead>
+              <tbody id="recent-imports"></tbody>
+            </table>
+          </div>
+        </section>
+        <section class="card" data-od-id="workbench-recent-exports">
+          <div class="card-head">
+            <h2>最近导出</h2>
+            <a class="btn btn-sm btn-ghost" href="export-center.html">导出中心</a>
+          </div>
+          <div class="tbl-wrap">
+            <table class="tbl">
+              <thead><tr><th>模板</th><th>范围</th><th class="n">员工数</th><th>时间</th><th>状态</th></tr></thead>
+              <tbody id="recent-exports"></tbody>
+            </table>
+          </div>
+        </section>
+      </div>
+
+    </main>
+    <footer class="pagefoot"></footer>
+  </div>
+</div>
+<script src="assets/app.js"></script>
+<script>
+(function () {
+  var Q = window.QSX, P = Q.COMPANY.period, esc = Q.esc, s = Q.state();
+
+  /* ── 指标 ───────────────────────────────────────────────── */
+  var all = Q.computeAll(P);
+  var sum = Q.summarize(all);
+  var todos = buildTodos();
+  var confirmed = s.locked ? 3 : (s.confirmed ? 3 : 0);
+
+  document.getElementById('metrics').innerHTML = [
+    metric('本期待处理员工数', sum.count, '人', '三个主体在册，含 2 名本期入职、4 名本期离职'),
+    metric('待修复问题数', todos.length, '项', '其中 <b>' + todos.filter(function (t) { return t.level === 'block'; }).length + ' 项阻断</b>，阻断项未清零前不能整批确认', 'is-warn'),
+    metric('已确认批次数', confirmed + ' <span class="unit">/ 3</span>', '', confirmed === 3 ? '本期三个正常工资批次均已确认' : '本期三个正常工资批次均未确认锁定'),
+    metric('未扣个税金额合计', '¥ ' + Q.money(sum.net), '', (s.locked ? '已锁定' : '当前试算') + '结果合计 ' + sum.ok + ' 人；系统结果不含个税', 'is-accent')
+  ].join('');
+
+  function metric(label, value, unit, foot, cls) {
+    return '<div class="metric ' + (cls || '') + '"><div class="metric-label">' + esc(label) + '</div>' +
+      '<div class="metric-value">' + value + (unit ? '<span class="unit">' + unit + '</span>' : '') + '</div>' +
+      '<div class="metric-foot">' + foot + '</div></div>';
+  }
+
+  /* ── 流程 ───────────────────────────────────────────────── */
+  var statuses = Q.ENTITIES.map(function (e) { return Q.entityStatus(e.code); });
+  var allReady = statuses.every(function (x) { return x.key === 'ready'; });
+  var flow = [
+    { t: '资料准备', st: 'done', note: '128 人在册，' + Q.EMPLOYEES.filter(function (e) { return e.profile !== '完整'; }).length + ' 人资料缺项' },
+    { t: '考勤导入', st: 'done', note: '三主体全部就绪' },
+    { t: '绩效导入', st: s.perfFixed ? 'done' : 'blocked', note: s.perfFixed ? '三主体全部就绪' : '上海 3 行错误待修复' },
+    { t: '工资试算', st: s.perfFixed ? (s.recalculated ? 'done' : 'current') : 'blocked', note: s.recalculated ? '三主体已重新试算' : (s.perfFixed ? '输入已更新，需重新试算' : '上海 2 人绩效系数异常') },
+    { t: '考勤激励', st: s.incentiveDone ? 'done' : (Q.incentiveReady() ? 'current' : 'blocked'), note: s.incentiveDone ? '已计算并计入工资' : (Q.incentiveReady() ? '可执行本期分配' : '待三主体数据齐全') },
+    { t: '确认锁定', st: s.locked ? 'done' : (s.confirmed ? 'current' : (allReady ? 'current' : 'blocked')), note: s.locked ? '已锁定，内容只读' : (s.confirmed ? '已确认，待锁定' : (allReady ? '全体校验通过，可确认' : '需全体校验通过')) },
+    { t: '结果导出', st: s.exported ? 'done' : (s.locked ? 'current' : 'pending'), note: s.exported ? '工资表已生成' : (s.locked ? '可生成四类文件' : '未开始') }
+  ];
+  var flowDone = flow.filter(function (f) { return f.st === 'done'; }).length;
+  document.getElementById('flow-sub').textContent = '当前期间 2026-08 · 整体进度 ' + flowDone + ' / 7';
+  document.getElementById('flow').innerHTML = flow.map(function (f, i) {
+    return (i ? '<span class="step-line"></span>' : '') +
+      '<div class="step is-' + f.st + '"><span class="step-dot">' + (f.st === 'done' ? '✓' : (f.st === 'blocked' ? '!' : i + 1)) + '</span>' +
+      '<span class="step-label">' + esc(f.t) + '<br><span class="meta">' + esc(f.note) + '</span></span></div>';
+  }).join('');
+
+  /* ── 主体进度 ───────────────────────────────────────────── */
+  var prep = {
+    SH01: { att: ['ok', '就绪 96/96'], perf: s.perfFixed ? ['ok', '就绪 96/96'] : ['partial', '93/96，3 行错误'] },
+    BJ01: { att: ['ok', '就绪 24/24'], perf: ['ok', '就绪 24/24'] },
+    SZ01: { att: ['ok', '就绪 8/8'], perf: ['ok', '就绪 8/8'] }
+  };
+  /* 每个主体下一步该做的事，随演示状态推进 */
+  function nextAction(code, st) {
+    var s = Q.state();
+    if (st.note.indexOf('缺有效城市规则') >= 0) return { t: '维护深圳城市规则', href: 'city-rules.html' };
+    if (code === 'SH01' && !s.perfFixed) return { t: '修复绩效导入错误', href: 'import-batch.html' };
+    if (!s.recalculated) return { t: '重新试算', href: 'batch-detail.html' };
+    if (!Q.incentiveDone()) return { t: '计算考勤激励', href: 'incentive.html' };
+    if (s.locked) return { t: '查看已锁定批次', href: 'batch-detail.html' };
+    if (s.exported) return { t: '查看导出记录', href: 'export-center.html' };
+    if (!s.confirmed) return { t: '整批确认', href: 'batch-detail.html' };
+    return { t: '生成导出文件', href: 'export-center.html' };
+  }
+  document.getElementById('entity-rows').innerHTML = Q.ENTITIES.map(function (e) {
+    var st = Q.entityStatus(e.code), p = prep[e.code], na = nextAction(e.code, st);
+    var rules = Q.cityRule(e.city, P);
+    return '<tr>' +
+      '<td class="sticky-col"><a href="periods.html">' + esc(e.name) + '</a><span class="tbl-sub">' + e.code + ' · base ' + e.city + '</span></td>' +
+      '<td class="n mono">' + e.headcount + '</td>' +
+      '<td>' + Q.badge(p.att[0], p.att[1]) + '</td>' +
+      '<td>' + Q.badge(p.perf[0], p.perf[1]) + '</td>' +
+      '<td>' + (rules ? Q.badge('valid', '生效中 ' + rules.version) : Q.badge('expired', '已过期')) + '</td>' +
+      '<td>' + Q.badge(st.key, st.label) + '<span class="tbl-sub">' + esc(st.note) + '</span></td>' +
+      '<td><a class="btn btn-sm' + (st.key === 'blocked' ? ' btn-primary' : '') + '" href="' + na.href + '">' + esc(na.t) + '</a></td>' +
+      '</tr>';
+  }).join('');
+
+  /* ── 待办 ───────────────────────────────────────────────── */
+  function buildTodos() {
+    var s = Q.state(), out = [];
+    if (!s.perfFixed) {
+      out.push({ level: 'block', title: '上海主体：绩效导入有 3 行错误', desc: 'IMP-202608-SH01-002 · 缺绩效系数、绩效系数为负数、员工无法匹配', href: 'import-batch.html', act: '前往纠错' });
+      out.push({ level: 'block', title: '上海主体：2 名员工绩效系数异常', desc: 'EMP037 缺失、EMP058 为负数，无法计入绩效金额', href: 'import-batch.html', act: '修正系数' });
+    } else if (!s.recalculated) {
+      out.push({ level: 'warn', title: '上海主体：输入已更新，原试算已失效', desc: '绩效数据已修正，需重新试算后才能整批确认', href: 'batch-detail.html', act: '重新试算' });
+    }
+    if (!s.szRuleAdded) {
+      out.push({ level: 'block', title: '深圳社保与公积金规则已过期', desc: '深圳规则有效期至 2026-07-31，2026-08 期间无适用规则，7 名深圳主体员工与 1 名 base 深圳的北京员工无法计算', href: 'city-rules.html', act: '维护规则' });
+    }
+    if (!Q.incentiveReady()) {
+      out.push({ level: 'block', title: '全公司考勤激励待计算', desc: '需三个主体本期数据齐全后统一计算；缺少最终激励的结果不能作为可确认结果', href: 'incentive.html', act: '查看激励' });
+    } else if (!Q.incentiveDone()) {
+      out.push({ level: 'warn', title: '全公司考勤激励待计算', desc: '三主体数据已齐全，可执行本期激励分配', href: 'incentive.html', act: '计算激励' });
+    }
+    if (s.perfFixed && s.recalculated && Q.incentiveDone() && !s.confirmed) {
+      out.push({ level: 'info', title: '三个主体：全体校验通过，可整批确认', desc: '确认后工资内容只读，需更正请发起整批更正', href: 'batch-detail.html', act: '去确认' });
+    }
+    if (s.confirmed && !s.locked) {
+      out.push({ level: 'warn', title: '已确认，待锁定', desc: '锁定后本期工资内容不可修改，仅能通过整批更正调整', href: 'batch-detail.html', act: '去锁定' });
+    }
+    if (s.locked && !s.exported) {
+      out.push({ level: 'warn', title: '本期已锁定，尚未生成导出文件', desc: '可生成工资表、代发工资表、人工成本表等文件', href: 'export-center.html', act: '生成导出' });
+    }
+    var bankGap = Q.EMPLOYEES.filter(function (e) { return e.bankStatus !== '已校验'; }).length;
+    var profGap = Q.EMPLOYEES.filter(function (e) { return e.profile !== '完整'; }).length;
+    out.push({ level: 'info', title: '员工资料：' + bankGap + ' 人银行卡资料待校验、' + profGap + ' 人资料缺项', desc: '不影响试算，导出代发工资表前建议补齐', href: 'employees.html', act: '查看员工' });
+    return out;
+  }
+  document.getElementById('todo-list').innerHTML = todos.map(function (t) {
+    var cls = t.level === 'block' ? 'is-block' : (t.level === 'warn' ? 'is-warn' : 'is-info');
+    var mark = t.level === 'block' ? '!' : (t.level === 'warn' ? '!' : 'i');
+    return '<div class="todo"><span class="todo-icon ' + cls + '">' + mark + '</span>' +
+      '<div class="todo-body"><div class="todo-title">' + esc(t.title) + '</div><div class="todo-desc">' + esc(t.desc) + '</div></div>' +
+      '<a class="btn btn-sm" href="' + t.href + '">' + esc(t.act) + '</a></div>';
+  }).join('');
+  document.getElementById('todo-count').textContent = todos.length + ' 项 · ' + todos.filter(function (t) { return t.level === 'block'; }).length + ' 项阻断';
+
+  document.getElementById('fi-info').outerHTML = Q.ICONS.info;
+
+  /* ── 最近记录 ───────────────────────────────────────────── */
+  document.getElementById('recent-imports').innerHTML = Q.IMPORTS.slice(0, 5).map(function (r) {
+    return '<tr><td>' + esc(r.type) + '</td><td>' + esc(Q.ent(r.entity).short) + '</td><td class="mono">' + r.period + '</td>' +
+      '<td class="n mono">' + r.ok + ' / ' + r.err + '</td><td class="mono small">' + esc(r.time) + '</td>' +
+      '<td>' + Q.badge(r.state) + '</td></tr>';
+  }).join('');
+
+  document.getElementById('recent-exports').innerHTML = Q.exportHistory().slice(0, 5).map(function (r) {
+    return '<tr><td>' + esc(r.tpl) + '</td><td class="small">' + esc(r.scope) + '</td><td class="n mono">' + r.count + '</td>' +
+      '<td class="mono small">' + esc(r.time) + '</td>' +
+      '<td>' + (r.st === 'warn' ? Q.badge('missing', '成功 · 有字段留空') : Q.badge('ok', '成功')) + '</td></tr>';
+  }).join('');
+})();
+</script>
+</body>
+</html>

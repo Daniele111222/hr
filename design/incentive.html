@@ -1,0 +1,327 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>全公司考勤激励 · 轻算薪</title>
+<link rel="stylesheet" href="assets/app.css">
+</head>
+<body data-page="incentive" data-crumb="工资核算/全公司考勤激励" data-title="全公司考勤激励" data-scope="payroll">
+<div class="app">
+  <aside class="sidebar" id="sidebar" data-od-id="sidebar"></aside>
+  <div class="main">
+    <header class="topbar" id="topbar" data-od-id="topbar"></header>
+    <main class="content">
+
+      <section data-od-id="incentive-lead">
+        <p class="page-lead">考勤激励是跨主体统一计算的分配项：把上月全公司锁定后的考勤扣款总额，按本月符合条件的人数平均分配。激励计入工资，但不计入社保与公积金基数。</p>
+      </section>
+
+      <section id="gate-callout" data-od-id="incentive-gate"></section>
+
+      <section class="metrics is-5" data-od-id="incentive-metrics">
+        <div class="metric"><div class="metric-label">上月扣款池</div><div class="metric-value mono" id="m-pool"></div><div class="metric-foot" id="m-pool-foot"></div></div>
+        <div class="metric"><div class="metric-label">本月符合条件人数</div><div class="metric-value mono" id="m-elig"></div><div class="metric-foot" id="m-elig-foot"></div></div>
+        <div class="metric is-accent"><div class="metric-label">平均分配金额</div><div class="metric-value mono" id="m-avg"></div><div class="metric-foot">每人应得，保留两位小数</div></div>
+        <div class="metric"><div class="metric-label">尾差</div><div class="metric-value mono" id="m-rem"></div><div class="metric-foot">平均分配后四舍五入余数，留在池中不发放</div></div>
+        <div class="metric"><div class="metric-label">数据准备状态</div><div class="metric-value mono" id="m-ready"></div><div class="metric-foot" id="m-ready-foot"></div></div>
+      </section>
+
+      <section class="card" data-od-id="incentive-entities">
+        <div class="card-head"><h2>各主体数据准备</h2><span class="sub">三个主体本期数据齐全后才能统一计算</span></div>
+        <div class="tbl-wrap">
+          <table class="tbl">
+            <thead><tr><th style="min-width:160px">主体</th><th>数据准备</th><th style="min-width:300px">未就绪原因</th><th style="min-width:150px">操作</th></tr></thead>
+            <tbody id="ent-rows"></tbody>
+          </table>
+        </div>
+      </section>
+
+      <section class="card" data-od-id="incentive-employees">
+        <div class="card-head">
+          <h2>员工资格与激励金额</h2>
+          <span class="sub" id="emp-sub"></span>
+          <span class="spacer"></span>
+          <label class="row small muted" style="gap:6px">主体
+            <select class="select" id="f-entity" data-od-id="filter-entity">
+              <option value="">全部主体（3）</option>
+            </select></label>
+          <label class="row small muted" style="gap:6px">资格判定
+            <select class="select" id="f-elig" data-od-id="filter-elig">
+              <option value="">全部</option>
+              <option value="yes">符合条件</option>
+              <option value="no">已排除</option>
+            </select></label>
+        </div>
+        <div class="tbl-wrap" style="max-height:560px;overflow-y:auto">
+          <table class="tbl">
+            <thead><tr>
+              <th class="sticky-col" style="min-width:132px">员工</th><th>主体</th><th>部门</th><th>职级</th>
+              <th>转正状态</th><th style="min-width:180px">本月考勤记录</th><th>资格判定</th>
+              <th style="min-width:180px">排除原因</th><th class="n">激励金额</th>
+            </tr></thead>
+            <tbody id="emp-rows"></tbody>
+          </table>
+        </div>
+        <div class="card-body" id="emp-foot"></div>
+      </section>
+
+      <section class="grid-1-2" data-od-id="incentive-analysis">
+        <div class="card">
+          <div class="card-head"><h2>排除原因分布</h2><span class="sub">全公司 128 人</span></div>
+          <div class="card-body"><div class="chart" id="reason-chart"></div></div>
+        </div>
+        <div class="card">
+          <div class="card-head"><h2>激励规则</h2><span class="sub">现行口径 · 已确认的业务约定</span></div>
+          <div class="card-body">
+            <ul class="rule-list" id="rule-list"></ul>
+            <div class="callout is-warn" style="margin-top:12px"><span data-icon="warn"></span><div>
+              <b class="callout-title">各主体可以先试算普通工资，但不能提前确认</b>
+              <div>缺少最终激励金额的结果不是可确认结果。三个主体必须等本页计算完成后，才能在批次核算详情里整批确认。</div>
+            </div></div>
+          </div>
+        </div>
+      </section>
+
+      <section class="actionbar" data-od-id="incentive-actionbar">
+        <a class="btn btn-sm btn-ghost" href="batch-detail.html">返回批次核算详情</a>
+        <span class="spacer"></span>
+        <span class="reason" id="bar-reason"></span>
+        <a class="btn btn-sm" href="payroll-rules.html">查看考勤与薪酬规则</a>
+        <button class="btn btn-sm btn-primary" id="btn-calc" data-od-id="btn-calc"></button>
+      </section>
+
+    </main>
+    <footer class="pagefoot"></footer>
+  </div>
+</div>
+<script src="assets/app.js"></script>
+<script>
+(function () {
+  var Q = window.QSX, esc = Q.esc;
+  var P = Q.COMPANY.period, PREV = Q.prevPeriod(P);
+  var PAGE = 1, SIZE = 15;
+  var F_ENT = '', F_ELIG = '';
+
+  function allRows() {
+    return Q.EMPLOYEES.map(function (e) { return Q.computeOne(e, P, { perfMissing: false }); });
+  }
+  function attText(c) {
+    var a = c.att;
+    if (!a.hasRecord) return '<span class="badge is-warn">无考勤记录</span>';
+    var bad = [];
+    if (a.lateMin) bad.push('迟到 ' + a.lateMin + ' 分钟');
+    if (a.earlyMin) bad.push('早退 ' + a.earlyMin + ' 分钟');
+    if (a.missPunch) bad.push('忘打卡 ' + a.missPunch + ' 次');
+    if (a.leaveType !== '无') bad.push(a.leaveType + '假 ' + a.leaveDays + ' 天');
+    return bad.length ? '<span class="badge is-danger">' + esc(bad.join('、')) + '</span>' : Q.badge('ok', '正常');
+  }
+  function regularText(c) {
+    if (c.regularInPeriod) return '本月转正';
+    return c.isRegular ? '已转正' : '试用期';
+  }
+  function bucketOf(c) {
+    var e = c.emp, a = c.att;
+    if (!c.ok) return '数据缺失，暂无法参与';
+    if (e.state !== '在职') return '本期已离职';
+    if (!c.isRegular || e.probation) return '试用期未转正';
+    if (e.grade === 'P7' || e.grade === 'P8') return 'P7 及以上不参与';
+    if (!a.hasRecord) return '本期无考勤记录';
+    if (a.lateMin > 0 || a.earlyMin > 0 || a.missPunch > 0) return '存在迟到 / 早退 / 忘打卡';
+    if (a.leaveType !== '无') return '本期有请假记录';
+    return '其他';
+  }
+
+  /* ── 门禁 ───────────────────────────────────────────────── */
+  /* 就绪判定完全复用引擎的实体状态，避免本页与批次核算详情口径不一致 */
+  function readyEntities() {
+    return Q.ENTITIES.map(function (e) {
+      var st = Q.entityStatus(e.code);
+      return { code: e.code, ok: st.key !== 'blocked', st: st };
+    });
+  }
+  function canCalc() {
+    return readyEntities().every(function (e) { return e.ok; });
+  }
+  function fixLink(note) {
+    return note.indexOf('城市规则') >= 0 ? 'city-rules.html' : 'import-batch.html';
+  }
+
+  function renderGate() {
+    var el = document.getElementById('gate-callout'), s = Q.state(), list = readyEntities();
+    var bad = list.filter(function (e) { return !e.ok; });
+    if (s.incentiveDone) {
+      el.innerHTML = '<div class="callout is-ok"><span>' + Q.icon('check') + '</span><div>' +
+        '<b class="callout-title">本期考勤激励已计算，并已写入各主体工资</b>' +
+        '<div>符合条件 ' + Q.incentivePlan(P).eligible.length + ' 人，每人 <span class="mono">' + Q.money(Q.incentivePlan(P).avg) + '</span> 元。激励计入应发金额与未扣个税金额，但不计入社保与公积金基数。</div>' +
+        '<div style="margin-top:6px"><a href="batch-detail.html">返回批次核算详情继续核对 →</a></div></div></div>';
+      return;
+    }
+    if (bad.length) {
+      el.innerHTML = '<div class="callout is-danger"><span>' + Q.icon('block') + '</span><div>' +
+        '<b class="callout-title">还有 ' + bad.length + ' 个主体数据未就绪，暂不能计算</b>' +
+        '<div>' + bad.map(function (e) { return esc(Q.ent(e.code).short) + '：' + esc(e.st.note); }).join('；') + '。' +
+        '全公司本期数据齐全后才能统一计算，否则分配人数与金额都会失真。</div>' +
+        '<div style="margin-top:6px"><a href="' + fixLink(bad[0].st.note) + '">先去处理 →</a></div></div></div>';
+      return;
+    }
+    el.innerHTML = '<div class="callout is-warn"><span>' + Q.icon('warn') + '</span><div>' +
+      '<b class="callout-title">三个主体数据已齐全，等待计算本期激励</b>' +
+      '<div>上月扣款池 <span class="mono">' + Q.money(Q.incentivePlan(P).pool) + '</span> 元，将在计算后按符合条件人数平均分配。</div></div></div>';
+  }
+
+  /* ── 指标 ───────────────────────────────────────────────── */
+  function renderMetrics() {
+    var plan = Q.incentivePlan(P), s = Q.state(), list = readyEntities();
+    var okN = list.filter(function (e) { return e.ok; }).length;
+    document.getElementById('m-pool').textContent = Q.money(plan.pool);
+    document.getElementById('m-pool-foot').innerHTML = '来自 <span class="mono">' + PREV + '</span> 全公司锁定后的考勤扣款';
+    document.getElementById('m-elig').textContent = plan.eligible.length;
+    document.getElementById('m-elig-foot').textContent = '全公司 128 人中，满足全部条件的人数';
+    document.getElementById('m-avg').textContent = s.incentiveDone ? Q.money(plan.avg) : '待计算';
+    document.getElementById('m-rem').textContent = Q.money(plan.remainder);
+    document.getElementById('m-ready').textContent = okN + ' / 3';
+    document.getElementById('m-ready-foot').textContent = okN === 3 ? '三个主体数据齐全' : '尚有主体未就绪';
+  }
+
+  function renderEntities() {
+    document.getElementById('ent-rows').innerHTML = readyEntities().map(function (e) {
+      var ent = Q.ent(e.code);
+      var att = Q.IMPORTS.filter(function (r) { return r.period === P && r.entity === e.code && r.type === '月度考勤'; })[0];
+      var src = fixLink(e.st.note);
+      return '<tr>' +
+        '<td><span class="strong">' + esc(ent.short) + '</span><span class="tbl-sub mono">' + e.code + ' · ' + ent.city + ' · ' + ent.headcount + ' 人</span></td>' +
+        '<td>' + Q.badge(e.ok ? 'ok' : 'blocked', e.ok ? '已就绪' : '未就绪') + '</td>' +
+        '<td class="small">' + (e.ok ? '考勤与绩效均已导入，城市规则有效' : esc(e.st.note)) + '</td>' +
+        '<td>' + (e.ok
+          ? '<span class="meta">' + (att ? '考勤 ' + att.ok + '/' + att.total : '—') + '</span>'
+          : '<a class="btn btn-sm btn-primary" href="' + src + '">去处理</a>') + '</td></tr>';
+    }).join('');
+  }
+
+  /* ── 员工表 ─────────────────────────────────────────────── */
+  function filtered() {
+    var list = allRows();
+    if (F_ENT) list = list.filter(function (c) { return c.emp.entity === F_ENT; });
+    if (F_ELIG === 'yes') list = list.filter(function (c) { return Q.isEligible(c); });
+    if (F_ELIG === 'no') list = list.filter(function (c) { return !Q.isEligible(c); });
+    return list;
+  }
+  function renderEmployees() {
+    var list = filtered(), s = Q.state();
+    var pages = Math.max(1, Math.ceil(list.length / SIZE));
+    if (PAGE > pages) PAGE = pages;
+    var slice = list.slice((PAGE - 1) * SIZE, PAGE * SIZE);
+    var body = document.getElementById('emp-rows');
+
+    if (!list.length) {
+      body.innerHTML = '<tr><td colspan="9"><div class="empty">' + Q.icon('users') +
+        '<h3>没有符合条件的员工</h3><p>本期没有员工同时满足「有考勤记录、已转正、职级低于 P7、且无迟到 / 早退 / 忘打卡 / 请假」。此时系统不分摊扣款池，池内金额顺延至下一期，不做零金额发放。</p></div></td></tr>';
+    } else {
+      body.innerHTML = slice.map(function (c) {
+        var elig = Q.isEligible(c);
+        var inc = s.incentiveDone && elig ? Q.money(Q.incentivePlan(P).avg) : (elig ? '<span class="meta">待计算</span>' : '—');
+        return '<tr>' +
+          '<td class="sticky-col"><a class="strong" href="ledger-employee.html?id=' + c.emp.id + '">' + esc(c.emp.name) + '</a><span class="tbl-sub mono">' + c.emp.id + '</span></td>' +
+          '<td>' + esc(Q.ent(c.emp.entity).short) + '</td>' +
+          '<td>' + esc(Q.dept(c.emp.dept).name) + '</td>' +
+          '<td class="mono">' + c.emp.grade + '</td>' +
+          '<td>' + esc(regularText(c)) + '</td>' +
+          '<td>' + attText(c) + '</td>' +
+          '<td>' + (elig ? Q.badge('ok', '符合条件') : Q.badge('missing', '已排除')) + '</td>' +
+          '<td class="small">' + (elig ? '<span class="meta">—</span>' : esc(Q.excludeReason(c))) + '</td>' +
+          '<td class="n mono">' + inc + '</td></tr>';
+      }).join('');
+    }
+
+    var btns = '';
+    for (var i = 1; i <= pages; i++) btns += '<button data-page="' + i + '"' + (i === PAGE ? ' class="is-on"' : '') + '>' + i + '</button>';
+    document.getElementById('emp-foot').innerHTML =
+      '<div class="pager"><span class="meta">筛选后 ' + list.length + ' 人 · 第 ' + PAGE + ' / ' + pages + ' 页</span><span class="spacer"></span>' +
+      '<div class="pages"><button data-page="' + (PAGE - 1) + '"' + (PAGE <= 1 ? ' disabled' : '') + '>上一页</button>' + btns +
+      '<button data-page="' + (PAGE + 1) + '"' + (PAGE >= pages ? ' disabled' : '') + '>下一页</button></div></div>';
+    document.getElementById('emp-sub').textContent = '共 128 人 · 符合条件 ' + allRows().filter(function (c) { return Q.isEligible(c); }).length + ' 人';
+  }
+
+  /* ── 排除原因分布 ───────────────────────────────────────── */
+  function renderChart() {
+    var buckets = {};
+    allRows().forEach(function (c) {
+      if (Q.isEligible(c)) return;
+      var k = bucketOf(c);
+      buckets[k] = (buckets[k] || 0) + 1;
+    });
+    var keys = Object.keys(buckets).sort(function (a, b) { return buckets[b] - buckets[a]; });
+    var max = keys.reduce(function (m, k) { return Math.max(m, buckets[k]); }, 1);
+    var total = allRows().length;
+    document.getElementById('reason-chart').innerHTML =
+      '<div class="bar-row" style="font-size:11.5px;color:var(--muted)"><span class="bar-label">类别</span><span>人数占比</span><span class="bar-value">人数</span></div>' +
+      keys.map(function (k) {
+        var n = buckets[k];
+        return '<div class="bar-row"><span class="bar-label">' + esc(k) + '</span>' +
+          '<div class="bar-track"><div class="bar-fill" style="width:' + (n / max * 100).toFixed(1) + '%"></div></div>' +
+          '<span class="bar-value">' + n + ' 人</span></div>';
+      }).join('') +
+      '<div class="meta" style="margin-top:4px">合计排除 ' + (total - allRows().filter(function (c) { return Q.isEligible(c); }).length) + ' 人；同一员工只计入最主要的排除原因。</div>';
+  }
+
+  /* ── 规则清单 ───────────────────────────────────────────── */
+  function renderRules() {
+    var rules = [
+      ['计算时点', '全公司本期数据齐全后统一计算，主体不能各自计算。'],
+      ['资金来源', '分配上月全公司锁定后的考勤扣款总额。'],
+      ['资格条件', '本月有考勤记录、已转正、职级低于 P7，且无迟到、早退、忘打卡、请假。'],
+      ['分配方式', '按符合条件人数平均分配，金额保留两位小数。'],
+      ['尾差处理', '平均分配后四舍五入的余数留在池中，不摊派给个人。'],
+      ['基数口径', '激励计入工资，但不计入社保与公积金缴费基数。'],
+      ['无符合人员', '本期无人符合条件时，池内金额顺延至下一期，不做零金额发放。']
+    ];
+    document.getElementById('rule-list').innerHTML = rules.map(function (r) {
+      return '<li class="rule-item"><b>' + r[0] + '</b><span>' + r[1] + '</span></li>';
+    }).join('');
+  }
+
+  /* ── 操作栏 ─────────────────────────────────────────────── */
+  function renderBar() {
+    var s = Q.state(), btn = document.getElementById('btn-calc'), reason = document.getElementById('bar-reason');
+    if (s.incentiveDone) {
+      btn.className = 'btn btn-sm';
+      btn.textContent = '重新计算激励';
+      reason.innerHTML = '';
+    } else if (canCalc()) {
+      btn.className = 'btn btn-sm btn-primary';
+      btn.textContent = '计算本期激励';
+      reason.innerHTML = '';
+    } else {
+      btn.className = 'btn btn-sm btn-primary';
+      btn.disabled = true;
+      btn.textContent = '数据未就绪，暂不能计算';
+      reason.innerHTML = Q.icon('warn') + ' <span>尚有主体数据未就绪，计算会导致参与人数与金额失真</span>';
+    }
+  }
+
+  function rerender() { renderGate(); renderMetrics(); renderEntities(); renderEmployees(); renderChart(); renderRules(); renderBar(); }
+
+  /* ── 事件 ───────────────────────────────────────────────── */
+  document.getElementById('f-entity').innerHTML = '<option value="">全部主体（3）</option>' +
+    Q.ENTITIES.map(function (e) { return '<option value="' + e.code + '">' + esc(e.short) + ' · ' + e.headcount + ' 人</option>'; }).join('');
+  document.getElementById('f-entity').addEventListener('change', function () { F_ENT = this.value; PAGE = 1; renderEmployees(); });
+  document.getElementById('f-elig').addEventListener('change', function () { F_ELIG = this.value; PAGE = 1; renderEmployees(); });
+  document.addEventListener('click', function (e) {
+    var pg = e.target.closest('#emp-foot [data-page]');
+    if (pg && !pg.disabled) { PAGE = Number(pg.getAttribute('data-page')); renderEmployees(); }
+  });
+  document.getElementById('btn-calc').addEventListener('click', function () {
+    if (!canCalc()) return;
+    var plan = Q.incentivePlan(P);
+    Q.setState({ incentiveDone: true });
+    rerender();
+    Q.toast('考勤激励计算完成：' + plan.eligible.length + ' 人，每人 ' + Q.money(plan.avg) + ' 元', 'ok');
+  });
+
+  Q.qa('[data-icon]').forEach(function (el) { el.innerHTML = Q.icon(el.getAttribute('data-icon')); });
+  rerender();
+})();
+</script>
+</body>
+</html>

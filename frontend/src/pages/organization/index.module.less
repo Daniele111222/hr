@@ -1,16 +1,63 @@
-@page-width: 1120px;
-
 .page {
-  width: min(@page-width, 100%);
-  margin: 0 auto;
+    display: flex;
+    flex-direction: column;
+    gap: 14px;
+    width: 100%;
+}
+
+.pageLead {
+    h2 {
+        margin: 0 0 5px;
+        font-size: 20px;
+    }
+
+    p {
+        max-width: 92ch;
+        margin: 0;
+        font-size: 12.5px;
+    }
+}
+
+.companyCard,
+.dataCard {
+    border-color: var(--color-border);
+}
+
+.companyHint {
+    margin-bottom: 16px;
 }
 
 .grid {
-  width: 100%;
-  margin-top: 20px;
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 14px;
+    align-items: start;
+}
 
-  :global(.ant-card) {
-    flex: 1 1 480px;
-    min-width: 360px;
-  }
+.dataCard {
+    min-width: 0;
+
+    :global(.ant-card-body) {
+        padding: 0;
+    }
+
+    :global(.ant-table-tbody > tr:last-child > td) {
+        border-bottom: 0;
+    }
+}
+
+.mono {
+    font-family: var(--font-mono);
+}
+
+.drawerActions {
+    display: flex;
+    justify-content: flex-end;
+    width: 100%;
+}
+
+@media (max-width: 1080px) {
+    .grid {
+        grid-template-columns: 1fr;
+    }
 }

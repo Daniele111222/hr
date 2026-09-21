@@ -145,6 +145,7 @@ def update_employee(employee_id: int, payload: EmployeePatch, db: Session = Depe
     employee = db.get(Employee, employee_id)
     if not employee:
         raise HTTPException(404, "员工不存在")
+    previous_probation_status = employee.probation_status
     values = payload.model_dump(
         exclude_unset=True, exclude={"assignment", "salary", "base", "bank_account"}
     )
@@ -164,7 +165,7 @@ def update_employee(employee_id: int, payload: EmployeePatch, db: Session = Depe
             target_status,
             salary,
             current_salary,
-            employee.probation_status == "in_probation" and target_status != "in_probation",
+            previous_probation_status == "in_probation" and target_status != "in_probation",
         )
         current_assignment = _latest(db, EmployeeAssignment, employee.id)
         current_base = _latest(db, EmployeeBase, employee.id)

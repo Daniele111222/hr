@@ -19,14 +19,25 @@ export function AppProviders({ children }: PropsWithChildren) {
       locale={zhCN}
       theme={{
         token: {
-          colorPrimary: "#176b87",
-          colorInfo: "#176b87",
-          colorWarning: "#c47b17",
-          colorText: "#17212b",
-          colorBgLayout: "#f3f5f7",
+          colorPrimary: "#315fd1",
+          colorInfo: "#315fd1",
+          colorSuccess: "#2d9461",
+          colorWarning: "#a66b16",
+          colorError: "#c74343",
+          colorText: "#273142",
+          colorTextSecondary: "#687386",
+          colorBorderSecondary: "#e4e8ef",
+          colorBgLayout: "#f6f7f9",
           borderRadius: 6,
+          controlHeight: 32,
+          fontSize: 13,
           fontFamily:
             '-apple-system, BlinkMacSystemFont, "Segoe UI", "PingFang SC", "Microsoft YaHei", sans-serif',
+        },
+        components: {
+          Card: { headerHeight: 44, bodyPadding: 16 },
+          Table: { cellPaddingBlock: 9, cellPaddingInline: 12 },
+          Drawer: { padding: 18 },
         },
       }}
     >

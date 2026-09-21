@@ -1,0 +1,325 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>导入中心 · 轻算薪</title>
+<link rel="stylesheet" href="assets/app.css">
+</head>
+<body data-page="import-center" data-crumb="数据导入/导入中心" data-title="导入中心" data-scope="payroll">
+<div class="app">
+  <aside class="sidebar" id="sidebar" data-od-id="sidebar"></aside>
+  <div class="main">
+    <header class="topbar" id="topbar" data-od-id="topbar"></header>
+    <main class="content">
+
+      <section data-od-id="import-lead">
+        <p class="page-lead">三类导入均使用固定模板，系统不做自定义字段映射。正确的行先入库，错误的行保留在导入批次中待修正，修正后重新校验即可补入，不会重复导入。</p>
+      </section>
+
+      <section class="card" data-od-id="import-flow">
+        <div class="card-head"><h2>导入流程</h2><span class="sub">选择类型和适用范围 → 下载固定模板 → 上传 Excel → 校验预览 → 查看导入结果</span></div>
+        <div class="card-body">
+          <div class="steps">
+            <div class="step is-done"><span class="step-dot">1</span><span class="step-label">选择类型与适用范围</span></div>
+            <span class="step-line"></span>
+            <div class="step is-done"><span class="step-dot">2</span><span class="step-label">下载固定模板</span></div>
+            <span class="step-line"></span>
+            <div class="step is-current"><span class="step-dot">3</span><span class="step-label">上传 Excel</span></div>
+            <span class="step-line"></span>
+            <div class="step"><span class="step-dot">4</span><span class="step-label">校验预览</span></div>
+            <span class="step-line"></span>
+            <div class="step"><span class="step-dot">5</span><span class="step-label">查看导入结果</span></div>
+          </div>
+        </div>
+      </section>
+
+      <section class="card" data-od-id="import-setup">
+        <div class="card-head">
+          <h2>导入设置</h2>
+          <span class="spacer"></span>
+          <div class="seg" id="type-seg">
+            <button data-type="emp" data-view="">员工资料</button>
+            <button data-type="att" class="is-on" data-view="">月度考勤</button>
+            <button data-type="perf" data-view="">月度绩效</button>
+          </div>
+        </div>
+        <div class="card-body stack" style="gap:16px">
+          <div class="filters" style="border:0; padding:0; background:transparent">
+            <div class="filter" id="scope-entity-wrap"><label>主体<span class="req" style="color:var(--danger)">*</span></label><select class="select" id="scope-entity"></select></div>
+            <div class="filter" id="scope-period-wrap"><label>工资期间<span class="req" style="color:var(--danger)">*</span></label><select class="select" id="scope-period"></select></div>
+            <div class="filter is-wide"><label>批次（导入结果将关联到该批次）</label><input class="input" id="scope-batch" disabled></div>
+          </div>
+
+          <div class="callout is-info">
+            <span data-icon="info"></span>
+            <div style="flex:1">
+              <div class="callout-title" id="tpl-title"></div>
+              <div id="tpl-desc" style="margin-top:2px"></div>
+              <div class="row-wrap" style="margin-top:8px">
+                <span class="tag" id="tpl-ver"></span>
+                <span class="tag" id="tpl-cols"></span>
+                <button class="btn btn-sm" data-toast="模板已开始下载（原型演示）">下载模板</button>
+                <button class="btn btn-sm btn-ghost" data-open="drawer-tpl">填写说明</button>
+              </div>
+            </div>
+          </div>
+
+          <div class="drop" data-od-id="import-dropzone" data-toast="已选择文件 星澜上海_2026-08_绩效.xlsx（原型演示：校验结果见下方预览）">
+            <span data-icon="upload"></span>
+            <strong>把 Excel 拖到这里，或点击选择文件</strong>
+            <span class="meta">支持 .xlsx / .xls，单次不超过 5,000 行；必须使用上方对应版本的模板</span>
+          </div>
+        </div>
+      </section>
+
+      <section class="card" data-od-id="import-result-preview" id="preview-card">
+        <div class="card-head">
+          <h2>校验预览</h2>
+          <span class="sub" id="preview-sub"></span>
+          <span class="spacer"></span>
+          <span id="preview-actions"></span>
+        </div>
+        <div class="card-body stack" style="gap:14px">
+          <div class="metrics" style="grid-template-columns:repeat(3,minmax(0,1fr))">
+            <div class="metric"><div class="metric-label">总行数</div><div class="metric-value" id="c-total">—</div><div class="metric-foot">模板表头下方全部数据行</div></div>
+            <div class="metric"><div class="metric-label">通过行数</div><div class="metric-value" id="c-ok">—</div><div class="metric-foot">校验通过，可以直接入库</div></div>
+            <div class="metric is-warn"><div class="metric-label">错误行数</div><div class="metric-value" id="c-err">—</div><div class="metric-foot">保留在导入批次中待修正</div></div>
+          </div>
+
+          <div class="callout is-warn" id="partial-note">
+            <span data-icon="warn"></span>
+            <div><b>正确行先导入、错误行保留待修。</b>错误行不会阻塞其他行的导入，但在修正前，对应员工无法参与工资试算。</div>
+          </div>
+
+          <div class="section-title">数据预览 <span class="meta">（前 8 行 + 全部错误行）</span></div>
+          <div class="tbl-wrap">
+            <table class="tbl">
+              <thead id="pv-head"></thead>
+              <tbody id="pv-body"></tbody>
+            </table>
+          </div>
+          <div class="row" style="justify-content:flex-end">
+            <a class="btn btn-sm" href="import-batch.html" data-od-id="link-batch-detail">查看导入批次详情与纠错</a>
+          </div>
+        </div>
+      </section>
+
+      <section class="card" data-od-id="import-history">
+        <div class="card-head">
+          <h2>导入历史</h2>
+          <span class="sub" id="hist-sub"></span>
+        </div>
+        <div class="tbl-wrap">
+          <table class="tbl">
+            <thead>
+              <tr>
+                <th>类型</th><th>期间</th><th>主体</th><th style="min-width:210px">文件名</th>
+                <th>模板版本</th><th class="n">成功行</th><th class="n">失败行</th><th>时间</th><th>状态</th><th style="width:120px">操作</th>
+              </tr>
+            </thead>
+            <tbody id="hist-body"></tbody>
+          </table>
+        </div>
+      </section>
+
+    </main>
+    <footer class="pagefoot"></footer>
+  </div>
+</div>
+
+<!-- 填写说明抽屉 -->
+<div class="overlay" id="drawer-tpl" data-od-id="drawer-template-help">
+  <div class="drawer">
+    <div class="drawer-head">
+      <h2>模板填写说明</h2><span class="spacer"></span>
+      <button class="icon-btn" data-close aria-label="关闭"><span class="ic-x4"></span></button>
+    </div>
+    <div class="drawer-body">
+      <div class="callout is-danger">
+        <span data-icon="block"></span>
+        <div>请勿修改模板的表头行、工作表名称与列顺序。结构调整后的文件会被校验拒绝，提示「模板版本不匹配」。</div>
+      </div>
+      <div id="tpl-help"></div>
+    </div>
+    <div class="drawer-foot">
+      <button class="btn" data-close>关闭</button>
+      <button class="btn btn-primary" data-toast="模板已开始下载（原型演示）" data-toast-kind="ok">下载当前模板</button>
+    </div>
+  </div>
+</div>
+
+<script src="assets/app.js"></script>
+<script>
+(function () {
+  var Q = window.QSX, esc = Q.esc, P = Q.COMPANY.period;
+  Q.q('.ic-x4').outerHTML = Q.icon('x');
+  Q.q('.di').outerHTML = Q.icon('upload');
+
+  var TYPES = {
+    emp: {
+      label: '员工资料', tpl: 'TPL-EMP-v2.4', cols: '28 列',
+      desc: '用于新增员工与批量更新当前资料。身份证号是唯一匹配键，已存在的员工按最新值覆盖。',
+      needPeriod: false,
+      help: ['姓名、身份证号必填，身份证号须为 18 位且与系统内唯一。',
+        '主体编码、部门编码必须已在本系统维护，未匹配的行会提示「部门无法匹配」。',
+        '薪酬标准填写月度标准金额，系统自动拆分为固定薪资 80% 与绩效基数 20%。',
+        '银行卡号可填写完整卡号，系统入库后默认脱敏展示。',
+        '本期未填写转正日期的员工按试用处理，仅发放固定薪资。']
+    },
+    att: {
+      label: '月度考勤', tpl: 'TPL-ATT-v3.2', cols: '12 列',
+      desc: '按工资期间与主体导入月度考勤。应出勤天数与每日标准工时以考勤表为准。',
+      needPeriod: true,
+      help: ['员工标识使用身份证号，须与本期员工名单一致。',
+        '应出勤天数、实际出勤天数按自然月填写；每日标准工时固定 8 小时。',
+        '迟到、早退填写分钟数，合计后按分钟扣款。',
+        '忘打卡填写次数，每次 30 元；补卡后该次不计。',
+        '请假需区分有薪假与无薪假，无薪假按天数折算固定薪资。']
+    },
+    perf: {
+      label: '月度绩效', tpl: 'TPL-PERF-v2.1', cols: '6 列',
+      desc: '按工资期间与主体导入绩效系数。系数必须为非负数且不设固定上限，绩效金额 = 绩效基数 × 系数。',
+      needPeriod: true,
+      help: ['员工标识使用身份证号，须与本期员工名单一致，否则提示「员工无法匹配」。',
+        '绩效系数为必填项，留空会提示「必填值缺失」，该员工无法完成试算。',
+        '绩效系数必须为非负数且不设固定上限，负数会提示「绩效系数非法」。',
+        '试用期员工可不填写系数，系统按不发绩效处理。',
+        '同一期间同一主体下同一员工只允许出现一行，重复行会被拒绝。']
+    }
+  };
+
+  var current = 'perf';
+
+  function fill() {
+    Q.q('#scope-entity').innerHTML = Q.ENTITIES.map(function (e) {
+      return '<option value="' + e.code + '"' + (e.code === 'SH01' ? ' selected' : '') + '>' + esc(e.short) + ' · ' + e.headcount + ' 人</option>';
+    }).join('');
+    Q.q('#scope-period').innerHTML = Q.PERIODS.map(function (p) {
+      return '<option value="' + p.code + '"' + (p.code === P ? ' selected' : '') + '>' + p.label + '</option>';
+    }).join('');
+  }
+  fill();
+
+  function batchNo(entity, period) { return 'PAY-' + period.replace('-', '') + '-' + entity + '-V1'; }
+  function syncBatch() {
+    var e = Q.q('#scope-entity').value, p = Q.q('#scope-period').value;
+    Q.q('#scope-batch').value = TYPES[current].needPeriod ? batchNo(e, p) : '（员工资料不关联批次）';
+  }
+
+  function setType(t) {
+    current = t;
+    var T = TYPES[t];
+    Q.q('#scope-period-wrap').classList.toggle('hidden', !T.needPeriod);
+    Q.q('#tpl-title').textContent = T.label + '导入模板 · ' + T.tpl;
+    Q.q('#tpl-desc').textContent = T.desc;
+    Q.q('#tpl-ver').textContent = '模板版本 ' + T.tpl;
+    Q.q('#tpl-cols').textContent = T.cols;
+    syncBatch();
+    renderHistory();
+    renderPreview();
+    Q.q('#tpl-help').innerHTML = '<div class="rule-list">' + T.help.map(function (h, i) {
+      return '<div class="rule-item"><span class="idx">' + (i + 1) + '</span><div>' + esc(h) + '</div></div>';
+    }).join('') + '</div>';
+  }
+
+  Q.q('#type-seg').addEventListener('click', function (e) {
+    var b = e.target.closest('button[data-type]'); if (!b) return;
+    Array.prototype.forEach.call(this.children, function (x) { x.classList.toggle('is-on', x === b); });
+    setType(b.getAttribute('data-type'));
+  });
+  ['scope-entity', 'scope-period'].forEach(function (id) {
+    Q.q('#' + id).addEventListener('change', function () { syncBatch(); renderHistory(); renderPreview(); });
+  });
+
+  /* ── 校验预览 ───────────────────────────────────────────── */
+  function renderPreview() {
+    var entity = Q.q('#scope-entity').value, period = Q.q('#scope-period').value;
+    var card = Q.q('#preview-card');
+    var T = TYPES[current];
+
+    if (current !== 'perf') {
+      var total = Q.scope(period, entity).length;
+      Q.q('#preview-sub').textContent = T.label + ' · ' + Q.ent(entity).short + ' · ' + (T.needPeriod ? period : '全部期间');
+      Q.q('#c-total').textContent = total;
+      Q.q('#c-ok').textContent = total;
+      Q.q('#c-err').textContent = '0';
+      Q.q('#partial-note').className = 'callout is-ok';
+      Q.q('#partial-note').innerHTML = '<span>' + Q.icon('check') + '</span><div><b>全部行校验通过。</b>本次将导入 ' + total + ' 行，导入完成后对应工资批次的试算会自动标记为失效，请重新试算。</div>';
+      Q.q('#pv-head').innerHTML = '<tr><th>原始行号</th><th>员工标识</th><th>主体</th><th>部门</th><th>校验结果</th></tr>';
+      Q.q('#pv-body').innerHTML = Q.scope(period, entity).slice(0, 8).map(function (e, i) {
+        return '<tr><td class="mono">' + (i + 2) + '</td><td class="mono">' + Q.maskId(e.idcard) + '</td>' +
+          '<td>' + esc(Q.ent(e.entity).short) + '</td><td>' + esc(Q.dept(e.dept).name) + '</td>' +
+          '<td>' + Q.badge('ok', '通过') + '</td></tr>';
+      }).join('');
+      Q.q('#preview-actions').innerHTML = '<button class="btn btn-sm btn-primary" data-toast="校验通过，' + total + ' 行已导入（原型演示）" data-toast-kind="ok">确认导入</button>';
+      return;
+    }
+
+    var rows = Q.scope(period, 'SH01');
+    var errs = Q.perfErrorRows();
+    var fixed = Q.state().perfFixed;
+    var errCount = fixed ? 0 : 3;
+    Q.q('#preview-sub').textContent = '月度绩效 · 上海 · ' + period + ' · 星澜上海_2026-08_绩效.xlsx';
+    Q.q('#c-total').textContent = rows.length;
+    Q.q('#c-ok').textContent = rows.length - errCount;
+    Q.q('#c-err').textContent = errCount;
+
+    var n = Q.q('#partial-note');
+    if (errCount === 0) {
+      n.className = 'callout is-ok';
+      n.innerHTML = '<span>' + Q.icon('check') + '</span><div><b>全部行校验通过。</b>' + rows.length + ' 行绩效系数已入库。上一版由 ' + Q.perfErrorRows().map(function (r) { return '第 ' + r.row + ' 行'; }).join('、') + ' 组成的错误行已全部修正并重新校验通过。</div>';
+    } else {
+      n.className = 'callout is-warn';
+      n.innerHTML = '<span>' + Q.icon('warn') + '</span><div><b>正确行先导入、错误行保留待修。</b>本次上传共 ' + rows.length + ' 行，' + (rows.length - errCount) + ' 行已入库，' + errCount + ' 行未导入。错误行不会阻塞其他行的导入，但在修正前，对应员工无法参与工资试算。</div>';
+    }
+
+    Q.q('#pv-head').innerHTML = '<tr><th>原始行号</th><th>员工标识</th><th>期间</th><th class="n">绩效系数</th><th>校验结果</th><th style="min-width:150px">说明</th></tr>';
+    var body = rows.slice(0, 8).map(function (e, i) {
+      return '<tr><td class="mono">' + (i + 2) + '</td><td class="mono">' + Q.maskId(e.idcard) + '</td><td class="mono">' + period + '</td>' +
+        '<td class="n mono">' + Q.coefficient(e, period).toFixed(2) + '</td><td>' + Q.badge('ok', '通过') + '</td><td class="meta">—</td></tr>';
+    }).join('');
+    if (errCount) {
+      body += errs.map(function (r) {
+        return '<tr class="is-invalid"><td class="mono">' + r.row + '</td><td class="mono">' + esc(r.emp) + '</td><td class="mono">' + period + '</td>' +
+          '<td class="n mono">' + esc(r.raw) + '</td><td>' + Q.badge('failed', '错误') + '</td>' +
+          '<td class="small">' + esc(r.reason) + '</td></tr>';
+      }).join('');
+    }
+    Q.q('#pv-body').innerHTML = body;
+    Q.q('#preview-actions').innerHTML = errCount
+      ? '<a class="btn btn-sm btn-primary" href="import-batch.html">去修正 ' + errCount + ' 行错误</a>'
+      : '<button class="btn btn-sm" data-toast="已重新上传修正版并校验通过（原型演示）" data-toast-kind="ok">上传修正版</button>';
+  }
+
+  /* ── 导入历史 ───────────────────────────────────────────── */
+  function renderHistory() {
+    var map = { emp: '员工资料', att: '月度考勤', perf: '月度绩效' };
+    var want = map[current];
+    var rows = Q.IMPORTS.filter(function (r) { return r.type === want; });
+    var entity = Q.q('#scope-entity').value;
+    var scoped = rows.filter(function (r) { return r.entity === entity; });
+    Q.q('#hist-sub').textContent = '筛选：' + want + ' · ' + Q.ent(entity).short + '，共 ' + scoped.length + ' 条';
+    if (!scoped.length) {
+      Q.q('#hist-body').innerHTML = '<tr><td colspan="10"><div class="empty">' + Q.ICONS.inbox +
+        '<h3>该范围暂无导入记录</h3><p>' + esc(Q.ent(entity).short) + '主体还没有「' + esc(want) + '」的导入记录。从上面的模板开始，上传第一份文件即可。</p>' +
+        '<button class="btn btn-sm" data-toast="模板已开始下载（原型演示）">下载模板</button></div></td></tr>';
+      return;
+    }
+    Q.q('#hist-body').innerHTML = scoped.map(function (r) {
+      return '<tr>' +
+        '<td>' + esc(r.type) + '</td><td class="mono">' + r.period + '</td><td>' + esc(Q.ent(r.entity).short) + '</td>' +
+        '<td class="mono small">' + esc(r.file) + '</td><td class="mono small">' + r.tpl + '</td>' +
+        '<td class="n mono">' + r.ok + '</td><td class="n mono">' + r.err + '</td>' +
+        '<td class="mono small">' + esc(r.time) + '</td>' +
+        '<td>' + Q.badge(r.state) + '</td>' +
+        '<td><a class="btn btn-sm btn-ghost" href="import-batch.html">详情</a></td>' +
+        '</tr>';
+    }).join('');
+  }
+
+  setType('perf');
+})();
+</script>
+</body>
+</html>

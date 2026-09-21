@@ -424,6 +424,26 @@ def test_organization_and_employee_api_flow(api_client: TestClient, postgres_eng
     assert updated.status_code == 200
     assert updated.json()["salary"]["fixed_salary"] == "8500.00"
 
+    overlapping_salary = api_client.patch(
+        f"/employees/{employee_id}",
+        json={
+            "salary": {
+                "fixed_salary": "8500.00",
+                "performance_base": "2125.00",
+                "effective_from": "2026-07-01",
+            }
+        },
+    )
+    assert overlapping_salary.status_code == 400
+    assert "生效日期" in overlapping_salary.json()["detail"]
+
+    deactivated = api_client.patch(f"/employees/{employee_id}", json={"active": False})
+    assert deactivated.status_code == 200
+    assert deactivated.json()["active"] is False
+    persisted = api_client.get(f"/employees/{employee_id}")
+    assert persisted.status_code == 200
+    assert persisted.json()["salary"]["fixed_salary"] == "8500.00"
+
     with Session(postgres_engine) as session:
         salary_rows = list(
             session.scalars(
@@ -437,3 +457,48 @@ def test_organization_and_employee_api_flow(api_client: TestClient, postgres_eng
     blocked_delete = api_client.delete(f"/organization/cities/{city.json()['id']}")
     assert blocked_delete.status_code == 409
     assert "base 地" in blocked_delete.json()["detail"]
+
+    probation_payload = {
+        **employee_payload,
+        "id_number": "11010119900101124X",
+        "employee_no": "E003",
+        "probation_status": "in_probation",
+        "formal_status": False,
+        "salary": {
+            **employee_payload["salary"],
+            "performance_base": "0.00",
+        },
+    }
+    probation_employee = api_client.post("/employees", json=probation_payload)
+    assert probation_employee.status_code == 201
+
+    changed_fixed_salary = api_client.patch(
+        f"/employees/{probation_employee.json()['id']}",
+        json={
+            "probation_status": "confirmed",
+            "formal_status": True,
+            "salary": {
+                "fixed_salary": "8500.00",
+                "performance_base": "2125.00",
+                "effective_from": "2026-07-01",
+            },
+        },
+    )
+    assert changed_fixed_salary.status_code == 400
+    assert "固定薪资必须保持不变" in changed_fixed_salary.json()["detail"]
+
+    confirmed = api_client.patch(
+        f"/employees/{probation_employee.json()['id']}",
+        json={
+            "probation_status": "confirmed",
+            "formal_status": True,
+            "salary": {
+                "fixed_salary": "8000.00",
+                "performance_base": "2000.00",
+                "effective_from": "2026-07-01",
+            },
+        },
+    )
+    assert confirmed.status_code == 200
+    assert confirmed.json()["probation_status"] == "confirmed"
+    assert confirmed.json()["salary"]["fixed_salary"] == "8000.00"

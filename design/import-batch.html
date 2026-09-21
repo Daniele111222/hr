@@ -1,0 +1,306 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>导入批次详情 · 轻算薪</title>
+<link rel="stylesheet" href="assets/app.css">
+</head>
+<body data-page="import-center" data-crumb="数据导入/导入中心/导入批次详情" data-title="导入批次详情" data-scope="payroll">
+<div class="app">
+  <aside class="sidebar" id="sidebar" data-od-id="sidebar"></aside>
+  <div class="main">
+    <header class="topbar" id="topbar" data-od-id="topbar"></header>
+    <main class="content">
+
+      <section class="row between" data-od-id="batch-head">
+        <div>
+          <div class="row" style="gap:8px">
+            <h1 style="font-size:17px" class="mono">IMP-202608-SH01-002</h1>
+            <span id="head-badge"></span>
+          </div>
+          <p class="page-lead" style="margin-top:4px">月度绩效 · 2026-08 · 星澜上海 · 模板 TPL-PERF-v2.1 · 上传于 2026-09-01 09:31（演示数据）</p>
+        </div>
+        <a class="btn btn-sm btn-ghost" href="import-center.html" data-od-id="link-import-center">返回导入中心</a>
+      </section>
+
+      <section class="callout" id="batch-callout" data-od-id="batch-status"></section>
+
+      <section class="metrics" data-od-id="batch-metrics">
+        <div class="metric"><div class="metric-label">总行数</div><div class="metric-value mono">96</div><div class="metric-foot">模板表头下方全部数据行</div></div>
+        <div class="metric"><div class="metric-label">已入库行数</div><div class="metric-value mono" id="m-ok"></div><div class="metric-foot">校验通过并写入员工绩效</div></div>
+        <div class="metric is-warn" id="m-err-card"><div class="metric-label">待修正行数</div><div class="metric-value mono" id="m-err"></div><div class="metric-foot">修正后需重新校验并导入</div></div>
+        <div class="metric"><div class="metric-label">关联工资批次</div><div class="metric-value mono" style="font-size:14px">PAY-202608-SH01-V1</div><div class="metric-foot"><a href="batch-detail.html">前往工资批次详情</a></div></div>
+      </section>
+
+      <section class="card" data-od-id="batch-tabs-card">
+        <div class="tabs" data-tabs="batch">
+          <button data-tab="pending" class="is-on" data-od-id="tab-pending">待修正行<span class="count" id="cnt-pending">3</span></button>
+          <button data-tab="all" data-od-id="tab-all">全部行<span class="count">96</span></button>
+          <button data-tab="log" data-od-id="tab-log">校验日志</button>
+        </div>
+
+        <div class="tabpanel is-on" data-tabpanel="pending" data-tabgroup="batch">
+          <div class="card-body stack" style="gap:12px" id="pending-body"></div>
+        </div>
+
+        <div class="tabpanel" data-tabpanel="all" data-tabgroup="batch">
+          <div class="card-body tight">
+            <div class="tbl-wrap" style="max-height:520px; overflow-y:auto">
+              <table class="tbl">
+                <thead>
+                  <tr>
+                    <th style="width:78px">原始行号</th><th>工号</th><th>姓名</th><th>部门</th><th>职级</th>
+                    <th class="n">绩效基数</th><th class="n">绩效系数</th><th class="n">绩效金额</th><th>校验结果</th>
+                  </tr>
+                </thead>
+                <tbody id="all-body"></tbody>
+              </table>
+            </div>
+          </div>
+        </div>
+
+        <div class="tabpanel" data-tabpanel="log" data-tabgroup="batch">
+          <div class="card-body">
+            <div class="timeline" id="log-body"></div>
+          </div>
+        </div>
+      </section>
+
+      <section class="actionbar" data-od-id="batch-actionbar">
+        <a class="btn btn-sm btn-ghost" href="import-center.html">返回导入中心</a>
+        <button class="btn btn-sm" data-toast="错误行清单已开始下载：IMP-202608-SH01-002_错误行.xlsx（原型演示）">下载错误行清单</button>
+        <span class="spacer"></span>
+        <span class="reason" id="bar-reason"></span>
+        <button class="btn btn-sm btn-primary" id="btn-revalidate" data-od-id="btn-revalidate"></button>
+        <a class="btn btn-sm" href="batch-detail.html" id="btn-to-batch" data-od-id="btn-recalc" hidden>前往工资批次重新试算</a>
+      </section>
+
+    </main>
+    <footer class="pagefoot"></footer>
+  </div>
+</div>
+
+<div class="overlay" id="drawer-fix" data-od-id="drawer-fix-row">
+  <div class="drawer">
+    <div class="drawer-head">
+      <h2 id="fix-title">修正错误行</h2><span class="spacer"></span>
+      <button class="icon-btn" data-close aria-label="关闭"><span data-icon="x"></span></button>
+    </div>
+    <div class="drawer-body" id="fix-body"></div>
+    <div class="drawer-foot">
+      <button class="btn" data-close>取消</button>
+      <button class="btn btn-primary" id="fix-save">保存修正</button>
+    </div>
+  </div>
+</div>
+
+<script src="assets/app.js"></script>
+<script>
+(function () {
+  var Q = window.QSX, esc = Q.esc, PERIOD = '2026-08', ENT = 'SH01', TOTAL = 96;
+  var FIX = { 38: false, 59: false, 81: false };
+  if (Q.state().perfFixed) { FIX[38] = FIX[59] = FIX[81] = true; }
+
+  function rows() { return Q.scope(PERIOD, ENT); }
+  function empOf(id) { return Q.EMPLOYEES.filter(function (e) { return e.id === id; })[0]; }
+  function errRows() { return Q.perfErrorRows(); }
+  function fixedCount() { return errRows().filter(function (r) { return FIX[r.row]; }).length; }
+  function base(e) { return e.probation ? 0 : e.salaryStandard * 0.20; }
+
+  /* ── 状态区 ─────────────────────────────────────────────── */
+  function renderStatus() {
+    var f = fixedCount(), left = 3 - f, all = f === 3;
+    var okCount = all ? 96 : 93;
+
+    Q.q('#m-ok').textContent = okCount;
+    Q.q('#m-err').textContent = all ? 0 : left;
+    Q.q('#m-err-card').className = 'metric' + (all ? '' : ' is-warn');
+    Q.q('#cnt-pending').textContent = all ? 0 : left;
+    Q.q('#head-badge').innerHTML = Q.badge(all ? 'ok' : 'partial', all ? '全部成功' : '部分成功');
+
+    var c = Q.q('#batch-callout');
+    if (all) {
+      c.className = 'callout is-ok';
+      c.innerHTML = '<span>' + Q.icon('check') + '</span><div><b>全部行校验通过，96 行绩效系数已入库。</b>' +
+        '上一版 3 条错误行（第 38、59、81 行）已全部修正。导入会影响 2026-08 上海批次的试算结果，请回到工资批次重新试算后再确认。</div>';
+    } else {
+      c.className = 'callout is-warn';
+      c.innerHTML = '<span>' + Q.icon('warn') + '</span><div><b>正确行已先入库，' + left + ' 行错误行保留待修。</b>' +
+        '93 行绩效系数已写入员工绩效，可用于试算；剩余 ' + left + ' 行在修正并通过校验前，对应员工无法参与本月工资试算。' +
+        '错误行不会阻塞其他员工的核算，也不影响已入库的 93 行。</div>';
+    }
+
+    var b = Q.q('#btn-revalidate');
+    if (all) {
+      b.textContent = '重新校验并导入';
+      b.className = 'btn btn-sm';
+      b.removeAttribute('data-toast');
+    } else {
+      b.textContent = '修正全部 ' + left + ' 行后可重新校验';
+      b.className = 'btn btn-sm';
+      b.disabled = true;
+    }
+    Q.q('#btn-to-batch').hidden = !all;
+    Q.q('#bar-reason').innerHTML = all ? '' : Q.icon('warn') + ' <span>仍有 ' + left + ' 行未修正，整批试算无法完成</span>';
+  }
+
+  /* ── 待修正行 ───────────────────────────────────────────── */
+  function renderPending() {
+    var body = Q.q('#pending-body');
+    if (fixedCount() === 3) {
+      body.innerHTML = '<div class="empty">' + Q.icon('check') +
+        '<h3>没有待修正行</h3><p>本批次 3 条错误行已全部修正并通过重新校验，96 行绩效系数均已入库。</p>' +
+        '<a class="btn btn-sm btn-primary" href="batch-detail.html">前往工资批次重新试算</a></div>';
+      return;
+    }
+    body.innerHTML =
+      '<div class="callout is-info"><span>' + Q.icon('info') + '</span><div>修正只影响这一行，不会重新导入已入库的 93 行，也不会产生重复数据。保存后可继续修正下一行。</div></div>' +
+      '<div class="tbl-wrap"><table class="tbl"><thead><tr>' +
+      '<th style="width:78px">原始行号</th><th>员工 / 标识</th><th>字段</th><th>文件中的值</th><th style="min-width:180px">校验错误</th>' +
+      '<th style="min-width:200px">修复建议</th><th style="width:120px">状态</th><th style="width:110px">操作</th>' +
+      '</tr></thead><tbody>' +
+      errRows().map(function (r) {
+        var done = FIX[r.row];
+        return '<tr' + (done ? '' : ' class="is-invalid"') + '>' +
+          '<td class="mono">' + r.row + '</td>' +
+          '<td>' + esc(r.emp) + '</td>' +
+          '<td>' + esc(r.field) + '</td>' +
+          '<td class="mono">' + esc(r.raw) + '</td>' +
+          '<td class="small">' + esc(r.reason) + '</td>' +
+          '<td class="small">' + esc(r.fix) + '</td>' +
+          '<td>' + Q.badge(done ? 'ok' : 'failed', done ? '已修正' : '待修正') + '</td>' +
+          '<td>' + (done
+            ? '<button class="btn btn-sm btn-ghost" data-undo="' + r.row + '">撤销</button>'
+            : '<button class="btn btn-sm btn-primary" data-fix="' + r.row + '">修正</button>') + '</td>' +
+          '</tr>';
+      }).join('') + '</tbody></table></div>';
+  }
+
+  /* ── 全部行 ─────────────────────────────────────────────── */
+  function renderAll() {
+    var errMap = {};
+    errRows().forEach(function (r) { errMap[r.row] = r; });
+    var list = rows();
+    Q.q('#all-body').innerHTML = list.map(function (e, i) {
+      var rowNo = i + 2;
+      var err = errMap[rowNo];
+      var isErr = !!err && !FIX[rowNo];
+      var coef = isErr ? null : Q.coefficient(e, PERIOD);
+      var amt = coef == null ? null : Q.round2(base(e) * coef);
+      return '<tr' + (isErr ? ' class="is-invalid"' : '') + '>' +
+        '<td class="mono">' + rowNo + '</td><td class="mono">' + e.id + '</td><td>' + esc(e.name) + '</td>' +
+        '<td>' + esc(Q.dept(e.dept).name) + '</td><td class="mono">' + e.grade + '</td>' +
+        '<td class="n mono">' + (base(e) ? Q.money(base(e)) : '—') + '</td>' +
+        '<td class="n mono">' + (isErr ? esc(err.raw) : coef.toFixed(2)) + '</td>' +
+        '<td class="n mono">' + (amt == null ? '—' : Q.money(amt)) + '</td>' +
+        '<td>' + (isErr ? Q.badge('failed', '错误') : Q.badge('ok', '通过')) + '</td>' +
+        '</tr>';
+    }).join('');
+  }
+
+  /* ── 校验日志 ───────────────────────────────────────────── */
+  function renderLog() {
+    var f = fixedCount(), all = f === 3;
+    var items = [
+      { t: '2026-09-01 09:31:04', x: '上传文件 <span class="mono">星澜上海_2026-08_绩效.xlsx</span>，模板版本 <span class="mono">TPL-PERF-v2.1</span> 匹配成功。' },
+      { t: '2026-09-01 09:31:06', x: '解析完成：共 96 行数据，表头 6 列，无重复行。' },
+      { t: '2026-09-01 09:31:06', x: '逐行校验完成：通过 93 行，错误 3 行（第 38、59、81 行）。' },
+      { t: '2026-09-01 09:31:06', x: '按「正确行先导入」策略入库 93 行，3 行错误行保留在本批次中待修正。' },
+      { t: '2026-09-01 09:31:07', x: '工资批次 <span class="mono">PAY-202608-SH01-V1</span> 的试算结果已标记为失效。' }
+    ];
+    if (f > 0) items.push({ t: '2026-09-01 09:44:12', x: '已修正 ' + f + ' 条错误行（' + errRows().filter(function (r) { return FIX[r.row]; }).map(function (r) { return '第 ' + r.row + ' 行'; }).join('、') + '）。' });
+    if (all) {
+      items.push({ t: '2026-09-01 09:45:30', x: '重新校验通过：96 行全部入库，错误行清零。' });
+      items.push({ t: '2026-09-01 09:45:31', x: '工资批次 <span class="mono">PAY-202608-SH01-V1</span> 可重新试算。' });
+    }
+    Q.q('#log-body').innerHTML = items.reverse().map(function (i) {
+      return '<div class="tl-item"><span class="tl-time">' + i.t + '</span><div>' + i.x + '</div></div>';
+    }).join('');
+  }
+
+  /* ── 修正抽屉 ───────────────────────────────────────────── */
+  var fixing = null;
+  function openFix(row) {
+    fixing = row;
+    var r = errRows().filter(function (x) { return x.row === row; })[0];
+    Q.q('#fix-title').textContent = '修正第 ' + row + ' 行';
+    var head = '<dl class="kv is-wide"><dt>员工 / 标识</dt><dd>' + esc(r.emp) + '</dd>' +
+      '<dt>所属主体</dt><dd>' + esc(Q.ent(r.entity).short) + ' · 2026-08</dd>' +
+      '<dt>出错字段</dt><dd>' + esc(r.field) + '</dd>' +
+      '<dt>文件中的值</dt><dd class="mono">' + esc(r.raw) + '</dd>' +
+      '<dt>校验错误</dt><dd style="color:var(--danger)">' + esc(r.reason) + '</dd></dl>';
+
+    var form;
+    if (row === 81) {
+      form = '<div class="callout is-warn"><span>' + Q.icon('warn') + '</span><div>该身份证号不在 2026-08 上海主体的员工名单中。常见原因：员工已离职、身份证号填写有误，或员工资料尚未维护。</div></div>' +
+        '<div class="field"><label>处理方式<span class="req">*</span></label>' +
+        '<label class="check"><input type="radio" name="fix81" value="ignore" checked>忽略该行（该员工本月不参与绩效核算）</label>' +
+        '<label class="check"><input type="radio" name="fix81" value="profile">暂不处理，先到员工管理补充员工资料</label>' +
+        '<span class="hint">选择「忽略」后，该行不再计入错误行，批次其余 95 行照常核算。</span></div>';
+    } else {
+      var name = row === 38 ? 'EMP037' : 'EMP058';
+      var e = empOf(name);
+      var suggest = row === 38 ? '0.95' : '1.10';
+      form = '<div class="callout is-info"><span>' + Q.icon('info') + '</span><div>绩效系数必须为非负数且不设固定上限。绩效金额 = 绩效基数 × 系数。</div></div>' +
+        '<dl class="kv is-wide"><dt>工号</dt><dd class="mono">' + e.id + '</dd>' +
+        '<dt>姓名</dt><dd>' + esc(e.name) + '</dd>' +
+        '<dt>部门 / 职级</dt><dd>' + esc(Q.dept(e.dept).name) + ' · ' + e.grade + '</dd>' +
+        '<dt>绩效基数</dt><dd class="mono">' + Q.money(base(e)) + '</dd></dl>' +
+        '<div class="field"><label>绩效系数<span class="req">*</span></label>' +
+        '<input class="input mono" id="fix-coef" value="' + (row === 59 ? '-0.10' : '') + '" placeholder="非负数，例如 ' + suggest + '">' +
+        '<span class="hint">' + (row === 38 ? '该行绩效系数为空，必须补齐后才能参与核算。' : '原值 -0.10 为负数，请修正为非负数。') + '</span>' +
+        '<span class="err" id="fix-err" hidden></span></div>' +
+        '<div class="field"><label>备注（可选，将记入校验日志）</label><input class="input" placeholder="例如：与部门负责人电话核对后确认"></div>';
+    }
+
+    Q.q('#fix-body').innerHTML = head + '<div class="section-title">修正内容</div>' + form;
+    Q.openOverlay('drawer-fix');
+  }
+
+  Q.q('#fix-save').addEventListener('click', function () {
+    if (fixing === 81) { FIX[81] = true; closeAndRefresh(); return; }
+    var input = Q.q('#fix-coef'), err = Q.q('#fix-err');
+    var v = parseFloat(input.value);
+    if (!input.value.trim() || isNaN(v) || v < 0) {
+      err.textContent = '请输入非负绩效系数，最多两位小数。';
+      err.hidden = false; return;
+    }
+    FIX[fixing] = true;
+    closeAndRefresh();
+  });
+
+  function closeAndRefresh() {
+    Q.closeOverlay('drawer-fix');
+    var row = fixing; fixing = null;
+    renderStatus(); renderPending(); renderAll(); renderLog();
+    if (fixedCount() === 3) {
+      Q.toast('3 条错误行已全部修正，请点击「重新校验并导入」', 'ok');
+    } else {
+      Q.toast('第 ' + row + ' 行已修正，剩余 ' + (3 - fixedCount()) + ' 行待修正', 'ok');
+    }
+  }
+
+  Q.q('#btn-revalidate').addEventListener('click', function () {
+    if (fixedCount() !== 3) return;
+    Q.setState({ perfFixed: true });
+    renderStatus(); renderPending(); renderAll(); renderLog();
+    Q.toast('重新校验通过：96 行绩效系数已全部入库', 'ok');
+    setTimeout(function () { location.href = 'batch-detail.html'; }, 1100);
+  });
+
+  document.addEventListener('click', function (e) {
+    var f = e.target.closest('[data-fix]');
+    if (f) { openFix(Number(f.getAttribute('data-fix'))); return; }
+    var u = e.target.closest('[data-undo]');
+    if (u) {
+      FIX[Number(u.getAttribute('data-undo'))] = false;
+      renderStatus(); renderPending(); renderAll(); renderLog();
+    }
+  });
+
+  renderStatus(); renderPending(); renderAll(); renderLog();
+})();
+</script>
+</body>
+</html>

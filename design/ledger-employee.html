@@ -1,0 +1,311 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>员工计算明细 · 轻算薪</title>
+<link rel="stylesheet" href="assets/app.css">
+</head>
+<body data-page="ledger" data-crumb="工资台账/工资台账与汇总/员工计算明细" data-title="员工计算明细" data-scope="payroll">
+<div class="app">
+  <aside class="sidebar" id="sidebar" data-od-id="sidebar"></aside>
+  <div class="main">
+    <header class="topbar" id="topbar" data-od-id="topbar"></header>
+    <main class="content">
+
+      <section class="card" data-od-id="le-head">
+        <div class="card-body">
+          <div class="row-wrap" style="align-items:flex-start;gap:16px">
+            <div class="stack" style="flex:1;min-width:280px">
+              <div class="eyebrow">员工</div>
+              <h1 id="d-name" style="margin:0;font-size:20px"></h1>
+              <p class="meta" id="d-sub"></p>
+              <div class="row-wrap" id="d-flags"></div>
+            </div>
+            <div class="stack" style="min-width:260px">
+              <label class="field" style="margin:0">切换员工
+                <select class="select" id="f-emp" data-od-id="filter-employee"></select>
+              </label>
+              <div class="row">
+                <a class="btn btn-sm" id="link-profile" data-od-id="btn-profile">查看员工资料</a>
+                <a class="btn btn-sm btn-ghost" href="ledger.html" data-od-id="btn-back-ledger">返回台账</a>
+              </div>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <section id="le-gate" data-od-id="le-gate"></section>
+
+      <section class="metrics is-6" data-od-id="le-metrics">
+        <div class="metric"><div class="metric-label">计薪天数</div><div class="metric-value mono" id="m-days"></div><div class="metric-foot" id="m-days-foot"></div></div>
+        <div class="metric"><div class="metric-label">应发金额</div><div class="metric-value mono" id="m-gross"></div><div class="metric-foot">固定薪资 + 绩效 + 激励 − 考勤扣款</div></div>
+        <div class="metric"><div class="metric-label">考勤扣款</div><div class="metric-value mono" id="m-att"></div><div class="metric-foot" id="m-att-foot"></div></div>
+        <div class="metric"><div class="metric-label">个人扣缴</div><div class="metric-value mono" id="m-personal"></div><div class="metric-foot">个人社保 + 个人公积金</div></div>
+        <div class="metric is-accent"><div class="metric-label">未扣个税金额</div><div class="metric-value mono" id="m-net"></div><div class="metric-foot">应发 − 个人社保 − 个人公积金</div></div>
+        <div class="metric"><div class="metric-label">公司成本</div><div class="metric-value mono" id="m-cost"></div><div class="metric-foot">应发 + 公司社保 + 公司公积金</div></div>
+      </section>
+
+      <section class="card" data-od-id="le-calc">
+        <div class="card-head"><h2>收入与扣缴明细</h2><span class="sub">金额均为「未扣个税金额」口径，个税不在系统内计算</span></div>
+        <div class="tbl-wrap">
+          <table class="tbl">
+            <thead><tr><th style="min-width:170px">项目</th><th style="min-width:330px">计算过程</th><th class="n">金额</th></tr></thead>
+            <tbody id="calc-rows"></tbody>
+          </table>
+        </div>
+      </section>
+
+      <section class="grid-2" data-od-id="le-att">
+        <div class="card">
+          <div class="card-head"><h2>本月考勤记录</h2><span class="sub" id="att-sub"></span></div>
+          <div class="card-body"><div id="att-kv"></div></div>
+        </div>
+        <div class="card">
+          <div class="card-head"><h2>社保与公积金分项</h2><span class="sub" id="si-sub"></span></div>
+          <div class="tbl-wrap">
+            <table class="tbl">
+              <thead><tr><th>险种</th><th class="n">比例</th><th class="n">个人</th><th class="n">公司</th></tr></thead>
+              <tbody id="si-rows"></tbody>
+            </table>
+          </div>
+        </div>
+      </section>
+
+      <section class="card" data-od-id="le-history">
+        <div class="card-head"><h2>历史各期间</h2><span class="sub">同一名员工在各工资期间的未扣个税金额</span></div>
+        <div class="tbl-wrap">
+          <table class="tbl">
+            <thead><tr><th style="min-width:150px">工资期间</th><th style="min-width:180px">批次</th><th class="n">应发金额</th><th class="n">未扣个税金额</th><th>批次状态</th></tr></thead>
+            <tbody id="hist-rows"></tbody>
+          </table>
+        </div>
+      </section>
+
+      <section class="actionbar" data-od-id="le-actionbar">
+        <a class="btn btn-sm btn-ghost" href="ledger.html">返回工资台账与汇总</a>
+        <span class="spacer"></span>
+        <span class="reason" id="bar-reason"></span>
+        <a class="btn btn-sm" href="batch-detail.html">查看所属批次核算</a>
+        <a class="btn btn-sm btn-primary" href="export-center.html">导出工资表</a>
+      </section>
+
+    </main>
+    <footer class="pagefoot"></footer>
+  </div>
+</div>
+<script src="assets/app.js"></script>
+<script>
+(function () {
+  var Q = window.QSX, esc = Q.esc;
+  var P = Q.COMPANY.period;
+
+  var id = new URLSearchParams(location.search).get('id') || 'EMP038';
+  var emp = Q.EMP_BY_ID ? Q.EMP_BY_ID[id] : null;
+  if (!emp) Q.EMPLOYEES.forEach(function (e) { if (e.id === id) emp = e; });
+  if (!emp) Q.EMPLOYEES.forEach(function (e) { if (e.id === 'EMP038') emp = e; });
+  if (!emp) emp = Q.EMPLOYEES[0];
+
+  document.title = emp.name + ' · 员工计算明细 · 轻算薪';
+  document.getElementById('d-name').textContent = emp.name;
+  document.getElementById('d-sub').textContent =
+    emp.id + ' · ' + Q.ent(emp.entity).short + ' · ' + Q.dept(emp.dept).name + ' · ' +
+    emp.title + ' · ' + Q.GRADE_NAME[emp.grade] + ' · 身份证 ' + Q.maskId(emp.idcard) +
+    ' · ' + esc(emp.bankName) + ' ' + Q.maskBank(emp.bankNo);
+  document.getElementById('link-profile').href = 'employee-detail.html?id=' + emp.id;
+
+  var c = Q.applyIncentive(Q.computeOne(emp, P, { perfMissing: Q.perfMissingOn() && Q.perfMissingSet()[emp.id] === 1 }), P);
+  var rule = c.rule, ent = Q.ent(emp.entity);
+
+  document.getElementById('d-flags').innerHTML =
+    (emp.state === '在职' ? Q.badge('ok', '在职') : Q.badge('muted', '离职')) +
+    (emp.probation ? Q.badge('warn', '试用期') : Q.badge('ok', '已转正')) +
+    (c.regularInPeriod ? Q.badge('info', '本月转正') : '') +
+    (c.penalized ? Q.badge('info', '参与考勤考核') : Q.badge('muted', emp.grade + ' 不参与考勤考核')) +
+    (c.ok ? Q.badge('ok', '本期计算成功') : Q.badge('blocked', '本期暂不能计算'));
+
+  /* ── 门禁 ───────────────────────────────────────────────── */
+  function renderGate() {
+    var el = document.getElementById('le-gate');
+    if (c.ok) {
+      var n = Q.entityStatus(emp.entity);
+      if (n.key === 'blocked') {
+        el.innerHTML = '<div class="callout is-warn"><span>' + Q.icon('warn') + '</span><div>' +
+          '<b class="callout-title">' + esc(ent.short) + ' 主体本期尚未产生可确认结果</b>' +
+          '<div>' + esc(n.note) + '。下表为该员工按现行规则的试算值，主体数据补齐后可能变化。</div></div></div>';
+      } else {
+        el.innerHTML = '<div class="callout is-info"><span>' + Q.icon('info') + '</span><div>' +
+          '<b class="callout-title">' + esc(P) + ' 计算明细，可逐项追溯到规则与考勤记录</b>' +
+          '<div>激励按全公司统一分配，个人金额在考勤激励计算前为占位 0 元。</div></div></div>';
+      }
+      return;
+    }
+    el.innerHTML = '<div class="callout is-danger"><span>' + Q.icon('block') + '</span><div>' +
+      '<b class="callout-title">该员工本期无法计算，金额不可用</b>' +
+      '<div>' + esc(c.invalid.join('、')) + '。请先补齐数据后重新试算，本页金额在修复前不作为依据。</div>' +
+      '<div style="margin-top:6px"><a href="' + (c.invalid.join('').indexOf('城市规则') >= 0 ? 'city-rules.html' : 'import-batch.html') + '">去处理 →</a></div></div></div>';
+  }
+
+  /* ── 指标 ───────────────────────────────────────────────── */
+  function renderMetrics() {
+    document.getElementById('m-days').textContent = c.days + ' / ' + Q.STD_DAYS;
+    document.getElementById('m-days-foot').textContent = c.days === Q.STD_DAYS ? '全月计薪' :
+      (emp.hireDate.slice(0, 7) === P ? '本月入职，按实际计薪天数折算' : '本月离职，按实际计薪天数折算');
+    document.getElementById('m-gross').textContent = Q.money(c.gross);
+    document.getElementById('m-att').textContent = c.attTotal ? '−' + Q.money(c.attTotal) : '0.00';
+    document.getElementById('m-att-foot').textContent = c.penalized
+      ? (c.attTotal ? '迟到 / 早退 / 忘打卡 / 无薪假合计' : '本月无考勤扣款')
+      : emp.grade + ' 不参与考勤罚款';
+    document.getElementById('m-personal').textContent = Q.money(Q.round2(c.pSI + c.pHF));
+    document.getElementById('m-net').textContent = Q.money(c.net);
+    document.getElementById('m-cost').textContent = Q.money(c.cost);
+  }
+
+  /* ── 收入与扣缴明细 ─────────────────────────────────────── */
+  function row(label, how, amount, cls) {
+    return '<tr' + (cls ? ' class="' + cls + '"' : '') + '><td><span class="strong">' + label + '</span></td>' +
+      '<td class="small">' + how + '</td><td class="n mono">' + amount + '</td></tr>';
+  }
+  function renderCalc() {
+    var h = '';
+    var std = emp.salaryStandard;
+    h += row('固定薪资（薪酬标准的 80%）',
+      '<span class="mono">' + Q.money(std) + ' × 80% = ' + Q.money(c.fixedFull) + '</span>' +
+      (c.days === Q.STD_DAYS ? '' : '，再 × 计薪天数 <span class="mono">' + c.days + '/' + Q.STD_DAYS + '</span>') +
+      ' = <span class="mono">' + Q.money(c.fixed) + '</span>', Q.money(c.fixed));
+
+    h += row('绩效工资（薪酬标准的 20% × 系数）',
+      c.isRegular
+        ? '<span class="mono">' + Q.money(c.perfBase) + ' × ' + (c.coef == null ? '—' : c.coef.toFixed(2)) + '</span>' +
+          ' = <span class="mono">' + Q.money(c.perfAmount) + '</span>'
+        : '<span class="meta">' + (emp.probation ? '试用期不计算绩效工资' : '未转正，不计算绩效工资') + '</span>',
+      Q.money(c.perfAmount));
+
+    var inc = c.incentive;
+    h += row('考勤激励（全公司统一分配）',
+      inc ? '<span class="meta">按全公司符合条件人数平均分配</span> = <span class="mono">' + Q.money(inc) + '</span>'
+          : '<span class="meta">' + (Q.incentiveDone() ? '本期不符合分配条件' : '考勤激励尚未计算') + '</span>',
+      Q.money(inc));
+
+    if (c.attTotal) {
+      var det = [];
+      if (c.att.lateMin) det.push('迟到 <span class="mono">' + c.att.lateMin + '</span> 分钟');
+      if (c.att.earlyMin) det.push('早退 <span class="mono">' + c.att.earlyMin + '</span> 分钟');
+      if (c.att.missPunch) det.push('忘打卡 <span class="mono">' + c.att.missPunch + '</span> 次');
+      h += row('考勤扣款小计', det.join('、') +
+        (c.unpaidLeaveDeduct ? '，无薪假 <span class="mono">' + c.att.leaveDays + '</span> 天' : '') +
+        ' = <span class="mono">−' + Q.money(c.attTotal) + '</span>', '−' + Q.money(c.attTotal));
+    }
+
+    h += row('应发金额',
+      '<span class="mono">' + Q.money(c.fixed) + ' + ' + Q.money(c.perfAmount) + ' + ' + Q.money(inc) +
+      (c.attTotal ? ' − ' + Q.money(c.attTotal) : '') + '</span>', Q.money(c.gross), 'is-total');
+
+    h += row('个人社保', rule
+      ? '缴费基数 <span class="mono">' + Q.money(c.siBase) + '</span> × <span class="mono">' + Q.pct(c.pRate) + '</span>'
+      : '<span class="meta">缺有效城市规则</span>', '−' + Q.money(c.pSI));
+    h += row('个人公积金',
+      '固定薪资 <span class="mono">' + Q.money(c.fixedFull) + '</span> × <span class="mono">' + Q.pct(Q.HF_RATE) + '</span>',
+      '−' + Q.money(c.pHF));
+
+    h += row('未扣个税金额',
+      '<span class="mono">' + Q.money(c.gross) + ' − ' + Q.money(c.pSI) + ' − ' + Q.money(c.pHF) + '</span>',
+      Q.money(c.net), 'is-total');
+
+    h += row('公司社保', rule
+      ? '缴费基数 <span class="mono">' + Q.money(c.siBase) + '</span> × <span class="mono">' + Q.pct(c.cRate) + '</span>'
+      : '<span class="meta">缺有效城市规则</span>', Q.money(c.cSI));
+    h += row('公司公积金',
+      '固定薪资 <span class="mono">' + Q.money(c.fixedFull) + '</span> × <span class="mono">' + Q.pct(Q.HF_RATE) + '</span>',
+      Q.money(c.cHF));
+    h += row('公司成本',
+      '<span class="mono">' + Q.money(c.gross) + ' + ' + Q.money(c.cSI) + ' + ' + Q.money(c.cHF) + '</span>',
+      Q.money(c.cost), 'is-total');
+
+    document.getElementById('calc-rows').innerHTML = h;
+  }
+
+  /* ── 考勤 ───────────────────────────────────────────────── */
+  function renderAtt() {
+    var a = c.att;
+    document.getElementById('att-sub').textContent = '来源：月度考勤导入';
+    document.getElementById('att-kv').innerHTML = '<dl class="kv is-wide">' +
+      kv('是否有考勤记录', a.hasRecord ? Q.badge('ok', '有') : Q.badge('warn', '无')) +
+      kv('应出勤 / 计薪天数', '<span class="mono">' + c.days + ' / ' + Q.STD_DAYS + '</span> 天') +
+      kv('迟到', a.lateMin ? '<span class="mono">' + a.lateMin + '</span> 分钟' : '无') +
+      kv('早退', a.earlyMin ? '<span class="mono">' + a.earlyMin + '</span> 分钟' : '无') +
+      kv('忘打卡', a.missPunch ? '<span class="mono">' + a.missPunch + '</span> 次（每次 ' + Q.money(30) + ' 元）' : '无') +
+      kv('请假', a.leaveType === '无' ? '无' : a.leaveType + '假 <span class="mono">' + a.leaveDays + '</span> 天') +
+      kv('考勤扣款合计', c.attTotal ? '<span class="mono strong">' + Q.money(c.attTotal) + '</span> 元' : '0.00 元') +
+      (a.remark ? kv('备注', esc(a.remark)) : '') + '</dl>';
+    document.getElementById('bar-reason').innerHTML = c.ok ? '' :
+      Q.icon('warn') + ' <span>该员工本期有阻断项，金额仅供参考</span>';
+  }
+  function kv(k, v) { return '<dt>' + k + '</dt><dd>' + v + '</dd>'; }
+
+  /* ── 社保分项 ───────────────────────────────────────────── */
+  function renderSI() {
+    if (!rule) {
+      document.getElementById('si-sub').textContent = '缺有效城市规则';
+      document.getElementById('si-rows').innerHTML = '<tr><td colspan="4"><div class="empty">' +
+        Q.icon('block') + '<h3>没有可用的城市规则</h3><p>该员工 base 城市在 ' + esc(P) +
+        ' 没有生效的社保与公积金规则，无法计算个人与公司扣缴。</p></div></td></tr>';
+      return;
+    }
+    document.getElementById('si-sub').textContent =
+      ent.city + ' · ' + rule.version + ' · 缴费基数 ' + Q.money(rule.base);
+      var rows = [];
+    var n = Math.max(rule.personal.length, rule.company.length);
+    var pParts = 0, cParts = 0;
+    for (var i = 0; i < n; i++) {
+      var p = rule.personal[i], co = rule.company[i];
+      var pa = p ? Q.round2(rule.base * p.r) : 0;
+      var ca = co ? Q.round2(rule.base * co.r) : 0;
+      pParts = Q.round2(pParts + pa); cParts = Q.round2(cParts + ca);
+      rows.push('<tr><td>' + esc((p && p.k) || (co && co.k) || '—') + '</td>' +
+        '<td class="n mono">' + Q.pct(p ? p.r : co.r) + '</td>' +
+        '<td class="n mono">' + (p ? Q.money(pa) : '—') + '</td>' +
+        '<td class="n mono">' + (co ? Q.money(ca) : '—') + '</td></tr>');
+    }
+    document.getElementById('si-rows').innerHTML = rows.join('') +
+      '<tr class="is-total"><td><span class="strong">个人合计</span></td><td class="n mono">' + Q.pct(c.pRate) + '</td>' +
+      '<td class="n mono">' + Q.money(c.pSI) + '</td><td class="n mono">—</td></tr>' +
+      (Q.round2(c.pSI - pParts) ? '<tr><td colspan="2" class="small meta">分项四舍五入差异</td><td class="n mono">' +
+        Q.money(Q.round2(c.pSI - pParts)) + '</td><td class="n mono">—</td></tr>' : '') +
+      '<tr class="is-total"><td><span class="strong">公司合计</span></td><td class="n mono">' + Q.pct(c.cRate) + '</td>' +
+      '<td class="n mono">—</td><td class="n mono">' + Q.money(c.cSI) + '</td></tr>' +
+      (Q.round2(c.cSI - cParts) ? '<tr><td colspan="2" class="small meta">分项四舍五入差异</td><td class="n mono">—</td><td class="n mono">' +
+        Q.money(Q.round2(c.cSI - cParts)) + '</td></tr>' : '');
+  }
+
+  /* ── 历史 ───────────────────────────────────────────────── */
+  function renderHist() {
+    document.getElementById('hist-rows').innerHTML = Q.PERIODS.map(function (p) {
+      var cc = Q.computeOne(emp, p.code, { perfMissing: false });
+      var b = Q.BATCHES.filter(function (x) {
+        return x.period === p.code && x.entity === emp.entity && x.kind === '正常工资';
+      }).sort(function (a, z) { return a.state === 'superseded' ? 1 : -1; })[0];
+      return '<tr' + (p.code === P ? ' class="is-selected"' : '') + '>' +
+        '<td><span class="strong">' + esc(p.label) + '</span>' + (p.code === P ? '<span class="tbl-sub">当前期间</span>' : '') + '</td>' +
+        '<td class="mono small">' + (b ? esc(b.no) : '—') + '</td>' +
+        '<td class="n mono">' + (cc.ok ? Q.money(cc.gross) : '—') + '</td>' +
+        '<td class="n mono strong">' + (cc.ok ? Q.money(cc.net + Q.incentiveAmountFor(emp.id, p.code)) : '—') + '</td>' +
+        '<td>' + (b ? Q.badge(b.state) : '<span class="meta">—</span>') + '</td></tr>';
+    }).join('');
+  }
+
+  /* ── 事件 ───────────────────────────────────────────────── */
+  document.getElementById('f-emp').innerHTML = Q.EMPLOYEES.map(function (e) {
+    return '<option value="' + e.id + '"' + (e.id === emp.id ? ' selected' : '') + '>' +
+      esc(e.name) + '（' + e.id + ' · ' + Q.ent(e.entity).short + '）</option>';
+  }).join('');
+  document.getElementById('f-emp').addEventListener('change', function () {
+    location.href = 'ledger-employee.html?id=' + this.value;
+  });
+
+  Q.qa('[data-icon]').forEach(function (el) { el.innerHTML = Q.icon(el.getAttribute('data-icon')); });
+  renderGate(); renderMetrics(); renderCalc(); renderAtt(); renderSI(); renderHist();
+})();
+</script>
+</body>
+</html>

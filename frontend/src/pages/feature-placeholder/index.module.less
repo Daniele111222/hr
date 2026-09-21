@@ -1,16 +1,23 @@
-@page-width: 1120px;
-
 .page {
-  width: min(@page-width, 100%);
-  margin: 0 auto;
+    width: 100%;
+
+    h2 {
+        margin: 0 0 5px;
+        font-size: 20px;
+    }
+
+    p {
+        margin: 0;
+        font-size: 12.5px;
+    }
 }
 
 .empty {
-  display: grid;
-  min-height: 360px;
-  margin-top: 28px;
-  background: #ffffff;
-  border: 1px solid #dfe4e8;
-  border-radius: 6px;
-  place-items: center;
+    display: grid;
+    min-height: 320px;
+    margin-top: 14px;
+    background: var(--color-surface);
+    border: 1px solid var(--color-border);
+    border-radius: 10px;
+    place-items: center;
 }

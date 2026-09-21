@@ -1,0 +1,299 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>员工管理 · 轻算薪</title>
+<link rel="stylesheet" href="assets/app.css">
+</head>
+<body data-page="employees" data-crumb="基础资料/员工管理" data-title="员工管理">
+<div class="app">
+  <aside class="sidebar" id="sidebar" data-od-id="sidebar"></aside>
+  <div class="main">
+    <header class="topbar" id="topbar" data-od-id="topbar"></header>
+    <main class="content">
+
+      <section data-od-id="emp-lead">
+        <p class="page-lead">维护参与算薪的员工名单及当前资料。只保留当前有效资料；历史工资通过当时的计算快照追溯，不做完整人事档案版本管理。身份证号创建后不可修改。</p>
+      </section>
+
+      <section class="filters" data-od-id="emp-filters">
+        <div class="filter is-wide"><label>姓名或身份证号</label><input class="input" id="f-key" placeholder="输入姓名或身份证号"></div>
+        <div class="filter"><label>主体</label><select class="select" id="f-entity"></select></div>
+        <div class="filter"><label>部门</label><select class="select" id="f-dept"></select></div>
+        <div class="filter"><label>职级</label><select class="select" id="f-grade"></select></div>
+        <div class="filter"><label>在职状态</label><select class="select" id="f-state"><option value="">全部</option><option>在职</option><option>离职</option></select></div>
+        <div class="filter"><label>试用/转正</label><select class="select" id="f-prob"><option value="">全部</option><option value="1">试用期</option><option value="0">已转正</option></select></div>
+        <div class="filter"><label>base 城市</label><select class="select" id="f-city"></select></div>
+        <div class="filter"><label>资料完整性</label><select class="select" id="f-profile"><option value="">全部</option><option>完整</option><option>缺项</option></select></div>
+        <div class="filter-actions">
+          <button class="btn" id="btn-reset">重置</button>
+        </div>
+      </section>
+
+      <section class="card" data-od-id="emp-table">
+        <div class="card-head">
+          <h2>员工名单</h2>
+          <span class="sub" id="emp-count"></span>
+          <span class="spacer"></span>
+          <button class="btn btn-sm" data-toast="已跳转员工资料 Excel 导入（原型演示）" data-od-id="btn-import-employee">Excel 导入员工</button>
+          <button class="btn btn-sm btn-primary" data-open="drawer-new" data-od-id="btn-new-employee">新增员工</button>
+        </div>
+        <div class="tbl-wrap">
+          <table class="tbl">
+            <thead>
+              <tr>
+                <th class="sticky-col" style="min-width:132px">姓名</th>
+                <th style="min-width:158px">身份证号</th>
+                <th>主体</th><th>部门</th><th style="min-width:118px">职位</th><th>职级</th>
+                <th>入职日期</th><th>转正日期</th><th>离职日期</th>
+                <th class="n">薪酬标准</th><th class="n">固定薪资</th><th class="n">绩效基数</th>
+                <th>base 城市</th><th>银行卡资料</th><th>资料校验</th>
+                <th style="min-width:150px">操作</th>
+              </tr>
+            </thead>
+            <tbody id="emp-rows"></tbody>
+          </table>
+        </div>
+        <div class="pager" id="emp-pager"></div>
+      </section>
+
+    </main>
+    <footer class="pagefoot"></footer>
+  </div>
+</div>
+
+<!-- 新增员工抽屉 -->
+<div class="overlay" id="drawer-new" data-od-id="drawer-new-employee">
+  <div class="drawer is-wide">
+    <div class="drawer-head">
+      <h2>新增员工</h2><span class="spacer"></span>
+      <button class="icon-btn" data-close aria-label="关闭"><span class="ic-x1"></span></button>
+    </div>
+    <div class="drawer-body">
+      <div class="section-title">基本资料</div>
+      <div class="form-grid">
+        <div class="field"><label>姓名<span class="req">*</span></label><input class="input" placeholder="与身份证一致"></div>
+        <div class="field"><label>身份证号<span class="req">*</span></label><input class="input" placeholder="18 位"><span class="hint">创建后不可修改</span></div>
+      </div>
+      <div class="section-title">任职信息</div>
+      <div class="form-grid">
+        <div class="field"><label>所属主体<span class="req">*</span></label><select class="select" id="n-entity"></select></div>
+        <div class="field"><label>部门<span class="req">*</span></label><select class="select" id="n-dept"></select></div>
+        <div class="field"><label>职位</label><input class="input" placeholder="如：后端开发工程师"></div>
+        <div class="field"><label>职级<span class="req">*</span></label><select class="select" id="n-grade"></select></div>
+        <div class="field"><label>入职日期<span class="req">*</span></label><input class="input" type="date" value="2026-08-01"></div>
+        <div class="field"><label>转正日期</label><input class="input" type="date" value="2026-11-01"><span class="hint">默认入职后 3 个月</span></div>
+      </div>
+      <div class="section-title">薪酬信息</div>
+      <div class="form-grid">
+        <div class="field"><label>薪酬标准（元 / 月）<span class="req">*</span></label><input class="input" id="n-salary" value="20000">
+          <span class="hint" id="n-split"></span>
+        </div>
+        <div class="field"><label>薪酬结构</label><input class="input" value="固定薪资 80% + 绩效基数 20%" disabled></div>
+        <div class="field"><label>试用期薪酬</label><input class="input" value="仅发放固定薪资，无绩效" disabled></div>
+        <div class="field"><label>base 城市<span class="req">*</span></label><select class="select" id="n-city"></select><span class="hint">决定适用社保与公积金规则</span></div>
+      </div>
+      <div class="section-title">银行信息</div>
+      <div class="form-grid">
+        <div class="field"><label>开户行</label><input class="input" value="招商银行"></div>
+        <div class="field"><label>账户名称</label><input class="input" value="与员工姓名一致"></div>
+        <div class="field span-2"><label>银行卡号</label><input class="input" placeholder="保存后默认脱敏展示"></div>
+      </div>
+    </div>
+    <div class="drawer-foot">
+      <button class="btn" data-close>取消</button>
+      <button class="btn btn-primary" data-close data-toast="员工已保存，资料校验通过（原型演示）" data-toast-kind="ok">保存</button>
+    </div>
+  </div>
+</div>
+
+<!-- 办理员工变更抽屉 -->
+<div class="overlay" id="drawer-change" data-od-id="drawer-employee-change">
+  <div class="drawer">
+    <div class="drawer-head">
+      <h2>办理员工变更</h2><span class="spacer"></span>
+      <button class="icon-btn" data-close aria-label="关闭"><span class="ic-x2"></span></button>
+    </div>
+    <div class="drawer-body">
+      <div class="field">
+        <label>员工</label>
+        <input class="input" id="c-emp" disabled value="赵拾光（EMP037）· 星澜科技（上海）有限公司 · 应用研发部">
+      </div>
+      <div class="field">
+        <label>变更类型</label>
+        <div class="seg" id="c-type">
+          <button class="is-on" data-change="regular">办理转正</button>
+          <button data-change="leave">办理离职</button>
+          <button data-change="transfer">主体/部门调动</button>
+          <button data-change="raise">调薪</button>
+          <button data-change="bank">银行卡变更</button>
+        </div>
+      </div>
+      <div id="c-form"></div>
+      <div class="callout is-warn">
+        <span class="cw2"></span>
+        <div><b>薪酬规则提示</b><div id="c-note"></div></div>
+      </div>
+    </div>
+    <div class="drawer-foot">
+      <button class="btn" data-close>取消</button>
+      <button class="btn btn-primary" data-close data-toast="变更已生效，相关工资批次试算已失效，请重新试算" data-toast-kind="warn">确认变更</button>
+    </div>
+  </div>
+</div>
+
+<script src="assets/app.js"></script>
+<script>
+(function () {
+  var Q = window.QSX, esc = Q.esc;
+  ['ic-x1', 'ic-x2'].forEach(function (c) { Q.q('.' + c).outerHTML = Q.ICONS.x; });
+  Q.q('.cw2').outerHTML = Q.ICONS.warn;
+
+  var cities = Object.keys(Q.CITY_RULES);
+
+  function fill(sel, opts, all) {
+    var el = document.getElementById(sel);
+    el.innerHTML = (all ? '<option value="">' + all + '</option>' : '') +
+      opts.map(function (o) { return '<option value="' + o.v + '">' + esc(o.t) + '</option>'; }).join('');
+    return el;
+  }
+  fill('f-entity', Q.ENTITIES.map(function (e) { return { v: e.code, t: e.short + ' · ' + e.headcount + ' 人' }; }), '全部主体');
+  fill('f-dept', Q.DEPTS.filter(function (d) { return d.parent; }).map(function (d) { return { v: d.code, t: d.name }; }), '全部部门');
+  fill('f-grade', Q.GRADES.map(function (g) { return { v: g.code, t: g.name }; }), '全部职级');
+  fill('f-city', cities.map(function (c) { return { v: c, t: c }; }), '全部城市');
+  fill('n-entity', Q.ENTITIES.map(function (e) { return { v: e.code, t: e.name }; }));
+  fill('n-dept', Q.DEPTS.filter(function (d) { return d.parent; }).map(function (d) { return { v: d.code, t: d.name }; }));
+  fill('n-grade', Q.GRADES.map(function (g) { return { v: g.code, t: g.name + ' · ' + Q.money(g.salary) + ' 元' }; }));
+  fill('n-city', cities.map(function (c) { return { v: c, t: c }; }));
+
+  document.querySelector('input#n-salary').addEventListener('input', function () {
+    var v = Number(this.value) || 0;
+    document.getElementById('n-split').textContent = '固定薪资 ' + Q.money(v * 0.8) + ' 元 · 绩效基数 ' + Q.money(v * 0.2) + ' 元';
+  });
+
+  /* ── 筛选与分页 ─────────────────────────────────────────── */
+  var PAGE = 12, page = 1, rows = [];
+  function apply() {
+    var key = Q.q('#f-key').value.trim();
+    var fe = Q.q('#f-entity').value, fd = Q.q('#f-dept').value, fg = Q.q('#f-grade').value;
+    var fs = Q.q('#f-state').value, fp = Q.q('#f-prob').value, fc = Q.q('#f-city').value, ff = Q.q('#f-profile').value;
+    rows = Q.EMPLOYEES.filter(function (e) {
+      if (key && e.name.indexOf(key) < 0 && Q.maskId(e.idcard).indexOf(key) < 0 && e.id.indexOf(key) < 0) return false;
+      if (fe && e.entity !== fe) return false;
+      if (fd && e.dept !== fd) return false;
+      if (fg && e.grade !== fg) return false;
+      if (fs && e.state !== fs) return false;
+      if (fp !== '' && String(e.probation ? 1 : 0) !== fp) return false;
+      if (fc && e.city !== fc) return false;
+      if (ff && e.profile !== ff) return false;
+      return true;
+    });
+    page = 1; render();
+  }
+  function render() {
+    var total = rows.length, pages = Math.max(1, Math.ceil(total / PAGE));
+    if (page > pages) page = pages;
+    var slice = rows.slice((page - 1) * PAGE, page * PAGE);
+    document.getElementById('emp-count').textContent = '共 ' + total + ' 人 · 当前显示第 ' + ((page - 1) * PAGE + 1) + '–' + Math.min(page * PAGE, total) + ' 条';
+    document.getElementById('emp-rows').innerHTML = slice.length ? slice.map(function (e) {
+      return '<tr>' +
+        '<td class="sticky-col"><a class="strong" href="employee-detail.html?id=' + e.id + '">' + esc(e.name) + '</a><span class="tbl-sub">' + e.id + '</span></td>' +
+        '<td class="mono">' + Q.maskId(e.idcard) + '</td>' +
+        '<td>' + esc(Q.ent(e.entity).short) + '</td>' +
+        '<td>' + esc(Q.dept(e.dept).name) + '</td>' +
+        '<td>' + esc(e.title) + '</td>' +
+        '<td>' + Q.badge(e.grade === 'P7' || e.grade === 'P8' ? 'is-info-none' : 'muted', e.grade) + '</td>' +
+        '<td class="mono">' + e.hireDate + '</td>' +
+        '<td class="mono">' + e.regularDate + '</td>' +
+        '<td class="mono">' + (e.leaveDate || '—') + '</td>' +
+        '<td class="n mono">' + Q.money(e.salaryStandard) + '</td>' +
+        '<td class="n mono">' + Q.money(e.salaryStandard * 0.8) + '</td>' +
+        '<td class="n mono">' + Q.money(e.salaryStandard * 0.2) + '</td>' +
+        '<td>' + esc(e.city) + '</td>' +
+        '<td>' + (e.bankStatus === '已校验' ? Q.badge('ok', '已校验') : Q.badge('missing', '待校验')) + '</td>' +
+        '<td>' + (e.profile === '完整' ? Q.badge('ok', '完整') : Q.badge('missing', '缺项')) +
+        (e.state === '离职' ? Q.badge('muted', '离职') : '') +
+        (e.probation ? Q.badge('warn', '试用期') : '') + '</td>' +
+        '<td><a class="btn btn-sm btn-ghost" href="employee-detail.html?id=' + e.id + '">详情</a>' +
+        '<a class="btn btn-sm btn-ghost" href="employee-detail.html?id=' + e.id + '">编辑</a>' +
+        '<button class="btn btn-sm btn-ghost" data-open="drawer-change">办理变更</button></td>' +
+        '</tr>';
+    }).join('') : '<tr><td colspan="16" class="tbl-empty">没有符合条件的员工，请调整筛选条件。</td></tr>';
+
+    var btns = [];
+    btns.push('<button ' + (page <= 1 ? 'disabled' : '') + ' data-p="' + (page - 1) + '">上一页</button>');
+    for (var p = 1; p <= pages; p++) {
+      if (p === 1 || p === pages || Math.abs(p - page) <= 1) btns.push('<button class="' + (p === page ? 'is-on' : '') + '" data-p="' + p + '">' + p + '</button>');
+      else if (Math.abs(p - page) === 2) btns.push('<button disabled>…</button>');
+    }
+    btns.push('<button ' + (page >= pages ? 'disabled' : '') + ' data-p="' + (page + 1) + '">下一页</button>');
+    document.getElementById('emp-pager').innerHTML =
+      '<span>共 ' + total + ' 条 · 每页 ' + PAGE + ' 条</span><span class="pages">' + btns.join('') + '</span>';
+  }
+  document.getElementById('emp-pager').addEventListener('click', function (e) {
+    var b = e.target.closest('button[data-p]'); if (!b) return;
+    page = Number(b.getAttribute('data-p')); render();
+  });
+  ['f-key', 'f-entity', 'f-dept', 'f-grade', 'f-state', 'f-prob', 'f-city', 'f-profile'].forEach(function (id) {
+    Q.q('#' + id).addEventListener(id === 'f-key' ? 'input' : 'change', apply);
+  });
+  document.getElementById('btn-reset').addEventListener('click', function () {
+    ['f-key', 'f-entity', 'f-dept', 'f-grade', 'f-state', 'f-prob', 'f-city', 'f-profile'].forEach(function (id) { Q.q('#' + id).value = ''; });
+    apply();
+  });
+
+  /* ── 变更表单 ───────────────────────────────────────────── */
+  var FORMS = {
+    regular: {
+      html: '<div class="form-grid"><div class="field"><label>转正日期<span class="req">*</span></label><input class="input" type="date" value="2026-08-01"></div>' +
+        '<div class="field"><label>适用工资期间</label><input class="input" value="2026-08（当月整月）" disabled></div></div>' +
+        '<div class="field"><label>转正后薪酬标准</label><input class="input" value="20,000.00 元 / 月（固定 16,000.00 + 绩效 4,000.00）" disabled></div>',
+      note: '转正当月绩效基数采用转正后整月标准，不做天数折算；转正前后固定薪资保持不变。'
+    },
+    leave: {
+      html: '<div class="form-grid"><div class="field"><label>离职日期<span class="req">*</span></label><input class="input" type="date" value="2026-08-15"></div>' +
+        '<div class="field"><label>适用工资期间</label><input class="input" value="2026-08（按实际计薪天数折算）" disabled></div>' +
+        '<div class="field span-2"><label>离职类型</label><select class="select"><option>主动离职</option><option>合同到期不续签</option><option>协商解除</option></select></div></div>',
+      note: '离职当月固定薪资按实际计薪天数 ÷ 应出勤天数折算；离职后不再参与考勤激励。'
+    },
+    transfer: {
+      html: '<div class="form-grid"><div class="field"><label>调动生效日期<span class="req">*</span></label><input class="input" type="date" value="2026-09-01"></div>' +
+        '<div class="field"><label>适用工资期间</label><input class="input" value="2026-09（整月）" disabled></div>' +
+        '<div class="field"><label>调出主体 / 部门</label><input class="input" value="上海 · 研发中心 / 平台研发部" disabled></div>' +
+        '<div class="field"><label>调入主体 / 部门</label><select class="select"><option>上海 · 研发中心 / 应用研发部</option><option>北京 · 研发中心 / 应用研发部</option><option>深圳 · 研发中心 / 平台研发部</option></select></div></div>',
+      note: '跨主体调动的员工，调动当月仍由原主体发放，次月起在新主体核算；调动会导致双方主体的试算失效。'
+    },
+    raise: {
+      html: '<div class="form-grid"><div class="field"><label>生效工资期间<span class="req">*</span></label><select class="select"><option>2026-09</option><option>2026-10</option><option>2026-08</option></select></div>' +
+        '<div class="field"><label>调薪类型</label><select class="select"><option>普通调薪</option><option>晋升调薪</option><option>其他</option></select></div>' +
+        '<div class="field"><label>原薪酬标准</label><input class="input" value="20,000.00 元 / 月" disabled></div>' +
+        '<div class="field"><label>新薪酬标准<span class="req">*</span></label><input class="input" value="24000.00 元 / 月"></div>' +
+        '<div class="field span-2"><label>调整后结构</label><input class="input" value="固定薪资 19,200.00 + 绩效基数 4,800.00" disabled></div></div>',
+      note: '普通调薪按适用工资期间整月处理，不做天数折算；调薪生效期间及其后的试算会被标记为失效。'
+    },
+    bank: {
+      html: '<div class="form-grid"><div class="field"><label>变更生效日期<span class="req">*</span></label><input class="input" type="date" value="2026-09-01"></div>' +
+        '<div class="field"><label>适用发放批次</label><input class="input" value="2026-09 及以后" disabled></div>' +
+        '<div class="field span-2"><label>开户行</label><input class="input" value="招商银行"></div>' +
+        '<div class="field span-2"><label>银行卡号<span class="req">*</span></label><input class="input" placeholder="6222 •••• •••• 4821"></div></div>',
+      note: '银行卡变更不影响工资金额，但代发工资表导出时使用最新有效卡号，请务必核对。'
+    }
+  };
+  function renderForm(k) {
+    document.getElementById('c-form').innerHTML = FORMS[k].html;
+    document.getElementById('c-note').textContent = FORMS[k].note;
+  }
+  document.getElementById('c-type').addEventListener('click', function (e) {
+    var b = e.target.closest('button[data-change]');
+    if (!b) return;
+    Array.prototype.forEach.call(this.children, function (x) { x.classList.toggle('is-on', x === b); });
+    renderForm(b.getAttribute('data-change'));
+  });
+  renderForm('regular');
+
+  apply();
+})();
+</script>
+</body>
+</html>

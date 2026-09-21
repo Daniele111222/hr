@@ -1,0 +1,272 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>员工详情与编辑 · 轻算薪</title>
+<link rel="stylesheet" href="assets/app.css">
+</head>
+<body data-page="employees" data-crumb="基础资料/员工管理/员工详情与编辑" data-title="员工详情与编辑">
+<div class="app">
+  <aside class="sidebar" id="sidebar" data-od-id="sidebar"></aside>
+  <div class="main">
+    <header class="topbar" id="topbar" data-od-id="topbar"></header>
+    <main class="content">
+
+      <section data-od-id="emp-detail-head">
+        <div class="between" style="flex-wrap:wrap;gap:10px">
+          <div class="row" style="gap:12px">
+            <a class="btn btn-sm" href="employees.html">← 返回员工管理</a>
+            <div>
+              <h1 style="font-size:19px" id="d-name"></h1>
+              <p class="meta" id="d-sub"></p>
+            </div>
+          </div>
+          <div class="row">
+            <a class="btn btn-sm" href="ledger-employee.html" data-od-id="btn-history-payroll">历史工资台账</a>
+            <button class="btn btn-sm" data-open="drawer-edit" data-od-id="btn-edit-employee">编辑资料</button>
+            <button class="btn btn-sm btn-primary" data-toast="变更表单已打开（原型演示，见员工管理页的办理变更）" data-od-id="btn-change-employee">办理变更</button>
+          </div>
+        </div>
+        <div class="row-wrap" style="margin-top:10px" id="d-flags"></div>
+      </section>
+
+      <div class="grid-2-1" data-od-id="emp-detail-body">
+        <div class="stack">
+          <section class="card" data-od-id="emp-basic">
+            <div class="card-head">
+              <h2>基本资料</h2>
+              <span class="sub">身份证号创建后不可修改</span>
+            </div>
+            <div class="card-body" id="d-basic"></div>
+          </section>
+
+          <section class="card" data-od-id="emp-job">
+            <div class="card-head">
+              <h2>任职信息</h2>
+              <span class="sub">当前有效任职关系</span>
+            </div>
+            <div class="card-body" id="d-job"></div>
+          </section>
+
+          <section class="card" data-od-id="emp-pay">
+            <div class="card-head">
+              <h2>薪酬信息</h2>
+              <span class="sub">固定薪资 80% + 绩效基数 20%</span>
+              <span class="spacer"></span>
+              <span class="meta">适用期间 2026-08 起</span>
+            </div>
+            <div class="card-body" id="d-pay"></div>
+          </section>
+
+          <section class="card" data-od-id="emp-si">
+            <div class="card-head">
+              <h2>缴费信息</h2>
+              <span class="sub">社保按城市固定基数，公积金按员工固定薪资</span>
+            </div>
+            <div class="card-body" id="d-si"></div>
+          </section>
+
+          <section class="card" data-od-id="emp-bank">
+            <div class="card-head">
+              <h2>银行信息</h2>
+              <span class="sub">卡号默认脱敏展示</span>
+            </div>
+            <div class="card-body" id="d-bank"></div>
+          </section>
+        </div>
+
+        <div class="stack">
+          <section class="card" data-od-id="emp-rules">
+            <div class="card-head"><h2>薪酬规则</h2><span class="sub">只读约定</span></div>
+            <div class="card-body">
+              <div class="rule-list">
+                <div class="rule-item"><span class="idx">1</span><div>正式员工<b>固定薪资 = 薪酬标准的 80%</b>，<b>绩效基数 = 薪酬标准的 20%</b>。</div></div>
+                <div class="rule-item"><span class="idx">2</span><div>试用期<b>只有固定薪资</b>，不发放绩效。</div></div>
+                <div class="rule-item"><span class="idx">3</span><div>转正前后<b>固定薪资保持不变</b>。</div></div>
+                <div class="rule-item"><span class="idx">4</span><div>转正当月绩效基数采用<b>转正后整月标准</b>，不做天数折算。</div></div>
+                <div class="rule-item"><span class="idx">5</span><div>普通调薪按<b>适用工资期间整月</b>处理。</div></div>
+                <div class="rule-item"><span class="idx">6</span><div>身份证号创建后<b>不可修改</b>；只维护当前资料，历史工资通过当时的计算快照追溯。</div></div>
+              </div>
+            </div>
+          </section>
+
+          <section class="callout is-info" data-od-id="emp-snapshot-note">
+            <span class="ci2"></span>
+            <div>
+              <div class="callout-title">历史工资如何追溯</div>
+              本系统不保存完整人事档案版本。每期工资计算时会冻结一份任职、薪酬、银行卡与城市规则快照；调整当前资料不会改变已生成的历史记录。
+            </div>
+          </section>
+
+          <section class="card" data-od-id="emp-history">
+            <div class="card-head">
+              <h2>历史工资</h2>
+              <a class="btn btn-sm btn-ghost" href="ledger-employee.html" data-od-id="btn-payroll-all">查看全部</a>
+            </div>
+            <div class="tbl-wrap">
+              <table class="tbl">
+                <thead><tr><th>期间</th><th>批次</th><th class="n">未扣个税金额</th><th>状态</th></tr></thead>
+                <tbody id="d-history"></tbody>
+              </table>
+            </div>
+          </section>
+        </div>
+      </div>
+
+    </main>
+    <footer class="pagefoot"></footer>
+  </div>
+</div>
+
+<!-- 编辑资料抽屉 -->
+<div class="overlay" id="drawer-edit" data-od-id="drawer-edit-employee">
+  <div class="drawer is-wide">
+    <div class="drawer-head">
+      <h2>编辑员工资料</h2><span class="spacer"></span>
+      <button class="icon-btn" data-close aria-label="关闭"><span class="ic-x3"></span></button>
+    </div>
+    <div class="drawer-body">
+      <div class="callout is-warn"><span class="cw3"></span>
+        <div>身份证号创建后不可修改。薪酬标准、任职主体等会改变算薪结果的字段，请通过「办理变更」维护生效日期，以免历史期间被追溯修改。</div>
+      </div>
+      <div class="section-title">基本资料</div>
+      <div class="form-grid">
+        <div class="field"><label>姓名</label><input class="input" id="e-name"></div>
+        <div class="field"><label>身份证号</label><input class="input" id="e-idcard" disabled></div>
+      </div>
+      <div class="section-title">任职信息</div>
+      <div class="form-grid">
+        <div class="field"><label>职位</label><input class="input" id="e-title"></div>
+        <div class="field"><label>职级</label><input class="input" id="e-grade" disabled></div>
+        <div class="field"><label>部门</label><input class="input" id="e-dept" disabled></div>
+        <div class="field"><label>主体</label><input class="input" id="e-entity" disabled></div>
+      </div>
+      <div class="section-title">缴费与银行</div>
+      <div class="form-grid">
+        <div class="field"><label>base 城市</label><input class="input" id="e-city" disabled></div>
+        <div class="field"><label>开户行</label><input class="input" id="e-bank"></div>
+        <div class="field span-2"><label>银行卡号</label><input class="input" id="e-bankno"></div>
+      </div>
+    </div>
+    <div class="drawer-foot">
+      <button class="btn" data-close>取消</button>
+      <button class="btn btn-primary" data-close data-toast="资料已保存（原型演示）" data-toast-kind="ok">保存</button>
+    </div>
+  </div>
+</div>
+
+<script src="assets/app.js"></script>
+<script>
+(function () {
+  var Q = window.QSX, esc = Q.esc;
+  Q.q('.ic-x3').outerHTML = Q.ICONS.x;
+  Q.q('.cw3').outerHTML = Q.ICONS.warn;
+  Q.q('.ci2').outerHTML = Q.ICONS.info;
+
+  var id = new URLSearchParams(location.search).get('id') || 'EMP037';
+  var emp = null;
+  Q.EMPLOYEES.forEach(function (e) { if (e.id === id) emp = e; });
+  if (!emp) emp = Q.EMPLOYEES[36];
+
+  var P = Q.COMPANY.period;
+  var c = Q.computeOne(emp, P, { perfMissing: Q.perfMissingOn() && Q.perfMissingSet()[emp.id] === 1 });
+  var rule = Q.cityRule(emp.city, P) || Q.CITY_RULES[emp.city];
+  var ent = Q.ent(emp.entity);
+
+  document.title = emp.name + ' · 员工详情 · 轻算薪';
+  document.getElementById('d-name').textContent = emp.name;
+  Q.q('[data-od-id="btn-history-payroll"]').href = 'ledger-employee.html?id=' + emp.id;
+  Q.q('[data-od-id="btn-payroll-all"]').href = 'ledger-employee.html?id=' + emp.id;
+  document.getElementById('d-sub').textContent =
+    emp.id + ' · ' + ent.short + ' · ' + Q.dept(emp.dept).name + ' · ' + emp.title + ' · ' + Q.GRADE_NAME[emp.grade];
+
+  document.getElementById('d-flags').innerHTML =
+    (emp.state === '在职' ? Q.badge('ok', '在职') : Q.badge('muted', '离职')) +
+    (emp.probation ? Q.badge('warn', '试用期') : Q.badge('ok', '已转正')) +
+    (emp.profile === '完整' ? Q.badge('ok', '资料完整') : Q.badge('missing', '资料缺项')) +
+    (c.ok ? Q.badge('info', '可参与 2026-08 试算') : Q.badge('danger', '试算失败：' + c.invalid.join('、')));
+
+  document.getElementById('d-basic').innerHTML =
+    '<dl class="kv is-wide">' +
+    '<dt>姓名</dt><dd>' + esc(emp.name) + '</dd>' +
+    '<dt>员工编号</dt><dd class="mono">' + emp.id + '</dd>' +
+    '<dt>身份证号</dt><dd class="mono">' + Q.maskId(emp.idcard) + ' <span class="meta">（脱敏展示，创建后不可修改）</span></dd>' +
+    '</dl>';
+
+  document.getElementById('d-job').innerHTML =
+    '<dl class="kv is-wide">' +
+    '<dt>工资归属主体</dt><dd>' + esc(ent.name) + ' <span class="meta">' + ent.code + '</span></dd>' +
+    '<dt>部门</dt><dd>' + esc(Q.dept(emp.dept).name) + '（' + emp.dept + '）</dd>' +
+    '<dt>职位</dt><dd>' + esc(emp.title) + '</dd>' +
+    '<dt>职级</dt><dd>' + Q.GRADE_NAME[emp.grade] + (emp.grade === 'P7' || emp.grade === 'P8' ? ' <span class="sev is-warn">不参与考勤罚款与考勤激励</span>' : '') + '</dd>' +
+    '<dt>入职日期</dt><dd class="mono">' + emp.hireDate + '</dd>' +
+    '<dt>转正日期</dt><dd class="mono">' + emp.regularDate + (c.regularInPeriod ? ' <span class="tag is-accent">本期转正</span>' : '') + '</dd>' +
+    '<dt>离职日期</dt><dd class="mono">' + (emp.leaveDate || '—') + '</dd>' +
+    '</dl>';
+
+  document.getElementById('d-pay').innerHTML =
+    '<div class="metrics" style="grid-template-columns:repeat(3,minmax(0,1fr))">' +
+    metric('薪酬标准', emp.salaryStandard, '元 / 月', '合同约定的月度标准') +
+    metric('固定薪资', c.fixedFull, '元 / 月', '薪酬标准 × 80%') +
+    metric('绩效基数', c.perfBase, '元 / 月', '薪酬标准 × 20%' + (emp.probation && !c.regularInPeriod ? '（试用期不发绩效）' : '')) +
+    '</div>' +
+    '<dl class="kv is-wide" style="margin-top:14px">' +
+    '<dt>本期固定薪资</dt><dd class="mono">' + Q.money(c.fixed) + ' 元' +
+    (c.days !== Q.STD_DAYS ? ' <span class="tag">按 ' + c.days + ' / ' + Q.STD_DAYS + ' 天折算</span>' : '') + '</dd>' +
+    '<dt>本期绩效系数</dt><dd>' + (c.coef == null ? '<span class="sev is-block">缺失 — 导致试算失败</span>' : '<span class="mono">' + c.coef.toFixed(2) + '</span>') + '</dd>' +
+    '<dt>本期绩效金额</dt><dd class="mono">' + Q.money(c.perfAmount) + ' 元</dd>' +
+    '<dt>适用期间</dt><dd>' + P + '（当前期间）</dd>' +
+    '</dl>';
+
+  if (rule) {
+    document.getElementById('d-si').innerHTML =
+      '<dl class="kv is-wide">' +
+      '<dt>base 地</dt><dd>' + esc(emp.city) + '</dd>' +
+      '<dt>匹配城市</dt><dd>' + esc(emp.city) + ' → 命中规则 <span class="mono">' + rule.version + '</span>' + (Q.cityRule(emp.city, P) ? '' : ' <span class="sev is-block">该规则在 2026-08 无效</span>') + '</dd>' +
+      '<dt>社保固定基数</dt><dd class="mono">' + Q.money(rule.base) + ' 元 <span class="meta">（由城市配置，与员工薪资无关）</span></dd>' +
+      '<dt>社保个人比例</dt><dd>' + rule.personal.map(function (x) { return x.k + ' ' + Q.pct(x.r); }).join(' + ') + ' = <span class="mono">' + Q.pct(Q.personalRate(emp.city)) + '</span> → <span class="mono">' + Q.money(c.pSI) + '</span> 元</dd>' +
+      '<dt>社保公司比例</dt><dd>' + rule.company.map(function (x) { return x.k + ' ' + Q.pct(x.r); }).join(' + ') + ' = <span class="mono">' + Q.pct(Q.companyRate(emp.city)) + '</span> → <span class="mono">' + Q.money(c.cSI) + '</span> 元</dd>' +
+      '<dt>公积金基数</dt><dd class="mono">' + Q.money(c.fixedFull) + ' 元 <span class="meta">（以员工固定薪资为基数）</span></dd>' +
+      '<dt>公积金比例</dt><dd>个人 5% + 公司 5%，单边 <span class="mono">' + Q.money(c.pHF) + '</span> 元</dd>' +
+      '</dl>';
+  }
+
+  document.getElementById('d-bank').innerHTML =
+    '<dl class="kv is-wide">' +
+    '<dt>开户行</dt><dd>' + esc(emp.bankName) + '</dd>' +
+    '<dt>账户名称</dt><dd>' + esc(emp.name) + ' <span class="meta">（与姓名一致）</span></dd>' +
+    '<dt>银行卡号</dt><dd class="mono">' + Q.maskBank(emp.bankNo) + ' <button class="btn btn-sm btn-ghost" data-toast="卡号已临时明文显示（原型演示）">显示完整</button></dd>' +
+    '<dt>资料状态</dt><dd>' + (emp.bankStatus === '已校验' ? Q.badge('ok', '已校验') : Q.badge('missing', '待校验')) + '</dd>' +
+    '</dl>';
+
+  var hist = [
+    { p: '2026-07', b: 'PAY-202607-SH01-V1', n: null, st: 'locked' },
+    { p: '2026-06', b: 'PAY-202606-SH01-V1', n: null, st: 'locked' },
+    { p: '2026-05', b: 'PAY-202605-SH01-V1', n: null, st: 'locked' }
+  ];
+  document.getElementById('d-history').innerHTML = hist.map(function (h) {
+    var cc = Q.computeOne(emp, h.p, { perfMissing: false });
+    return '<tr><td class="mono">' + h.p + '</td><td class="mono small">' + h.b + '</td>' +
+      '<td class="n mono">' + (cc.ok ? Q.money(cc.net) : '—') + '</td><td>' + Q.badge(h.st) + '</td></tr>';
+  }).join('');
+
+  function metric(label, value, unit, foot) {
+    return '<div class="metric"><div class="metric-label">' + esc(label) + '</div>' +
+      '<div class="metric-value">' + Q.money(value) + '<span class="unit">' + unit + '</span></div>' +
+      '<div class="metric-foot">' + foot + '</div></div>';
+  }
+
+  document.getElementById('e-name').value = emp.name;
+  document.getElementById('e-idcard').value = Q.maskId(emp.idcard);
+  document.getElementById('e-title').value = emp.title;
+  document.getElementById('e-grade').value = Q.GRADE_NAME[emp.grade];
+  document.getElementById('e-dept').value = Q.dept(emp.dept).name;
+  document.getElementById('e-entity').value = ent.name;
+  document.getElementById('e-city').value = emp.city;
+  document.getElementById('e-bank').value = emp.bankName;
+  document.getElementById('e-bankno').value = emp.bankNo;
+})();
+</script>
+</body>
+</html>

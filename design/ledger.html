@@ -1,0 +1,379 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>工资台账与汇总 · 轻算薪</title>
+<link rel="stylesheet" href="assets/app.css">
+</head>
+<body data-page="ledger" data-crumb="工资台账/工资台账与汇总" data-title="工资台账与汇总" data-scope="payroll">
+<div class="app">
+  <aside class="sidebar" id="sidebar" data-od-id="sidebar"></aside>
+  <div class="main">
+    <header class="topbar" id="topbar" data-od-id="topbar"></header>
+    <main class="content">
+
+      <section data-od-id="ledger-lead">
+        <p class="page-lead">台账汇总已经锁定与已确认的批次结果，按主体、部门与期间给出应发金额、个人扣缴、未扣个税金额与公司成本。系统只输出「未扣个税金额」，个税在导出后于 Excel 侧计算。</p>
+      </section>
+
+      <section id="gate-callout" data-od-id="ledger-gate"></section>
+
+      <section class="metrics is-6" data-od-id="ledger-metrics">
+        <div class="metric"><div class="metric-label">台账期间</div><div class="metric-value mono" id="m-period"></div><div class="metric-foot" id="m-period-foot"></div></div>
+        <div class="metric"><div class="metric-label">参与人数</div><div class="metric-value mono" id="m-count"></div><div class="metric-foot" id="m-count-foot"></div></div>
+        <div class="metric"><div class="metric-label">应发金额合计</div><div class="metric-value mono" id="m-gross"></div><div class="metric-foot">固定薪资 + 绩效 + 激励 − 考勤扣款</div></div>
+        <div class="metric"><div class="metric-label">个人扣缴合计</div><div class="metric-value mono" id="m-personal"></div><div class="metric-foot">个人社保 + 个人公积金</div></div>
+        <div class="metric is-accent"><div class="metric-label">未扣个税金额合计</div><div class="metric-value mono" id="m-net"></div><div class="metric-foot">应发 − 个人社保 − 个人公积金</div></div>
+        <div class="metric"><div class="metric-label">公司成本合计</div><div class="metric-value mono" id="m-cost"></div><div class="metric-foot">应发 + 公司社保 + 公司公积金</div></div>
+      </section>
+
+      <section class="card" data-od-id="ledger-batches">
+        <div class="card-head">
+          <h2>工资批次台账</h2>
+          <span class="sub" id="b-sub"></span>
+          <span class="spacer"></span>
+          <label class="row small muted" style="gap:6px">期间
+            <select class="select" id="f-period" data-od-id="filter-period"></select></label>
+          <label class="row small muted" style="gap:6px">主体
+            <select class="select" id="f-entity" data-od-id="filter-entity"></select></label>
+        </div>
+        <div class="tbl-wrap">
+          <table class="tbl">
+            <thead><tr>
+              <th style="min-width:190px">批次编号</th><th>期间</th><th>主体</th><th>类型</th><th>版本</th>
+              <th class="n">人数</th><th>校验</th><th>批次状态</th><th>发放日期</th><th style="min-width:140px">操作</th>
+            </tr></thead>
+            <tbody id="batch-rows"></tbody>
+          </table>
+        </div>
+      </section>
+
+      <section class="card" data-od-id="ledger-summary">
+        <div class="card-head">
+          <h2>金额汇总</h2>
+          <span class="sub">按主体 / 部门 / 员工 / 期间四个口径</span>
+        </div>
+        <div class="tabs" data-tabs="ledger" data-od-id="ledger-tabs">
+          <button data-tab="entity" class="is-on">按主体</button>
+          <button data-tab="dept">按部门</button>
+          <button data-tab="employee">员工明细</button>
+          <button data-tab="period">各期间</button>
+        </div>
+        <div data-tabpanel="entity" data-tabgroup="ledger" class="tabpanel is-on">
+          <div class="tbl-wrap">
+            <table class="tbl">
+              <thead><tr><th style="min-width:150px">主体</th><th class="n">人数</th><th class="n">应发金额</th><th class="n">个人社保</th><th class="n">个人公积金</th><th class="n">未扣个税金额</th><th class="n">公司社保</th><th class="n">公司公积金</th><th class="n">公司成本</th></tr></thead>
+              <tbody id="ent-sum"></tbody>
+              <tfoot id="ent-sum-foot"></tfoot>
+            </table>
+          </div>
+        </div>
+        <div data-tabpanel="dept" data-tabgroup="ledger" class="tabpanel">
+          <div class="tbl-wrap">
+            <table class="tbl">
+              <thead><tr><th style="min-width:150px">部门</th><th class="n">人数</th><th class="n">应发金额</th><th class="n">公司社保</th><th class="n">公司公积金</th><th class="n">公司成本</th></tr></thead>
+              <tbody id="dept-sum"></tbody>
+            </table>
+          </div>
+        </div>
+        <div data-tabpanel="employee" data-tabgroup="ledger" class="tabpanel">
+          <div class="card-body tight row" style="gap:12px">
+            <label class="row small muted" style="gap:6px">员工
+              <select class="select" id="f-emp" data-od-id="filter-employee"></select></label>
+            <span class="meta">逐人给出固定薪资、绩效、考勤扣款、激励、个人与公司社保公积金；点击「追溯」查看每个金额的计算过程与来源行。</span>
+          </div>
+          <div class="tbl-wrap">
+            <table class="tbl">
+              <thead><tr>
+                <th style="min-width:150px">员工</th><th>主体</th><th>部门</th><th class="n">固定薪资</th><th class="n">绩效金额</th>
+                <th class="n">考勤扣款</th><th class="n">考勤激励</th><th class="n">应发金额</th><th class="n">个人社保</th><th class="n">个人公积金</th>
+                <th class="n">未扣个税金额</th><th class="n">公司成本</th><th style="min-width:90px">操作</th>
+              </tr></thead>
+              <tbody id="emp-rows"></tbody>
+              <tfoot id="emp-foot"></tfoot>
+            </table>
+          </div>
+          <div class="pager" id="emp-pager"></div>
+        </div>
+        <div data-tabpanel="period" data-tabgroup="ledger" class="tabpanel">
+          <div class="tbl-wrap">
+            <table class="tbl">
+              <thead><tr><th style="min-width:150px">工资期间</th><th class="n">人数</th><th class="n">应发金额</th><th class="n">个人扣缴</th><th class="n">未扣个税金额</th><th class="n">公司成本</th><th>期间状态</th></tr></thead>
+              <tbody id="period-sum"></tbody>
+            </table>
+          </div>
+        </div>
+        <div class="card-body tight"><span class="meta">汇总口径与「批次核算详情」「人工成本表」一致，均按系统内同一套规则重算，不读取外部数据。</span></div>
+      </section>
+
+      <section class="card" data-od-id="ledger-exports">
+        <div class="card-head">
+          <h2>最近导出记录</h2>
+          <span class="sub">导出动作在导出中心完成</span>
+          <span class="spacer"></span>
+          <a class="btn btn-sm btn-ghost" href="export-center.html">前往导出中心</a>
+        </div>
+        <div class="tbl-wrap">
+          <table class="tbl">
+            <thead><tr><th style="min-width:170px">导出编号</th><th>模板</th><th>版本</th><th>期间</th><th>范围</th><th class="n">人数</th><th>时间</th><th>结果</th></tr></thead>
+            <tbody id="exp-rows"></tbody>
+          </table>
+        </div>
+      </section>
+
+      <section class="actionbar" data-od-id="ledger-actionbar">
+        <a class="btn btn-sm btn-ghost" href="periods.html">返回工资期间与批次</a>
+        <span class="spacer"></span>
+        <span class="reason" id="bar-reason"></span>
+        <a class="btn btn-sm" href="batch-detail.html">查看批次核算详情</a>
+        <a class="btn btn-sm btn-primary" href="export-center.html" data-od-id="btn-export">导出本期工资表</a>
+      </section>
+
+    </main>
+    <footer class="pagefoot"></footer>
+  </div>
+</div>
+<script src="assets/app.js"></script>
+<script>
+(function () {
+  var Q = window.QSX, esc = Q.esc;
+  var P = Q.COMPANY.period;
+  var F_PERIOD = P, F_ENT = '';
+
+  var VERIFY = { needsFix: ['warn', '待修复'], ready: ['ok', '校验通过'], blocked: ['blocked', '已阻断'] };
+  function vbadge(v) { var m = VERIFY[v] || ['muted', v]; return Q.badge(m[0], m[1]); }
+  function blockedEntities() {
+    return Q.ENTITIES.filter(function (e) { return Q.entityStatus(e.code).key === 'blocked'; });
+  }
+  /* 所有合计的唯一口径：已就绪主体中试算成功的员工，未就绪主体一律不参与 */
+  function countedList() {
+    var blocked = {};
+    blockedEntities().forEach(function (e) { blocked[e.code] = true; });
+    return Q.computeAll(P).filter(function (c) { return c.ok && !blocked[c.emp.entity]; });
+  }
+
+  /* ── 门禁说明 ───────────────────────────────────────────── */
+  function renderGate() {
+    var bad = blockedEntities(), s = Q.state();
+    var el = document.getElementById('gate-callout');
+    if (!bad.length) {
+      el.innerHTML = '<div class="callout is-ok"><span>' + Q.icon('check') + '</span><div>' +
+        '<b class="callout-title">' + esc(Q.COMPANY.period) + ' 三个主体数据已齐全，台账金额为可确认口径</b>' +
+        '<div>全公司参与人数 128 人。' + (s.locked ? '本期批次已锁定，台账金额不再变动。' : '批次锁定前，台账金额仍可能随输入变更而更新。') + '</div></div></div>';
+      return;
+    }
+    el.innerHTML = '<div class="callout is-warn"><span>' + Q.icon('warn') + '</span><div>' +
+      '<b class="callout-title">' + bad.length + ' 个主体尚未产生可确认结果，其人数与金额未计入本期合计</b>' +
+      '<div>' + bad.map(function (e) { return esc(Q.ent(e.code).short) + '：' + esc(Q.entityStatus(e.code).note); }).join('；') +
+      '。下方台账仅统计已就绪主体，数字会随数据补齐而增加。</div>' +
+      '<div style="margin-top:6px"><a href="batch-detail.html">去批次核算详情处理 →</a></div></div></div>';
+  }
+
+  /* ── 指标 ───────────────────────────────────────────────── */
+  function renderMetrics() {
+    var s = Q.summarize(countedList()), bad = blockedEntities().length;
+    document.getElementById('m-period').textContent = P;
+    document.getElementById('m-period-foot').textContent = (Q.PERIODS.filter(function (p) { return p.code === P; })[0] || {}).label || '';
+    document.getElementById('m-count').textContent = s.ok + ' / 128';
+    document.getElementById('m-count-foot').textContent = bad ? bad + ' 个主体未计入，计入后会增加' : '全公司三个主体全部计入';
+    document.getElementById('m-gross').textContent = Q.money(s.gross);
+    document.getElementById('m-personal').textContent = Q.money(Q.round2(s.pSI + s.pHF));
+    document.getElementById('m-net').textContent = Q.money(s.net);
+    document.getElementById('m-cost').textContent = Q.money(s.cost);
+  }
+
+  /* ── 批次台账 ───────────────────────────────────────────── */
+  function renderBatches() {
+    var list = Q.BATCHES.filter(function (b) {
+      if (F_PERIOD && b.period !== F_PERIOD) return false;
+      if (F_ENT && b.entity !== F_ENT) return false;
+      return true;
+    });
+    var body = document.getElementById('batch-rows');
+    if (!list.length) {
+      body.innerHTML = '<tr><td colspan="10"><div class="empty">' + Q.icon('calendar') +
+        '<h3>该筛选条件下没有工资批次</h3><p>调整期间或主体筛选，或先在工资期间与批次页新建批次。</p></div></td></tr>';
+    } else {
+      body.innerHTML = list.map(function (b) {
+        var st = Q.entityStatus(b.entity);
+        var dim = b.state === 'superseded' ? ' class="is-invalid"' : '';
+        var op = '<a class="btn btn-sm btn-ghost" href="batch-detail.html?batch=' + b.no + '">明细</a>';
+        if (b.state === 'locked' || b.state === 'confirmed') op += ' <a class="btn btn-sm btn-ghost" href="export-center.html">导出</a>';
+        return '<tr' + dim + '>' +
+          '<td><span class="mono strong">' + esc(b.no) + '</span>' +
+            (b.correctionOf ? '<span class="tbl-sub">更正自 ' + esc(b.correctionOf) + '</span>' : '') +
+            (b.reason ? '<span class="tbl-sub">' + esc(b.reason) + '</span>' : '') + '</td>' +
+          '<td class="mono">' + esc(b.period) + '</td>' +
+          '<td>' + esc(Q.ent(b.entity).short) + '</td>' +
+          '<td>' + esc(b.kind) + '</td>' +
+          '<td class="mono">' + esc(b.version) + '</td>' +
+          '<td class="n mono">' + b.count + '</td>' +
+          '<td>' + vbadge(b.verify) + (b.period === P ? '' : '<span class="tbl-sub">历史期间</span>') + '</td>' +
+          '<td>' + Q.badge(b.state) + '</td>' +
+          '<td class="mono">' + esc(b.payDate) + '</td>' +
+          '<td>' + op + '</td></tr>';
+      }).join('');
+    }
+    document.getElementById('b-sub').textContent = '共 ' + list.length + ' 个批次 · 含历史期间与更正版本';
+  }
+
+  /* ── 汇总 ───────────────────────────────────────────────── */
+  function renderSummary() {
+    var ok = countedList();
+
+    document.getElementById('ent-sum').innerHTML = Q.ENTITIES.map(function (e) {
+      var sub = ok.filter(function (c) { return c.emp.entity === e.code; });
+      var st = Q.entityStatus(e.code);
+      var s = Q.summarize(sub);
+      return '<tr' + (st.key === 'blocked' ? ' class="is-invalid"' : '') + '>' +
+        '<td><span class="strong">' + esc(e.short) + '</span><span class="tbl-sub mono">' + e.code + '</span></td>' +
+        '<td class="n mono">' + (st.key === 'blocked' ? '<span class="meta">未计入</span>' : s.count) + '</td>' +
+        '<td class="n mono">' + (st.key === 'blocked' ? '—' : Q.money(s.gross)) + '</td>' +
+        '<td class="n mono">' + (st.key === 'blocked' ? '—' : Q.money(s.pSI)) + '</td>' +
+        '<td class="n mono">' + (st.key === 'blocked' ? '—' : Q.money(s.pHF)) + '</td>' +
+        '<td class="n mono strong">' + (st.key === 'blocked' ? '—' : Q.money(s.net)) + '</td>' +
+        '<td class="n mono">' + (st.key === 'blocked' ? '—' : Q.money(s.cSI)) + '</td>' +
+        '<td class="n mono">' + (st.key === 'blocked' ? '—' : Q.money(s.cHF)) + '</td>' +
+        '<td class="n mono">' + (st.key === 'blocked' ? '—' : Q.money(s.cost)) + '</td></tr>';
+    }).join('');
+    var st = Q.summarize(ok);
+    document.getElementById('ent-sum-foot').innerHTML =
+      '<tr><td>全公司合计</td>' +
+      '<td class="n mono">' + st.count + '</td><td class="n mono">' + Q.money(st.gross) + '</td>' +
+      '<td class="n mono">' + Q.money(st.pSI) + '</td><td class="n mono">' + Q.money(st.pHF) + '</td>' +
+      '<td class="n mono">' + Q.money(st.net) + '</td>' +
+      '<td class="n mono">' + Q.money(st.cSI) + '</td><td class="n mono">' + Q.money(st.cHF) + '</td>' +
+      '<td class="n mono">' + Q.money(st.cost) + '</td></tr>';
+
+    var byDept = {};
+    ok.forEach(function (c) {
+      var k = c.emp.dept;
+      if (!byDept[k]) byDept[k] = [];
+      byDept[k].push(c);
+    });
+    var deptRows = Object.keys(byDept).map(function (k) {
+      var s = Q.summarize(byDept[k]);
+      return { name: Q.dept(k) ? Q.dept(k).name : k, s: s };
+    }).sort(function (a, b) { return b.s.cost - a.s.cost; });
+    document.getElementById('dept-sum').innerHTML = deptRows.map(function (r) {
+      return '<tr><td><span class="strong">' + esc(r.name) + '</span></td>' +
+        '<td class="n mono">' + r.s.count + '</td><td class="n mono">' + Q.money(r.s.gross) + '</td>' +
+        '<td class="n mono">' + Q.money(r.s.cSI) + '</td><td class="n mono">' + Q.money(r.s.cHF) + '</td>' +
+        '<td class="n mono strong">' + Q.money(r.s.cost) + '</td></tr>';
+    }).join('');
+
+    document.getElementById('period-sum').innerHTML = Q.PERIODS.map(function (p) {
+      var s = Q.summarize(p.code === P ? ok : Q.computeAll(p.code).filter(function (c) { return c.ok; }));
+      return '<tr><td><span class="strong">' + esc(p.label) + '</span><span class="tbl-sub mono">' + esc(p.code) + '</span></td>' +
+        '<td class="n mono">' + s.count + '</td><td class="n mono">' + Q.money(s.gross) + '</td>' +
+        '<td class="n mono">' + Q.money(Q.round2(s.pSI + s.pHF)) + '</td>' +
+        '<td class="n mono strong">' + Q.money(s.net) + '</td>' +
+        '<td class="n mono">' + Q.money(s.cost) + '</td>' +
+        '<td>' + Q.badge(p.status === 'open' ? 'prepare' : 'locked',
+          p.status === 'open' ? '进行中' : '已锁定') + '</td></tr>';
+    }).join('');
+  }
+
+  /* ── 员工明细（追溯入口）──────────────────────────────────── */
+  var EMP_PAGE = 0, EMP_SIZE = 20, F_EMP = '';
+  function empList() {
+    var ok = countedList();
+    if (F_EMP) ok = ok.filter(function (c) { return c.emp.id === F_EMP; });
+    return ok;
+  }
+  function renderEmployees() {
+    var all = empList();
+    var pages = Math.max(1, Math.ceil(all.length / EMP_SIZE));
+    if (EMP_PAGE > pages - 1) EMP_PAGE = pages - 1;
+    var start = EMP_PAGE * EMP_SIZE;
+    var rows = all.slice(start, start + EMP_SIZE);
+    var body = document.getElementById('emp-rows');
+
+    if (!all.length) {
+      body.innerHTML = '<tr><td colspan="13"><div class="empty">' + Q.icon('users') +
+        '<h3>当前筛选下没有可展示的员工</h3><p>员工明细只统计已产生可确认结果的主体。未就绪主体的人数与金额不计入本表，补齐数据后会自动出现。</p>' +
+        '<a class="btn btn-sm btn-primary" href="batch-detail.html">去批次核算详情处理</a></div></td></tr>';
+    } else {
+      body.innerHTML = rows.map(function (c) {
+        var e = c.emp;
+        return '<tr>' +
+          '<td><span class="strong">' + esc(e.name) + '</span><span class="tbl-sub mono">' + esc(e.id) + '</span></td>' +
+          '<td class="small">' + esc(Q.ent(e.entity).short) + '</td>' +
+          '<td class="small">' + esc(Q.dept(e.dept) ? Q.dept(e.dept).name : e.dept) + '</td>' +
+          '<td class="n mono">' + Q.money(c.fixed) + '</td>' +
+          '<td class="n mono">' + Q.money(c.perfAmount) + '</td>' +
+          '<td class="n mono">' + (c.attTotal ? '−' + Q.money(c.attTotal) : '0.00') + '</td>' +
+          '<td class="n mono">' + (c.incentive ? '+' + Q.money(c.incentive) : '—') + '</td>' +
+          '<td class="n mono">' + Q.money(c.gross) + '</td>' +
+          '<td class="n mono">' + Q.money(c.pSI) + '</td>' +
+          '<td class="n mono">' + Q.money(c.pHF) + '</td>' +
+          '<td class="n mono strong">' + Q.money(c.net) + '</td>' +
+          '<td class="n mono">' + Q.money(c.cost) + '</td>' +
+          '<td><a class="btn btn-sm btn-ghost" href="ledger-employee.html?id=' + encodeURIComponent(e.id) + '">追溯</a></td>' +
+          '</tr>';
+      }).join('');
+    }
+
+    var s = Q.summarize(all);
+    document.getElementById('emp-foot').innerHTML = all.length
+      ? '<tr><td>本页合计（' + all.length + ' 人）</td><td></td><td></td>' +
+        '<td class="n mono">' + Q.money(s.fixed) + '</td><td class="n mono">' + Q.money(s.perf) + '</td>' +
+        '<td class="n mono">' + (s.attDeduct ? '−' + Q.money(s.attDeduct) : '0.00') + '</td>' +
+        '<td class="n mono">' + (s.incentive ? '+' + Q.money(s.incentive) : '—') + '</td>' +
+        '<td class="n mono">' + Q.money(s.gross) + '</td>' +
+        '<td class="n mono">' + Q.money(s.pSI) + '</td><td class="n mono">' + Q.money(s.pHF) + '</td>' +
+        '<td class="n mono strong">' + Q.money(s.net) + '</td>' +
+        '<td class="n mono">' + Q.money(s.cost) + '</td><td></td></tr>' : '';
+
+    var pager = document.getElementById('emp-pager');
+    if (all.length <= EMP_SIZE) { pager.innerHTML = ''; }
+    else {
+      pager.innerHTML = '<span class="meta">共 ' + all.length + ' 名员工 · 第 ' + (EMP_PAGE + 1) + ' / ' + pages + ' 页</span>' +
+        '<button class="btn btn-sm btn-ghost" data-emp-go="' + (EMP_PAGE - 1) + '"' + (EMP_PAGE <= 0 ? ' disabled' : '') + '>上一页</button>' +
+        '<button class="btn btn-sm btn-ghost" data-emp-go="' + (EMP_PAGE + 1) + '"' + (EMP_PAGE >= pages - 1 ? ' disabled' : '') + '>下一页</button>';
+      Q.qa('[data-emp-go]').forEach(function (b) {
+        b.addEventListener('click', function () { EMP_PAGE = parseInt(this.getAttribute('data-emp-go'), 10); renderEmployees(); });
+      });
+    }
+  }
+
+  /* ── 导出记录 ───────────────────────────────────────────── */
+  function renderExports() {
+    document.getElementById('exp-rows').innerHTML = Q.exportHistory().slice(0, 5).map(function (r) {
+      return '<tr>' + (r.fresh ? '' : '') +
+        '<td><span class="mono strong">' + esc(r.id) + '</span>' + (r.fresh ? '<span class="tbl-sub">本次会话新增</span>' : '') + '</td>' +
+        '<td>' + esc(r.tpl) + '</td><td class="mono">' + esc(r.tplv) + '</td>' +
+        '<td class="mono">' + esc(r.period) + '</td><td class="small">' + esc(r.scope) + '</td>' +
+        '<td class="n mono">' + r.count + '</td><td class="mono small">' + esc(r.time) + '</td>' +
+        '<td>' + Q.badge(r.st === 'ok' ? 'ok' : 'warn', r.note) + '</td></tr>';
+    }).join('');
+  }
+
+  function renderBar() {
+    var bad = blockedEntities().length;
+    document.getElementById('bar-reason').innerHTML = bad
+      ? Q.icon('warn') + ' <span>' + bad + ' 个主体未计入，当前台账不是完整口径</span>' : '';
+  }
+
+  /* ── 事件 ───────────────────────────────────────────────── */
+  document.getElementById('f-period').innerHTML = '<option value="">全部期间（3）</option>' +
+    Q.PERIODS.map(function (p) { return '<option value="' + p.code + '"' + (p.code === P ? ' selected' : '') + '>' + p.label + '</option>'; }).join('');
+  document.getElementById('f-entity').innerHTML = '<option value="">全部主体（3）</option>' +
+    Q.ENTITIES.map(function (e) { return '<option value="' + e.code + '">' + esc(e.short) + ' · ' + e.headcount + ' 人</option>'; }).join('');
+  document.getElementById('f-period').addEventListener('change', function () { F_PERIOD = this.value; renderBatches(); });
+  document.getElementById('f-entity').addEventListener('change', function () { F_ENT = this.value; renderBatches(); });
+
+  var empSel = document.getElementById('f-emp');
+  empSel.innerHTML = '<option value="">全部员工（' + countedList().length + '）</option>' +
+    countedList().map(function (c) {
+      return '<option value="' + c.emp.id + '">' + esc(c.emp.name) + ' · ' + esc(Q.ent(c.emp.entity).short) + '</option>';
+    }).join('');
+  empSel.addEventListener('change', function () { F_EMP = this.value; EMP_PAGE = 0; renderEmployees(); });
+
+  Q.qa('[data-icon]').forEach(function (el) { el.innerHTML = Q.icon(el.getAttribute('data-icon')); });
+  renderGate(); renderMetrics(); renderBatches(); renderSummary(); renderEmployees(); renderExports(); renderBar();
+})();
+</script>
+</body>
+</html>

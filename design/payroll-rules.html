@@ -1,0 +1,316 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>考勤与薪酬规则 · 轻算薪</title>
+<link rel="stylesheet" href="assets/app.css">
+</head>
+<body data-page="payroll-rules" data-crumb="规则维护/考勤与薪酬规则" data-title="考勤与薪酬规则">
+<div class="app">
+  <aside class="sidebar" id="sidebar" data-od-id="sidebar"></aside>
+  <div class="main">
+    <header class="topbar" id="topbar" data-od-id="topbar"></header>
+    <main class="content">
+
+      <section data-od-id="pr-lead">
+        <p class="page-lead">本页说明工资是怎么算出来的：收入项、扣款项、考勤罚款与全公司考勤激励的取数口径都集中在这里。所有数值为演示配置，可按公司制度调整。</p>
+      </section>
+
+      <section class="metrics is-6" data-od-id="pr-metrics">
+        <div class="metric">
+          <div class="metric-label">应出勤天数</div>
+          <div class="metric-value" id="m-days">21<span class="unit">天</span></div>
+          <div class="metric-foot">来自月度考勤表</div>
+        </div>
+        <div class="metric">
+          <div class="metric-label">每日标准工时</div>
+          <div class="metric-value" id="m-hours">8<span class="unit">小时</span></div>
+          <div class="metric-foot">用于迟到早退折算</div>
+        </div>
+        <div class="metric">
+          <div class="metric-label">公积金单边比例</div>
+          <div class="metric-value" id="m-hf">5%</div>
+          <div class="metric-foot">个人与公司各按固定薪资计缴</div>
+        </div>
+        <div class="metric">
+          <div class="metric-label">忘打卡罚款</div>
+          <div class="metric-value" id="m-miss">30<span class="unit">元/次</span></div>
+          <div class="metric-foot">按次计，不按分钟</div>
+        </div>
+        <div class="metric">
+          <div class="metric-label">绩效系数范围</div>
+          <div class="metric-value">≥ 0</div>
+          <div class="metric-foot">来自月度绩效导入，不设固定上限</div>
+        </div>
+        <div class="metric">
+          <div class="metric-label">考勤激励池</div>
+          <div class="metric-value">上一期间</div>
+          <div class="metric-foot">全公司考勤扣款合计循环使用</div>
+        </div>
+      </section>
+
+      <section class="card" data-od-id="pr-structure">
+        <div class="card-head">
+          <h2>薪酬构成</h2>
+          <span class="sub">员工按职级对应薪酬标准，拆分为固定薪资与绩效基数两部分</span>
+        </div>
+        <div class="tbl-wrap">
+          <table class="tbl">
+            <thead><tr><th class="sticky-col" style="min-width:110px">职级</th><th class="n">薪酬标准</th><th class="n">固定薪资（80%）</th><th class="n">绩效基数（20%）</th><th>试用期</th><th>考勤考核</th></tr></thead>
+            <tbody id="grade-rows"></tbody>
+          </table>
+        </div>
+        <div class="card-body" style="padding-top:0">
+          <div class="meta">固定薪资在转正前后不变；绩效基数只在已转正后参与计算。试用期员工绩效工资为 0，转正当月绩效按整月计算。</div>
+        </div>
+      </section>
+
+      <section class="card" data-od-id="pr-formula">
+        <div class="card-head">
+          <h2>计算顺序</h2>
+          <span class="sub">以 P6（薪酬标准 20,000.00 元）为例，全月出勤且无考勤异常</span>
+        </div>
+        <div class="tbl-wrap">
+          <table class="tbl">
+            <thead><tr><th style="width:52px">步骤</th><th style="min-width:130px">计算项</th><th>公式</th><th class="n">示例金额</th></tr></thead>
+            <tbody id="step-rows"></tbody>
+          </table>
+        </div>
+        <div class="card-body" style="padding-top:0">
+          <div class="meta">考勤激励计入应发金额，但不计入社保与公积金的缴费基数；社保基数取自城市规则，公积金基数固定为固定薪资。</div>
+        </div>
+      </section>
+
+      <div class="grid-2" data-od-id="pr-att">
+        <section class="card" data-od-id="pr-att-fine">
+          <div class="card-head">
+            <h2>考勤罚款口径</h2>
+            <span class="sub">迟到、早退按分钟折算，忘打卡按次</span>
+          </div>
+          <div class="tbl-wrap">
+            <table class="tbl">
+              <thead><tr><th style="min-width:120px">考勤项</th><th>规则</th><th class="n">P6 折算金额</th></tr></thead>
+              <tbody id="att-rows"></tbody>
+            </table>
+          </div>
+        </section>
+
+        <section class="card" data-od-id="pr-day-proration">
+          <div class="card-head">
+            <h2>计薪天数折算</h2>
+            <span class="sub">按实际计薪天数折算固定薪资</span>
+          </div>
+          <div class="tbl-wrap">
+            <table class="tbl">
+              <thead><tr><th style="min-width:120px">情形</th><th>折算方式</th><th class="n">P6 示例</th></tr></thead>
+              <tbody id="day-rows"></tbody>
+            </table>
+          </div>
+        </section>
+      </div>
+
+      <section class="card" data-od-id="pr-incentive">
+        <div class="card-head">
+          <h2>全公司考勤激励（全勤奖励）</h2>
+          <span class="sub">把上一期间全公司考勤扣款总额，平均分配给本期符合条件的人</span>
+        </div>
+        <div class="card-body">
+          <div class="grid-2">
+            <div>
+              <div class="eyebrow">分配资格（需同时满足）</div>
+              <div class="stack" style="gap:8px" id="qual-list"></div>
+            </div>
+            <div>
+              <div class="eyebrow">分配算法</div>
+              <dl class="kv is-wide">
+                <dt>激励池</dt><dd>上一工资期间全公司考勤扣款合计（含迟到、早退、忘打卡、无薪假）</dd>
+                <dt>人均金额</dt><dd class="mono">floor(池 ÷ 符合人数 × 100) ÷ 100，向下取到分</dd>
+                <dt>尾差</dt><dd>池减去「人均 × 人数」后的余额，留在池中滚入下一期间</dd>
+                <dt>发放</dt><dd>计入应发金额，不计入社保与公积金基数</dd>
+              </dl>
+            </div>
+          </div>
+          <div class="callout is-info" style="margin-top:12px">
+            <span data-icon="info"></span>
+            <div>
+              <div class="callout-title" id="inc-live-title">当前期间实况</div>
+              <div id="inc-live"></div>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <section class="card" data-od-id="pr-deduct">
+        <div class="card-head">
+          <h2>扣缴项口径</h2>
+          <span class="sub">社保按城市规则、公积金按固定薪资</span>
+        </div>
+        <div class="tbl-wrap">
+          <table class="tbl">
+            <thead><tr><th class="sticky-col" style="min-width:140px">扣缴项</th><th>计算基数</th><th>比例</th><th>说明</th></tr></thead>
+            <tbody id="ded-rows"></tbody>
+          </table>
+        </div>
+      </section>
+
+      <section class="actionbar" data-od-id="pr-actions">
+        <span class="reason">规则修改只影响下次试算，已锁定期间的金额不会变化。</span>
+        <span class="spacer"></span>
+        <button class="btn" data-od-id="btn-edit-att" data-toast="考勤规则编辑表单已打开（原型演示）">编辑考勤规则</button>
+        <button class="btn btn-primary" data-od-id="btn-edit-pay" data-toast="薪酬规则编辑表单已打开（原型演示）">编辑薪酬规则</button>
+      </section>
+
+    </main>
+    <footer class="pagefoot"></footer>
+  </div>
+</div>
+
+<script src="assets/app.js"></script>
+<script>
+(function () {
+  var Q = window.QSX, esc = Q.esc;
+  var P = Q.COMPANY.period;
+
+  document.getElementById('m-days').innerHTML = Q.STD_DAYS + '<span class="unit">天</span>';
+  document.getElementById('m-hours').innerHTML = Q.STD_HOURS + '<span class="unit">小时</span>';
+  document.getElementById('m-hf').textContent = Q.pct(Q.HF_RATE);
+  document.getElementById('m-miss').innerHTML = '30<span class="unit">元/次</span>';
+
+  /* ── 职级薪酬构成 ───────────────────────────────────────── */
+  document.getElementById('grade-rows').innerHTML = Q.GRADES.map(function (g) {
+    var fixed = Q.round2(g.salary * 0.8), perf = Q.round2(g.salary * 0.2);
+    var exempt = g.code === 'P7' || g.code === 'P8';
+    return '<tr><td class="sticky-col"><span class="strong">' + esc(g.name) + '</span></td>' +
+      '<td class="n mono">' + Q.money(g.salary) + '</td>' +
+      '<td class="n mono strong">' + Q.money(fixed) + '</td>' +
+      '<td class="n mono">' + Q.money(perf) + '</td>' +
+      '<td>' + Q.badge('warn', '无绩效工资') + '</td>' +
+      '<td>' + (exempt ? Q.badge('muted', '不参与') : Q.badge('ok', '参与')) + '</td>' +
+      '</tr>';
+  }).join('');
+
+  /* ── 计算顺序（P6 全月示例） ────────────────────────────── */
+  var STD = Q.GRADE_SALARY['P6'];
+  var fixed = Q.round2(STD * 0.8);
+  var perfBase = Q.round2(STD * 0.2);
+  var coef = 1.00;
+  var perf = Q.round2(perfBase * coef);
+  var hf = Q.round2(fixed * Q.HF_RATE);
+  var shRule = Q.CITY_RULES['上海'];
+  var pSI = Q.round2(shRule.base * Q.personalRate('上海'));
+  var cSI = Q.round2(shRule.base * Q.companyRate('上海'));
+  var step = 0;
+  function srow(name, formula, amount) {
+    step++;
+    return '<tr><td class="mono">' + step + '</td><td><span class="strong">' + name + '</span></td>' +
+      '<td class="small">' + formula + '</td><td class="n mono">' + amount + '</td></tr>';
+  }
+  var grossExpr = Q.money(fixed) + ' + ' + Q.money(perf);
+  var gross = Q.round2(fixed + perf);
+  var net = Q.round2(gross - pSI - hf);
+  var cost = Q.round2(gross + cSI + hf);
+  document.getElementById('step-rows').innerHTML =
+    srow('固定薪资', '薪酬标准 <span class="mono">' + Q.money(STD) + '</span> × 80%', Q.money(fixed)) +
+    srow('绩效工资', '薪酬标准 <span class="mono">' + Q.money(STD) + '</span> × 20% × 系数 <span class="mono">' + coef.toFixed(2) + '</span> = <span class="mono">' + Q.money(perfBase) + '</span> × ' + coef.toFixed(2), Q.money(perf)) +
+    srow('考勤激励', '上一期间扣款池 ÷ 符合人数（本页示例暂按 0 计）', '0.00') +
+    srow('考勤扣款', '迟到早退分钟 × 每分钟单价 + 忘打卡次数 × 30 元', '0.00') +
+    srow('应发金额', '<span class="mono">' + grossExpr + '</span>', '<span class="strong">' + Q.money(gross) + '</span>') +
+    srow('个人社保', '缴费基数 <span class="mono">' + Q.money(shRule.base) + '</span> × <span class="mono">' + Q.pct(Q.personalRate('上海')) + '</span>', '−' + Q.money(pSI)) +
+    srow('个人公积金', '固定薪资 <span class="mono">' + Q.money(fixed) + '</span> × <span class="mono">' + Q.pct(Q.HF_RATE) + '</span>', '−' + Q.money(hf)) +
+    srow('未扣个税金额', '<span class="mono">' + Q.money(gross) + ' − ' + Q.money(pSI) + ' − ' + Q.money(hf) + '</span>', '<span class="strong">' + Q.money(net) + '</span>') +
+    srow('公司社保', '缴费基数 <span class="mono">' + Q.money(shRule.base) + '</span> × <span class="mono">' + Q.pct(Q.companyRate('上海')) + '</span>', Q.money(cSI)) +
+    srow('公司公积金', '固定薪资 <span class="mono">' + Q.money(fixed) + '</span> × <span class="mono">' + Q.pct(Q.HF_RATE) + '</span>', Q.money(hf)) +
+    srow('公司成本', '<span class="mono">' + Q.money(gross) + ' + ' + Q.money(cSI) + ' + ' + Q.money(hf) + '</span>', '<span class="strong">' + Q.money(cost) + '</span>');
+
+  /* ── 考勤罚款口径（P6 折算） ───────────────────────────── */
+  var perMin = fixed / Q.STD_DAYS / Q.STD_HOURS / 60;
+  var dayRate = fixed / Q.STD_DAYS;
+  document.getElementById('att-rows').innerHTML =
+    '<tr><td><span class="strong">迟到 / 早退</span></td>' +
+    '<td class="small">按分钟折算：固定薪资 ÷ ' + Q.STD_DAYS + ' ÷ ' + Q.STD_HOURS + ' ÷ 60，每分钟 <span class="mono">' + perMin.toFixed(4) + '</span> 元</td>' +
+    '<td class="n mono">迟到 38 分钟 = ' + Q.money(Q.round2(38 * perMin)) + '</td></tr>' +
+    '<tr><td><span class="strong">忘打卡</span></td>' +
+    '<td class="small">每次 <span class="mono">' + Q.money(30) + '</span> 元，按次累计</td>' +
+    '<td class="n mono">2 次 = ' + Q.money(60) + '</td></tr>' +
+    '<tr><td><span class="strong">无薪假</span></td>' +
+    '<td class="small">固定薪资 ÷ ' + Q.STD_DAYS + ' × 请假天数，每天 <span class="mono">' + Q.money(dayRate) + '</span> 元</td>' +
+    '<td class="n mono">1 天 = ' + Q.money(Q.round2(dayRate)) + '</td></tr>' +
+    '<tr><td><span class="strong">有薪假</span></td>' +
+    '<td class="small">不扣款，但当期不参与考勤激励</td>' +
+    '<td class="n mono">0.00</td></tr>' +
+    '<tr><td><span class="strong">P7 / P8</span></td>' +
+    '<td class="small">不参与考勤罚款，也不参与考勤激励</td>' +
+    '<td class="n mono">—</td></tr>';
+
+  /* ── 计薪天数折算 ──────────────────────────────────────── */
+  document.getElementById('day-rows').innerHTML =
+    '<tr><td><span class="strong">全月在职</span></td><td class="small">按 ' + Q.STD_DAYS + ' 天全额计薪</td>' +
+    '<td class="n mono">21 / 21 = ' + Q.money(fixed) + '</td></tr>' +
+    '<tr><td><span class="strong">当月入职</span></td><td class="small">' + Q.STD_DAYS + ' −（入职日 − 1）</td>' +
+    '<td class="n mono">11 日入职 = 11 / 21 = ' + Q.money(Q.round2(fixed * 11 / Q.STD_DAYS)) + '</td></tr>' +
+    '<tr><td><span class="strong">当月离职</span></td><td class="small">计薪天数取离职日，与入职折算取较小值</td>' +
+    '<td class="n mono">15 日离职 = 15 / 21 = ' + Q.money(Q.round2(fixed * 15 / Q.STD_DAYS)) + '</td></tr>';
+
+  /* ── 分配资格 ──────────────────────────────────────────── */
+  var QUALS = [
+    '本期在职',
+    '已转正（试用期不参与）',
+    '职级为 P6 及以下',
+    '本期有考勤记录',
+    '无迟到、无早退、无忘打卡',
+    '本期无请假（含有薪假）'
+  ];
+  document.getElementById('qual-list').innerHTML = QUALS.map(function (t) {
+    return '<div class="check"><span data-icon="check" style="color:var(--ok)"></span><span class="small">' + esc(t) + '</span></div>';
+  }).join('');
+
+  /* ── 当前期间实况 ─────────────────────────────────────── */
+  (function renderLive() {
+    var plan = Q.incentivePlan(P);
+    var prev = Q.prevPeriod(P);
+    var done = Q.incentiveDone();
+    document.getElementById('inc-live-title').textContent = '当前期间实况（' + P + '）';
+    var rows = '<dl class="kv is-wide">' +
+      '<dt>来源期间</dt><dd class="mono">' + esc(prev) + '</dd>' +
+      '<dt>激励池</dt><dd class="mono strong">' + Q.money(plan.pool) + ' 元</dd>' +
+      '<dt>符合人数</dt><dd><span class="mono">' + plan.eligible.length + '</span> 人（全部员工 ' + Q.EMPLOYEES.length + ' 人）</dd>';
+    if (done) {
+      rows += '<dt>人均金额</dt><dd class="mono strong">' + Q.money(plan.avg) + ' 元</dd>' +
+        '<dt>尾差</dt><dd class="mono">' + Q.money(plan.remainder) + ' 元（留池）</dd>' +
+        '<dt>已发放合计</dt><dd class="mono">' + Q.money(Q.round2(plan.avg * plan.eligible.length)) + ' 元</dd>';
+    } else {
+      rows += '<dt>人均金额</dt><dd class="meta">尚未计算，点击「全公司考勤激励」页的计算按钮后生成</dd>';
+    }
+    rows += '</dl>';
+    document.getElementById('inc-live').innerHTML = rows;
+  })();
+
+  /* ── 扣缴项口径 ────────────────────────────────────────── */
+  var cities = Object.keys(Q.CITY_RULES);
+  document.getElementById('ded-rows').innerHTML =
+    '<tr><td class="sticky-col"><span class="strong">个人社保</span></td>' +
+    '<td class="small">员工实际 base 城市的社保缴费基数</td>' +
+    '<td class="mono">' + cities.map(function (c) { return esc(c) + ' ' + Q.pct(Q.personalRate(c)); }).join(' · ') + '</td>' +
+    '<td class="small">按城市规则的分项比例合计计算</td></tr>' +
+    '<tr><td class="sticky-col"><span class="strong">个人公积金</span></td>' +
+    '<td class="small">固定薪资（不含绩效、激励与考勤扣款）</td>' +
+    '<td class="mono">' + Q.pct(Q.HF_RATE) + '</td>' +
+    '<td class="small">不分城市，全公司统一比例</td></tr>' +
+    '<tr><td class="sticky-col"><span class="strong">公司社保</span></td>' +
+    '<td class="small">同个人社保基数</td>' +
+    '<td class="mono">' + cities.map(function (c) { return esc(c) + ' ' + Q.pct(Q.companyRate(c)); }).join(' · ') + '</td>' +
+    '<td class="small">计入公司成本，不从员工工资中扣除</td></tr>' +
+    '<tr><td class="sticky-col"><span class="strong">公司公积金</span></td>' +
+    '<td class="small">同个人公积金基数</td>' +
+    '<td class="mono">' + Q.pct(Q.HF_RATE) + '</td>' +
+    '<td class="small">与个人部分金额一致</td></tr>' +
+    '<tr><td class="sticky-col"><span class="strong">个税</span></td>' +
+    '<td class="small">—</td><td class="mono">—</td>' +
+    '<td class="small">系统只输出「未扣个税金额」，个税在导出后于 Excel 中计算并回填</td></tr>';
+
+  Q.qa('[data-icon]').forEach(function (el) { el.innerHTML = Q.icon(el.getAttribute('data-icon')); });
+})();
+</script>
+</body>
+</html>

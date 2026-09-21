@@ -1,0 +1,346 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>导出中心 · 轻算薪</title>
+<link rel="stylesheet" href="assets/app.css">
+</head>
+<body data-page="export" data-crumb="结果导出/导出中心" data-title="导出中心">
+<div class="app">
+  <aside class="sidebar" id="sidebar" data-od-id="sidebar"></aside>
+  <div class="main">
+    <header class="topbar" id="topbar" data-od-id="topbar"></header>
+    <main class="content">
+
+      <section data-od-id="ex-lead">
+        <p class="page-lead">导出中心把已锁定批次的结果生成 Excel 文件。系统只输出「未扣个税金额」，个税相关字段留空，由你在 Excel 中计算后回填。</p>
+      </section>
+
+      <section data-od-id="ex-gate">
+        <div id="gate"></div>
+      </section>
+
+      <section class="metrics" data-od-id="ex-metrics">
+        <div class="metric">
+          <div class="metric-label">导出期间</div>
+          <div class="metric-value" id="m-period">2026-08</div>
+          <div class="metric-foot" id="m-period-foot">当前工资期间</div>
+        </div>
+        <div class="metric">
+          <div class="metric-label">导出人数</div>
+          <div class="metric-value" id="m-count">—</div>
+          <div class="metric-foot" id="m-count-foot">按所选范围统计</div>
+        </div>
+        <div class="metric">
+          <div class="metric-label">可用模板</div>
+          <div class="metric-value" id="m-tpl">4<span class="unit">套</span></div>
+          <div class="metric-foot">工资表 / 代发 / 成本 / 个税辅助</div>
+        </div>
+        <div class="metric">
+          <div class="metric-label">最近导出</div>
+          <div class="metric-value" id="m-last">—</div>
+          <div class="metric-foot" id="m-last-foot">—</div>
+        </div>
+      </section>
+
+      <section class="card" data-od-id="ex-templates">
+        <div class="card-head">
+          <h2>选择导出模板</h2>
+          <span class="sub">点击卡片切换模板，下方预览与字段会同步更新</span>
+        </div>
+        <div class="card-body">
+          <div class="grid-2" id="tpl-cards"></div>
+        </div>
+      </section>
+
+      <div class="grid-2-1" data-od-id="ex-config">
+        <section class="card" data-od-id="ex-scope">
+          <div class="card-head">
+            <h2>导出范围与选项</h2>
+            <span class="sub">选择主体范围，导出文件将只包含所选主体的员工</span>
+          </div>
+          <div class="card-body">
+            <div class="form-grid">
+              <div class="field">
+                <label for="scope-entity">主体范围</label>
+                <select class="select" id="scope-entity">
+                  <option value="">全部主体（3）</option>
+                  <option value="SH01">星澜科技（上海）有限公司</option>
+                  <option value="BJ01">星澜科技（北京）有限公司</option>
+                  <option value="SZ01">星澜科技（深圳）有限公司</option>
+                </select>
+                <div class="hint">社保与公积金按员工实际 base 城市计算，与主体范围无关。</div>
+              </div>
+              <div class="field">
+                <label for="scope-period">工资期间</label>
+                <select class="select" id="scope-period">
+                  <option value="2026-08" selected>2026-08（本期）</option>
+                  <option value="2026-07">2026-07</option>
+                  <option value="2026-06">2026-06</option>
+                </select>
+                <div class="hint">历史期间取该期间的锁定结果。</div>
+              </div>
+              <div class="field span-2">
+                <div class="eyebrow">导出选项</div>
+                <label class="check"><input type="checkbox" id="opt-split" checked>按主体拆分为多个工作表</label>
+                <label class="check"><input type="checkbox" id="opt-report" checked>生成导出结果报告（含留空字段说明）</label>
+                <label class="check"><input type="checkbox" id="opt-mask">掩码显示身份证与银行卡号</label>
+              </div>
+            </div>
+          </div>
+        </section>
+
+        <section class="card" data-od-id="ex-preview">
+          <div class="card-head">
+            <h2>导出预览</h2>
+            <span class="sub" id="prev-sub">按当前模板与范围</span>
+          </div>
+          <div class="card-body">
+            <dl class="kv is-wide" id="prev-kv"></dl>
+          </div>
+        </section>
+      </div>
+
+      <section class="card" data-od-id="ex-fields">
+        <div class="card-head">
+          <h2>字段口径</h2>
+          <span class="sub" id="fields-sub"></span>
+        </div>
+        <div class="tbl-wrap">
+          <table class="tbl">
+            <thead><tr><th style="min-width:150px">导出字段</th><th>取数口径</th></tr></thead>
+            <tbody id="field-rows"></tbody>
+          </table>
+        </div>
+        <div class="card-body" style="padding-top:0">
+          <div class="callout is-warn" id="tax-note">
+            <span data-icon="warn"></span>
+            <div>
+              <div class="callout-title">个税相关字段留空</div>
+              <div id="tax-note-body"></div>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <section class="card" data-od-id="ex-history">
+        <div class="card-head">
+          <h2>导出记录</h2>
+          <span class="sub">保留最近 4 次导出，可重复下载</span>
+        </div>
+        <div class="tbl-wrap">
+          <table class="tbl">
+            <thead><tr>
+              <th class="sticky-col" style="min-width:170px">导出编号</th>
+              <th>模板</th><th>版本</th><th>期间</th><th>范围</th>
+              <th class="n">人数</th><th>时间</th><th>结果</th><th></th>
+            </tr></thead>
+            <tbody id="hist-rows"></tbody>
+          </table>
+        </div>
+      </section>
+
+      <section class="actionbar" data-od-id="ex-actions">
+        <span class="reason" id="act-reason"></span>
+        <span class="spacer"></span>
+        <button class="btn" id="btn-tpl-download" data-od-id="btn-tpl-download">下载 Excel 模板</button>
+        <button class="btn btn-primary" id="btn-generate" data-od-id="btn-generate">生成导出文件</button>
+      </section>
+
+    </main>
+    <footer class="pagefoot"></footer>
+  </div>
+</div>
+
+<script src="assets/app.js"></script>
+<script>
+(function () {
+  var Q = window.QSX, esc = Q.esc;
+  var P = Q.COMPANY.period;
+  var sel = { tpl: 0 };
+
+  function entityOf() { return document.getElementById('scope-entity').value; }
+  function periodOf() { return document.getElementById('scope-period').value || P; }
+
+  function selectedList() {
+    var code = entityOf(), p = periodOf();
+    return Q.computeAll(p).filter(function (c) { return !code || c.emp.entity === code; });
+  }
+  /* 只有试算成功的员工才进入导出文件，与台账口径一致 */
+  function exportableList() {
+    return selectedList().filter(function (c) { return c.ok; });
+  }
+
+  /* ── 锁定门控 ─────────────────────────────────────────── */
+  function renderGate() {
+    var s = Q.state();
+    var el = document.getElementById('gate');
+    if (s.locked) {
+      el.innerHTML = '<div class="callout is-ok"><span data-icon="check"></span><div>' +
+        '<div class="callout-title">本期批次已锁定，可以导出</div>' +
+        '<div>' + esc(P) + ' 全部主体（3）已确认并锁定，导出的金额与台账一致。如需调整，请在批次核算详情发起整批更正。</div>' +
+        '</div></div>';
+    } else {
+      el.innerHTML = '<div class="callout is-danger"><span data-icon="block"></span><div>' +
+        '<div class="callout-title">本期尚未锁定，暂不可导出</div>' +
+        '<div>请先在批次核算详情完成试算、确认并锁定，再回到本页生成导出文件。<a href="batch-detail.html">前往批次核算详情</a></div>' +
+        '</div></div>';
+    }
+  }
+
+  /* ── 模板卡片 ─────────────────────────────────────────── */
+  function renderTemplates() {
+    document.getElementById('tpl-cards').innerHTML = Q.EXPORT_TEMPLATES.map(function (t, i) {
+      var on = i === sel.tpl;
+      return '<div class="card' + (on ? ' is-selected' : '') + '" data-tpl="' + i + '" style="cursor:pointer">' +
+        '<div class="card-head" style="margin:0;padding:12px 14px">' +
+        '<h2 style="font-size:14px">' + (on ? '<span style="color:var(--accent)" data-icon="check"></span> ' : '') + esc(t.name) + '</h2>' +
+        '<span class="sub mono">' + esc(t.version) + '</span>' +
+        '</div>' +
+        '<div class="card-body" style="padding:0 14px 14px">' +
+        '<div class="small">' + esc(t.purpose) + '</div>' +
+        '<div class="meta mono" style="margin-top:8px">' + esc(t.code) + '</div>' +
+        '</div></div>';
+    }).join('');
+    Q.qa('#tpl-cards [data-tpl]').forEach(function (el) {
+      el.addEventListener('click', function () {
+        sel.tpl = parseInt(el.getAttribute('data-tpl'), 10);
+        rerender();
+      });
+    });
+    Q.qa('#tpl-cards [data-icon]').forEach(function (el) { el.innerHTML = Q.icon(el.getAttribute('data-icon')); });
+  }
+
+  /* ── 预览 ─────────────────────────────────────────────── */
+  function renderPreview() {
+    var t = Q.EXPORT_TEMPLATES[sel.tpl];
+    var all = selectedList(), sum = Q.summarize(exportableList());
+    var skipped = all.length - sum.count;
+    document.getElementById('prev-sub').textContent = t.name + ' · ' + (entityOf() || '全部主体（3）');
+    document.getElementById('prev-kv').innerHTML =
+      '<dt>模板</dt><dd>' + esc(t.name) + ' <span class="mono meta">' + esc(t.version) + '</span></dd>' +
+      '<dt>范围</dt><dd>' + (entityOf() ? esc(Q.ent(entityOf()).name) : '全部主体（3）') + '</dd>' +
+      '<dt>期间</dt><dd class="mono">' + esc(periodOf()) + '</dd>' +
+      '<dt>导出记录数</dt><dd><span class="mono strong">' + sum.count + '</span> 人' +
+        (skipped > 0 ? ' <span class="meta">（另有 ' + skipped + ' 人试算未成功，不进入导出文件）</span>' : '') + '</dd>' +
+      '<dt>应发金额合计</dt><dd class="mono">' + Q.money(sum.gross) + ' 元</dd>' +
+      '<dt>未扣个税金额合计</dt><dd class="mono strong">' + Q.money(sum.net) + ' 元</dd>' +
+      '<dt>公司成本合计</dt><dd class="mono">' + Q.money(sum.cost) + ' 元</dd>';
+
+    document.getElementById('m-count').textContent = sum.count;
+    document.getElementById('m-count-foot').textContent = entityOf() ? Q.ent(entityOf()).short + '主体 · ' + periodOf() : '全部主体（3）· ' + periodOf();
+  }
+
+  /* ── 字段口径 ─────────────────────────────────────────── */
+  var FIELD_MAP = {
+    '员工': '员工姓名，来自员工管理',
+    '主体': '员工归属主体（SH01/BJ01/SZ01）',
+    '部门': '员工所属部门',
+    '固定薪资': '薪酬标准 × 80%，按实际计薪天数折算',
+    '绩效': '薪酬标准 × 20% × 绩效系数，试用期为 0',
+    '考勤扣款': '迟到早退折算 + 忘打卡 30 元/次 + 无薪假折算',
+    '激励': '全公司考勤激励（全勤奖）人均分配金额',
+    '个人社保': '员工 base 城市缴费基数 × 个人比例',
+    '个人公积金': '固定薪资 × 5%',
+    '未扣个税金额': '应发金额 − 个人社保 − 个人公积金',
+    '公司成本': '应发金额 + 公司社保 + 公司公积金',
+    '姓名': '员工姓名',
+    '开户行': '员工银行卡开户行，来自员工管理',
+    '银行卡号': '员工银行卡号，可按选项掩码',
+    '人数': '范围内员工人数',
+    '应发金额': '固定薪资 + 绩效 + 激励 − 考勤扣款',
+    '公司社保': '缴费基数 × 公司比例，按主体与部门汇总',
+    '公司公积金': '固定薪资 × 5%，按主体与部门汇总',
+    '身份证号': '员工身份证号，可按选项掩码',
+    '收入额': '未扣个税金额（工资薪金收入额）',
+    '免税收入': '系统不涉及，留空或 0',
+    '各项扣除': '个人社保与个人公积金合计',
+    '税额（留空）': '由 Excel 侧计算，系统留空',
+    '税款所属期起止（留空）': '由 Excel 侧填写，系统留空'
+  };
+  function renderFields() {
+    var t = Q.EXPORT_TEMPLATES[sel.tpl];
+    var cols = t.cols.split('、');
+    document.getElementById('fields-sub').textContent = t.name + '（' + cols.length + ' 个字段）';
+    document.getElementById('field-rows').innerHTML = cols.map(function (c) {
+      return '<tr><td><span class="strong">' + esc(c) + '</span></td><td class="small">' + esc(FIELD_MAP[c] || '—') + '</td></tr>';
+    }).join('');
+    document.getElementById('tax-note').className = 'callout ' + (t.code === 'TPL-TAX' ? 'is-warn' : 'is-info');
+    document.getElementById('tax-note-body').innerHTML = t.code === 'TPL-TAX'
+      ? '本模板中 <span class="mono">' + Q.TAX_BLANK_FIELDS.map(esc).join('、') + '</span> 等字段系统无法计算，导出时留空并写入结果报告，请在 Excel 中补充后回填。'
+      : '系统只输出「未扣个税金额」，本模板不含个税字段，需在 Excel 中自行计算个税。';
+  }
+
+  /* ── 导出记录 ─────────────────────────────────────────── */
+  function renderHistory() {
+    var recs = Q.exportHistory();
+    document.getElementById('hist-rows').innerHTML = recs.map(function (r) {
+      var st = r.st === 'ok' ? Q.badge('ok', '成功') : Q.badge('warn', '含留空字段');
+      return '<tr' + (r.fresh ? ' class="is-selected"' : '') + '>' +
+        '<td class="sticky-col mono">' + esc(r.id) + (r.fresh ? ' ' + Q.badge('info', '最新') : '') + '</td>' +
+        '<td>' + esc(r.tpl) + '</td>' +
+        '<td class="mono">' + esc(r.tplv) + '</td>' +
+        '<td class="mono">' + esc(r.period) + '</td>' +
+        '<td class="small">' + esc(r.scope) + '</td>' +
+        '<td class="n mono">' + r.count + '</td>' +
+        '<td class="mono small">' + esc(r.time) + '</td>' +
+        '<td>' + st + '</td>' +
+        '<td><button class="btn btn-sm btn-ghost" data-dl="' + esc(r.id) + '">下载</button></td>' +
+        '</tr>';
+    }).join('');
+    Q.qa('[data-dl]').forEach(function (el) {
+      el.addEventListener('click', function () {
+        Q.toast('已开始下载 ' + el.getAttribute('data-dl') + '（原型演示）', 'ok');
+      });
+    });
+    var last = recs[0];
+    document.getElementById('m-last').textContent = last.period;
+    document.getElementById('m-last-foot').textContent = last.tpl + ' · ' + last.time;
+  }
+
+  /* ── 操作条 ───────────────────────────────────────────── */
+  function renderActions() {
+    var s = Q.state(), locked = !!s.locked, exported = !!s.exported;
+    var btn = document.getElementById('btn-generate');
+    btn.disabled = !locked;
+    btn.textContent = exported ? '重新生成导出文件' : '生成导出文件';
+    document.getElementById('act-reason').innerHTML = !locked
+      ? '批次锁定后即可生成导出文件。'
+      : (exported ? '本期已生成导出文件，重新生成将覆盖同名文件（原型演示）。' : '将按所选模板与范围生成一个 Excel 文件，并写入导出记录。');
+  }
+
+  function renderMetrics() {
+    document.getElementById('m-period').textContent = P;
+    var s = Q.state();
+    document.getElementById('m-period-foot').textContent = s.locked ? '已锁定 · 可导出' : '未锁定 · 不可导出';
+    document.getElementById('m-tpl').innerHTML = Q.EXPORT_TEMPLATES.length + '<span class="unit">套</span>';
+  }
+
+  function rerender() {
+    renderGate(); renderTemplates(); renderPreview(); renderFields(); renderHistory(); renderActions(); renderMetrics();
+    Q.qa('[data-icon]').forEach(function (el) { el.innerHTML = Q.icon(el.getAttribute('data-icon')); });
+  }
+
+  /* ── 交互 ─────────────────────────────────────────────── */
+  document.getElementById('scope-entity').addEventListener('change', rerender);
+  document.getElementById('scope-period').addEventListener('change', rerender);
+
+  document.getElementById('btn-generate').addEventListener('click', function () {
+    if (!Q.state().locked) { Q.toast('请先在批次核算详情确认并锁定本期批次', 'warn'); return; }
+    Q.setState({ exported: true });
+    rerender();
+    var n = Q.summarize(exportableList()).count;
+    Q.toast('已生成「' + Q.EXPORT_TEMPLATES[sel.tpl].name + '」，共 ' + n + ' 人，已写入导出记录', 'ok');
+  });
+
+  document.getElementById('btn-tpl-download').addEventListener('click', function () {
+    var t = Q.EXPORT_TEMPLATES[sel.tpl];
+    Q.toast('已下载「' + t.name + ' ' + t.version + '」空白模板（原型演示）', 'ok');
+  });
+
+  rerender();
+})();
+</script>
+</body>
+</html>

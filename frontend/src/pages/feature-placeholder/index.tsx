@@ -12,12 +12,12 @@ export function FeaturePlaceholderPage({
 }: FeaturePlaceholderPageProps) {
   return (
     <div className={styles.page}>
-      <Typography.Title>{title}</Typography.Title>
+      <Typography.Title level={2}>{title}</Typography.Title>
       <Typography.Paragraph type="secondary">
         {description}
       </Typography.Paragraph>
       <section className={styles.empty}>
-        <Empty description="该模块将在对应业务竖切中实现" />
+        <Empty description="该模块将在对应业务竖切中按 design 原型实现" />
       </section>
     </div>
   );
