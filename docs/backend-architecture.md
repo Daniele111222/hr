@@ -249,7 +249,7 @@ Excel 导入应由 `excel.importers` 读取固定模板、计算文件哈希、�
 
 ## 11. 运行与数据边界
 
-本地 Compose 使用 PostgreSQL 16，宿主机默认映射 `127.0.0.1:55432`，Backend 默认 `127.0.0.1:8000`。Backend 容器先执行 `alembic upgrade head`，成功后才启动 Uvicorn。数据保留在本机，不上传云端；测试使用独立数据库并允许测试 teardown 执行 downgrade。
+本地 Compose 使用 PostgreSQL 16，宿主机默认映射 `127.0.0.1:15432`，Backend 默认 `127.0.0.1:8000`。Backend 容器先执行 `alembic upgrade head`，成功后才启动 Uvicorn。数据保留在本机，不上传云端；测试使用独立数据库并允许测试 teardown 执行 downgrade。
 
 后续迁移必须新增 Alembic revision，并同步保留可审查 SQL。初始 SQL 和 ORM 是当前 schema 的实现资料，不是业务规则的唯一来源；业务规则仍由领域 dataclass、用例门槛和计算步骤共同表达。
 

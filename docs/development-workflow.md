@@ -21,7 +21,7 @@ docker compose up -d --no-deps backend
 
 - Backend：`http://127.0.0.1:8000`
 - Health：`http://127.0.0.1:8000/health`
-- PostgreSQL：`127.0.0.1:55432`
+- PostgreSQL：`127.0.0.1:15432`
 
 ## 容器启动迁移
 
