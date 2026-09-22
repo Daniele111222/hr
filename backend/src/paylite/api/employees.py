@@ -161,6 +161,12 @@ def update_employee(employee_id: int, payload: EmployeePatch, db: Session = Depe
         current_salary = _latest(db, EmployeeSalary, employee.id)
         salary = payload.salary or current_salary
         target_status = payload.probation_status or employee.probation_status
+        if (
+            payload.salary
+            and not (previous_probation_status == "in_probation" and target_status == "confirmed")
+            and payload.salary.effective_from.day != 1
+        ):
+            raise HTTPException(400, "普通调薪须从适用工资期间的首日生效")
         _validate_salary_policy(
             target_status,
             salary,

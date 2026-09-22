@@ -24,3 +24,8 @@ def test_integrity_error_mapping_explains_ranges_and_foreign_keys() -> None:
         integrity_detail(make_error("violates foreign key constraint"))
         == "关联数据不存在或仍被其他数据引用"
     )
+    assert integrity_detail(make_error("ck_department_not_self_parent")) == "上级部门不能是自身"
+    assert (
+        integrity_detail(make_error("Department hierarchy cannot contain a cycle"))
+        == "部门上下级不能形成循环"
+    )

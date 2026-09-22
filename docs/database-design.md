@@ -9,6 +9,7 @@ PayLite 当前使用本机 PostgreSQL 保存单一目标公司的工资数据。
 - `backend/src/paylite/db/models/`：按主题拆分的规范化 SQLAlchemy 模型；`models/__init__.py` 保持公开导入路径。
 - `backend/alembic/versions/0001_initial_schema.py`：应用迁移入口。
 - `backend/sql/001_initial_schema.sql`：可独立审查和执行的 PostgreSQL DDL，保留具体 SQL 语句。
+- `backend/alembic/versions/0002_city_attendance_rules.py` 与 `backend/sql/002_city_attendance_rules.sql`：规则维护迁移及其可审查 SQL。
 
 ## 实体关系
 
@@ -32,6 +33,13 @@ PayLite 当前使用本机 PostgreSQL 保存单一目标公司的工资数据。
 - 工资记录通过复合外键保证其主体和期间与所属批次一致；主体部门实例通过公司复合外键防止跨公司混用。
 - PostgreSQL trigger 自动刷新员工和工资批次的 `updated_at`，并禁止锁定或已替代工资结果及其项目、计算明细被直接更新、删除或追加；修正必须创建新批次。
 - `external_tax_data` 只表达外部税务字段，系统不计算个税。
+
+## 规则维护迁移（0002）
+
+- `social_security_rule.fixed_base` 保存城市统一固定社保缴费基数，可空以保留既有记录；不得从员工薪资推导。
+- `housing_fund_rule.base_source` 对新增规则标记 `fixed_salary`，数据库约束要求公司和个人比例均为 5%；旧 `base_min`/`base_max` 字段保留兼容，不作为新规则的隐式截断口径。
+- `attendance_rule.makeup_punch_exempt` 和 `source` 保存补卡豁免及规则来源；API 固定校验每日 8 小时、忘打卡 30 元、P7+免罚。
+- 城市社保、公积金及全局考勤规则继续使用有效期排他约束，重叠版本返回冲突，不覆盖历史版本。
 
 ## SQL 与 Alembic
 

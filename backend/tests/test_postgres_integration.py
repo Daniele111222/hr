@@ -352,6 +352,14 @@ def test_organization_and_employee_api_flow(api_client: TestClient, postgres_eng
     company = api_client.post("/organization/company", json={"code": "ACME", "name": "示例公司"})
     assert company.status_code == 201
     company_id = company.json()["id"]
+    assert (
+        api_client.post(
+            "/organization/company", json={"code": "OTHER", "name": "其他公司"}
+        ).status_code
+        == 409
+    )
+    assert api_client.patch("/organization/company", json={"name": "更新公司"}).status_code == 200
+    assert api_client.get("/organization/company").json()["name"] == "更新公司"
 
     city = api_client.post("/organization/cities", json={"code": "BJ", "name": "北京"})
     subject = api_client.post(
@@ -375,6 +383,62 @@ def test_organization_and_employee_api_flow(api_client: TestClient, postgres_eng
     assert all(
         response.status_code == 201 for response in (city, subject, department, subject_department)
     )
+    for path, response in (
+        ("cities", city),
+        ("subjects", subject),
+        ("departments", department),
+        ("subject-departments", subject_department),
+    ):
+        row_id = response.json()["id"]
+        assert any(row["id"] == row_id for row in api_client.get(f"/organization/{path}").json())
+        assert (
+            api_client.patch(f"/organization/{path}/{row_id}", json={"name": "已更新"}).status_code
+            == 200
+        )
+        assert any(
+            row["id"] == row_id and row["name"] == "已更新"
+            for row in api_client.get(f"/organization/{path}").json()
+        )
+
+    duplicate_city = api_client.post("/organization/cities", json={"code": "BJ", "name": "重复"})
+    assert duplicate_city.status_code == 409
+    assert "城市编码" in duplicate_city.json()["detail"]
+    self_parent = api_client.patch(
+        f"/organization/departments/{department.json()['id']}",
+        json={"parent_id": department.json()["id"]},
+    )
+    assert self_parent.status_code == 409
+    assert "循环" in self_parent.json()["detail"]
+    other_department = api_client.post(
+        "/organization/departments",
+        json={"company_id": company_id, "code": "OPS", "name": "运营"},
+    )
+    assert other_department.status_code == 201
+    assert (
+        api_client.patch(
+            f"/organization/departments/{other_department.json()['id']}",
+            json={"parent_id": department.json()["id"]},
+        ).status_code
+        == 200
+    )
+    cycle = api_client.patch(
+        f"/organization/departments/{department.json()['id']}",
+        json={"parent_id": other_department.json()["id"]},
+    )
+    assert cycle.status_code == 409
+    assert "循环" in cycle.json()["detail"]
+    cross_company = api_client.post(
+        "/organization/subject-departments",
+        json={
+            "company_id": company_id + 999,
+            "subject_id": subject.json()["id"],
+            "department_id": department.json()["id"],
+            "code": "OTHER",
+            "name": "跨公司",
+        },
+    )
+    assert cross_company.status_code == 400
+    assert "同一公司" in cross_company.json()["detail"]
 
     employee_payload = {
         "company_id": company_id,
@@ -398,7 +462,7 @@ def test_organization_and_employee_api_flow(api_client: TestClient, postgres_eng
         },
         "base": {"city_id": city.json()["id"], "effective_from": "2026-01-01"},
         "bank_account": {
-            "account_number": "6222000000000001",
+            "account_number": "00006222000000000001",
             "account_name": "测试员工",
             "effective_from": "2026-01-01",
         },
@@ -406,6 +470,13 @@ def test_organization_and_employee_api_flow(api_client: TestClient, postgres_eng
     created = api_client.post("/employees", json=employee_payload)
     assert created.status_code == 201
     employee_id = created.json()["id"]
+    assert created.json()["bank_account"]["account_number"] == "00006222000000000001"
+    immutable_id = api_client.patch(f"/employees/{employee_id}", json={"id_number": "不可修改"})
+    assert immutable_id.status_code == 422
+    assert (
+        api_client.get(f"/employees/{employee_id}").json()["id_number"]
+        == employee_payload["id_number"]
+    )
 
     duplicate = api_client.post("/employees", json={**employee_payload, "employee_no": "E002"})
     assert duplicate.status_code == 409
@@ -437,12 +508,84 @@ def test_organization_and_employee_api_flow(api_client: TestClient, postgres_eng
     assert overlapping_salary.status_code == 400
     assert "生效日期" in overlapping_salary.json()["detail"]
 
+    midmonth_raise = api_client.patch(
+        f"/employees/{employee_id}",
+        json={
+            "salary": {
+                "fixed_salary": "9000.00",
+                "performance_base": "2250.00",
+                "effective_from": "2026-08-15",
+            }
+        },
+    )
+    assert midmonth_raise.status_code == 400
+    assert "工资期间的首日" in midmonth_raise.json()["detail"]
+
+    failed_update = api_client.patch(
+        f"/employees/{employee_id}",
+        json={
+            "name": "不得部分保存",
+            "salary": {
+                "fixed_salary": "9000.00",
+                "performance_base": "2250.00",
+                "effective_from": "2026-08-01",
+            },
+            "bank_account": {
+                "account_number": "00006222000000000001",
+                "account_name": "测试员工",
+                "effective_from": "2026-08-01",
+            },
+        },
+    )
+    assert failed_update.status_code == 409
+    unchanged = api_client.get(f"/employees/{employee_id}").json()
+    assert unchanged["name"] == "测试员工"
+    assert unchanged["salary"]["fixed_salary"] == "8500.00"
+
+    with Session(postgres_engine) as session:
+        period = PayrollPeriod(
+            year=2026,
+            month=7,
+            period_start=date(2026, 7, 1),
+            period_end=date(2026, 7, 31),
+        )
+        session.add(period)
+        session.flush()
+        batch = PayrollBatch(
+            subject_id=subject.json()["id"],
+            payroll_period_id=period.id,
+            batch_type="normal",
+            status="draft",
+        )
+        session.add(batch)
+        session.flush()
+        record = PayrollRecord(
+            payroll_batch_id=batch.id,
+            payroll_period_id=period.id,
+            subject_id=subject.json()["id"],
+            employee_id=employee_id,
+            snapshot_id_number=employee_payload["id_number"],
+            snapshot_employee_no=employee_payload["employee_no"],
+            snapshot_employee_name="测试员工",
+            snapshot_fixed_salary=Decimal("8500.00"),
+            snapshot_performance_base=Decimal("2125.00"),
+        )
+        session.add(record)
+        session.flush()
+        record_id = record.id
+        session.commit()
+
     deactivated = api_client.patch(f"/employees/{employee_id}", json={"active": False})
     assert deactivated.status_code == 200
     assert deactivated.json()["active"] is False
     persisted = api_client.get(f"/employees/{employee_id}")
     assert persisted.status_code == 200
     assert persisted.json()["salary"]["fixed_salary"] == "8500.00"
+    with Session(postgres_engine) as session:
+        historical = session.get(PayrollRecord, record_id)
+        assert historical is not None
+        assert historical.snapshot_employee_name == "测试员工"
+        assert historical.snapshot_fixed_salary == Decimal("8500.00")
 
     with Session(postgres_engine) as session:
         salary_rows = list(
@@ -502,3 +645,98 @@ def test_organization_and_employee_api_flow(api_client: TestClient, postgres_eng
     assert confirmed.status_code == 200
     assert confirmed.json()["probation_status"] == "confirmed"
     assert confirmed.json()["salary"]["fixed_salary"] == "8000.00"
+
+
+def test_city_and_attendance_rules_api_flow(api_client: TestClient) -> None:
+    city = api_client.post("/organization/cities", json={"code": "RULES-BJ", "name": "规则北京"})
+    assert city.status_code == 201
+    city_id = city.json()["id"]
+    city_rule = api_client.post(
+        "/rules/city-rules",
+        json={
+            "city_id": city_id,
+            "effective_from": "2026-01-01",
+            "effective_to": "2026-12-31",
+            "version": "v2026.1",
+            "source": "北京市政策文件",
+            "fixed_base": "6821.00",
+            "social_items": [
+                {
+                    "item_code": "pension",
+                    "item_name": "养老",
+                    "company_rate": "0.16",
+                    "employee_rate": "0.08",
+                }
+            ],
+        },
+    )
+    assert city_rule.status_code == 201
+    assert city_rule.json()["fixed_base"] == "6821.00"
+    assert city_rule.json()["housing_company_rate"] == "0.05000000"
+    assert city_rule.json()["housing_base_source"] == "fixed_salary"
+    assert len(city_rule.json()["social_items"]) == 1
+    assert len(api_client.get("/rules/city-rules").json()) == 1
+
+    overlapping = api_client.post(
+        "/rules/city-rules",
+        json={
+            "city_id": city_id,
+            "effective_from": "2026-06-01",
+            "version": "v2026.2",
+            "fixed_base": "7000.00",
+            "social_items": [
+                {
+                    "item_code": "pension",
+                    "item_name": "养老",
+                    "company_rate": "0.16",
+                    "employee_rate": "0.08",
+                }
+            ],
+        },
+    )
+    assert overlapping.status_code == 409
+    assert "重叠" in overlapping.json()["detail"]
+
+    invalid_housing = api_client.post(
+        "/rules/city-rules",
+        json={
+            "city_id": city_id,
+            "effective_from": "2027-01-01",
+            "version": "v2027.1",
+            "fixed_base": "7000.00",
+            "housing_company_rate": "0.06",
+            "social_items": [
+                {
+                    "item_code": "pension",
+                    "item_name": "养老",
+                    "company_rate": "0.16",
+                    "employee_rate": "0.08",
+                }
+            ],
+        },
+    )
+    assert invalid_housing.status_code == 422
+    assert "5%" in str(invalid_housing.json())
+
+    attendance = api_client.post(
+        "/rules/attendance",
+        json={
+            "effective_from": "2026-01-01",
+            "effective_to": "2026-12-31",
+            "version": "v2026.1",
+            "source": "公司考勤制度",
+        },
+    )
+    assert attendance.status_code == 201
+    assert attendance.json()["standard_hours"] == "8.00"
+    assert attendance.json()["missed_punch_amount"] == "30.00"
+    assert attendance.json()["exempt_level_number"] == 7
+    assert attendance.json()["makeup_punch_exempt"] is True
+    assert len(api_client.get("/rules/attendance").json()) == 1
+
+    overlapping_attendance = api_client.post(
+        "/rules/attendance",
+        json={"effective_from": "2026-06-01", "version": "v2026.2"},
+    )
+    assert overlapping_attendance.status_code == 409
+    assert "重叠" in overlapping_attendance.json()["detail"]

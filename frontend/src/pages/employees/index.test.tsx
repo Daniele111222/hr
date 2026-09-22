@@ -195,3 +195,53 @@ test("员工页面转正时提交保持不变的固定薪资和新绩效基数",
     });
   });
 });
+
+test("员工页面普通调薪提交整月生效日期", async () => {
+  const fetchMock = vi.fn(
+    async (input: RequestInfo | URL, init?: RequestInit) => {
+      if (String(input).endsWith("/employees/1") && init?.method === "PATCH") {
+        return Response.json(employee);
+      }
+      if (String(input).endsWith("/employees"))
+        return Response.json([employee]);
+      if (String(input).endsWith("/organization/company")) {
+        return Response.json({ id: 1, code: "ACME", name: "示例公司" });
+      }
+      return Response.json([]);
+    },
+  );
+  vi.stubGlobal("fetch", fetchMock);
+  const user = userEvent.setup();
+  renderPage();
+
+  await user.click(await screen.findByRole("button", { name: "编辑" }));
+  const fixedSalary = screen.getByRole("spinbutton", {
+    name: "固定薪资（80%）",
+  });
+  await user.clear(fixedSalary);
+  await user.type(fixedSalary, "8800");
+  const performanceBase = screen.getByRole("spinbutton", {
+    name: "绩效基数（20%）",
+  });
+  await user.clear(performanceBase);
+  await user.type(performanceBase, "2200");
+  await user.type(
+    screen.getByLabelText("调薪生效工资期间（月初）"),
+    "2026-08-01",
+  );
+  await user.click(screen.getByRole("button", { name: /保\s*存/ }));
+
+  await waitFor(() => {
+    const patchCall = fetchMock.mock.calls.find(
+      ([input, init]) =>
+        String(input).endsWith("/employees/1") && init?.method === "PATCH",
+    );
+    expect(JSON.parse(String(patchCall?.[1]?.body))).toMatchObject({
+      salary: {
+        fixed_salary: "8800",
+        performance_base: "2200",
+        effective_from: "2026-08-01",
+      },
+    });
+  });
+});

@@ -15,7 +15,7 @@ corepack pnpm install
 corepack pnpm dev
 ```
 
-开发服务器把 `/api/*` 转发到 `http://127.0.0.1:8000/*`。可通过
+开发服务器把 `/api/*` 转发到 `http://127.0.0.1:31000/*`。可通过
 `VITE_API_BASE_URL` 覆盖请求前缀。
 
 ## 常用命令

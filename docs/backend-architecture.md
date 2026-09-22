@@ -1,14 +1,14 @@
 # PayLite 后端架构
 
-> 文档版本：v0.2（2026-09-16）  
+> 文档版本：v0.3（2026-09-22）
 > 适用仓库：`/Users/hyperchain/Desktop/ai_lession/hr`  
-> 架构基线：当前后端只有 `GET /health` 和初始 SQLAlchemy ORM；业务接口与算薪代码尚未实现。
+> 架构基线：当前已落地健康检查、组织、员工与规则维护接口；算薪、导入、确认、锁定、台账、更正和导出仍在后续票。
 
 这份文档描述当前仓库可以被代码证明的事实、下一阶段要落地的代码接口，以及业务决策对后端的约束。规划中的目录和流程不代表已经存在的实现。
 
 ## 1. 事实基线
 
-当前后端使用 Python 3.13、FastAPI、Uvicorn、Pydantic Settings、SQLAlchemy 2.x、Alembic 和 psycopg 3。服务入口在 `backend/src/paylite/main.py`，当前只注册 `/health`；没有员工、导入、试算、确认、锁定、台账、更正或导出接口。
+当前后端使用 Python 3.13、FastAPI、Uvicorn、Pydantic Settings、SQLAlchemy 2.x、Alembic 和 psycopg 3。服务入口在 `backend/src/paylite/main.py`，当前注册 `/health`、组织、员工和规则维护路由；导入、试算、确认、锁定、台账、更正和导出接口尚未实现。
 
 当前已落地的应用与持久化部分包括：
 
@@ -16,14 +16,14 @@
 - `db/base.py` 的 SQLAlchemy `Base`；
 - `db/session.py` 的 engine、`SessionLocal` 和 `get_session` 生成器；
 - 按组织、员工、月度输入、规则、工资和导出主题拆分的 ORM 模型包；
-- `backend/sql/001_initial_schema.sql` 和 Alembic `0001_initial_schema`；
+- `backend/sql/001_initial_schema.sql`、`backend/sql/002_city_attendance_rules.sql` 及 Alembic `0001_initial_schema`、`0002_city_attendance_rules`；
 - PostgreSQL 约束、日期区间排斥约束、更新时间触发器、部门树防循环触发器和锁定工资结果不可变触发器；
 - 模型约束测试、应用工厂/健康检查测试和 PostgreSQL 集成测试；
 - `import-linter` 开发依赖，以及 CI 中对当前数据库层导入边界的检查。
 
 当前尚未落地：
 
-- `api` 业务路由、Pydantic 请求/响应 DTO、统一业务错误映射；
+- 导入、算薪、确认、锁定、台账、更正和导出业务路由；
 - `services` 用例编排、状态流转和业务事务；
 - `domain` 领域 dataclass、Decimal 计算函数和计算追溯；
 - Excel 导入/导出适配器；
@@ -144,7 +144,7 @@ ORM model 只表达 PostgreSQL 表、外键、唯一约束、索引、日期区�
 
 ## 5. Session 与事务生命周期
 
-当前 `get_session` 已经以 `SessionLocal()` 上下文创建并在请求结束时关闭；由于当前只有 health 路由，没有业务请求使用它。业务接口接入时沿用“一次请求一个 Session”，不共享全局 Session，也不把 Session 放进领域函数。
+当前 `get_session` 已经以 `SessionLocal()` 上下文创建并在请求结束时关闭；组织、员工和规则接口使用请求级 Session。后续业务接口继续沿用“一次请求一个 Session”，不共享全局 Session，也不把 Session 放进领域函数。
 
 目标生命周期：
 
@@ -245,11 +245,11 @@ Excel 导入应由 `excel.importers` 读取固定模板、计算文件哈希、�
 5. 真实需要 Excel 文件时再加入 `openpyxl` 及模板适配器，并为四个模板分别做结构/样式回归；不要先创建空的 Excel 框架。
 6. 每次后端变更继续通过 Ruff、`lint-imports`、`compileall`、pytest、PostgreSQL 集成测试和 Docker 构建；新增层级 contract 时必须同步更新真实配置和开发依赖。
 
-本次结构优化验证记录：pytest 结果为 `9 passed, 7 skipped`（7 项因本机没有 PostgreSQL 测试库而跳过）；Ruff check、`lint-imports`、`compileall` 通过；本次修改文件的 Ruff format check 通过，全仓格式检查仍受用户既有 `backend/src/paylite/__init__.py` 格式问题影响，未修改。Docker 构建未运行。ORM 拆分前后生成的 PostgreSQL DDL 均为 472 行且 SHA 相同，未引入 schema 漂移。
+03 规则维护验收记录：PostgreSQL 集成测试 `23 passed`；Ruff、`lint-imports`、`compileall`、Docker 构建和运行态检查通过；新增规则迁移未改写初始迁移。
 
 ## 11. 运行与数据边界
 
-本地 Compose 使用 PostgreSQL 16，宿主机默认映射 `127.0.0.1:15432`，Backend 默认 `127.0.0.1:8000`。Backend 容器先执行 `alembic upgrade head`，成功后才启动 Uvicorn。数据保留在本机，不上传云端；测试使用独立数据库并允许测试 teardown 执行 downgrade。
+本地 Compose 使用 PostgreSQL 16，宿主机默认映射 `127.0.0.1:15432`，Backend 默认 `127.0.0.1:31000`（容器内仍为 8000）。Backend 容器先执行 `alembic upgrade head`，成功后才启动 Uvicorn。数据保留在本机，不上传云端；测试使用独立数据库并允许测试 teardown 执行 downgrade。
 
 后续迁移必须新增 Alembic revision，并同步保留可审查 SQL。初始 SQL 和 ORM 是当前 schema 的实现资料，不是业务规则的唯一来源；业务规则仍由领域 dataclass、用例门槛和计算步骤共同表达。
 

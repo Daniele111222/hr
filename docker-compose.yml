@@ -1,6 +1,7 @@
 services:
   postgres:
     image: postgres:16
+    container_name: PayLite
     environment:
       POSTGRES_DB: ${POSTGRES_DB:-paylite}
       POSTGRES_USER: ${POSTGRES_USER:-paylite}
@@ -21,7 +22,7 @@ services:
     environment:
       PAYLITE_DATABASE_URL: postgresql+psycopg://paylite:paylite_dev@postgres:5432/paylite
     ports:
-      - "127.0.0.1:8000:8000"
+      - "127.0.0.1:31000:8000"
     depends_on:
       postgres:
         condition: service_healthy

@@ -142,6 +142,8 @@ export function EmployeesPage() {
       position_title: row.assignment?.position_title,
       city_id: row.base?.city_id,
       account_number: row.bank_account?.account_number,
+      bank_name: row.bank_account?.bank_name,
+      branch_name: row.bank_account?.branch_name,
     });
     setOpen(true);
   };
@@ -155,12 +157,77 @@ export function EmployeesPage() {
         probation_status: values.probation_status,
         probation_date: values.probation_date,
         termination_date: values.termination_date,
+        level_code: values.level_code,
+        level_number: values.level_number,
       };
       if (confirming) {
         data.salary = {
           fixed_salary: String(values.fixed_salary),
           performance_base: String(values.performance_base),
           effective_from: values.probation_date,
+        };
+      } else if (
+        Number(values.fixed_salary) !== Number(editing.salary?.fixed_salary) ||
+        Number(values.performance_base) !==
+          Number(editing.salary?.performance_base)
+      ) {
+        if (!values.salary_effective_from) {
+          message.error("请填写调薪生效工资期间（月初）");
+          return;
+        }
+        data.salary = {
+          fixed_salary: String(values.fixed_salary),
+          performance_base: String(values.performance_base),
+          effective_from: values.salary_effective_from,
+        };
+      }
+      if (
+        values.subject_id !== editing.assignment?.subject_id ||
+        values.subject_department_id !==
+          editing.assignment?.subject_department_id ||
+        values.position_title !== editing.assignment?.position_title ||
+        (values.level_code ?? "") !== (editing.assignment?.level_code ?? "") ||
+        (values.level_number ?? null) !==
+          (editing.assignment?.level_number ?? null)
+      ) {
+        if (!values.assignment_effective_from) {
+          message.error("请填写任职变更生效日期");
+          return;
+        }
+        data.assignment = {
+          subject_id: values.subject_id,
+          subject_department_id: values.subject_department_id,
+          position_title: values.position_title,
+          level_code: values.level_code,
+          level_number: values.level_number,
+          effective_from: values.assignment_effective_from,
+        };
+      }
+      if (values.city_id !== editing.base?.city_id) {
+        if (!values.base_effective_from) {
+          message.error("请填写 base 地变更生效日期");
+          return;
+        }
+        data.base = {
+          city_id: values.city_id,
+          effective_from: values.base_effective_from,
+        };
+      }
+      if (
+        values.account_number !== editing.bank_account?.account_number ||
+        (values.bank_name ?? "") !== (editing.bank_account?.bank_name ?? "") ||
+        (values.branch_name ?? "") !== (editing.bank_account?.branch_name ?? "")
+      ) {
+        if (!values.bank_effective_from) {
+          message.error("请填写银行卡变更生效日期");
+          return;
+        }
+        data.bank_account = {
+          account_number: values.account_number,
+          account_name: values.name,
+          bank_name: values.bank_name,
+          branch_name: values.branch_name,
+          effective_from: values.bank_effective_from,
         };
       }
       update.mutate({ id: editing.id, data });
@@ -512,17 +579,16 @@ export function EmployeesPage() {
             <Form.Item
               name="position_title"
               label="职位"
-              rules={[{ required: !editing }]}
+              rules={[{ required: true }]}
             >
-              <Input disabled={!!editing} />
+              <Input />
             </Form.Item>
             <Form.Item
               name="subject_id"
               label="任职主体"
-              rules={[{ required: !editing }]}
+              rules={[{ required: true }]}
             >
               <Select
-                disabled={!!editing}
                 options={(subjects.data ?? []).map((row) => ({
                   label: `${row.code} ${row.name}`,
                   value: row.id,
@@ -532,10 +598,9 @@ export function EmployeesPage() {
             <Form.Item
               name="subject_department_id"
               label="主体部门"
-              rules={[{ required: !editing }]}
+              rules={[{ required: true }]}
             >
               <Select
-                disabled={!!editing}
                 options={availableRelations.map((row) => ({
                   label: `${row.code} ${row.name}`,
                   value: row.id,
@@ -548,6 +613,14 @@ export function EmployeesPage() {
             <Form.Item name="level_number" label="职级数字">
               <InputNumber min={0} className={styles.fullWidth} />
             </Form.Item>
+            {editing ? (
+              <Form.Item
+                name="assignment_effective_from"
+                label="任职变更生效日期"
+              >
+                <Input type="date" />
+              </Form.Item>
+            ) : null}
           </div>
 
           <div className={styles.formSection}>薪酬与发薪资料</div>
@@ -555,32 +628,23 @@ export function EmployeesPage() {
             <Form.Item
               name="fixed_salary"
               label="固定薪资（80%）"
-              rules={[{ required: !editing || confirming }]}
+              rules={[{ required: true }]}
             >
-              <InputNumber
-                min={0}
-                disabled={!!editing}
-                className={styles.fullWidth}
-              />
+              <InputNumber min={0} className={styles.fullWidth} />
             </Form.Item>
             <Form.Item
               name="performance_base"
               label="绩效基数（20%）"
-              rules={[{ required: !editing || confirming }]}
+              rules={[{ required: true }]}
             >
-              <InputNumber
-                min={0}
-                disabled={!!editing && !confirming}
-                className={styles.fullWidth}
-              />
+              <InputNumber min={0} className={styles.fullWidth} />
             </Form.Item>
             <Form.Item
               name="city_id"
               label="base 地城市"
-              rules={[{ required: !editing }]}
+              rules={[{ required: true }]}
             >
               <Select
-                disabled={!!editing}
                 options={(cities.data ?? []).map((row) => ({
                   label: `${row.code} ${row.name}`,
                   value: row.id,
@@ -590,17 +654,35 @@ export function EmployeesPage() {
             <Form.Item
               name="account_number"
               label="银行卡号"
-              rules={[{ required: !editing }]}
+              rules={[{ required: true }]}
             >
-              <Input disabled={!!editing} />
+              <Input />
             </Form.Item>
-            {!editing ? (
+            <Form.Item name="bank_name" label="银行名称">
+              <Input />
+            </Form.Item>
+            <Form.Item name="branch_name" label="支行名称">
+              <Input />
+            </Form.Item>
+            {editing ? (
               <>
-                <Form.Item name="bank_name" label="银行名称">
-                  <Input />
+                <Form.Item
+                  name="salary_effective_from"
+                  label="调薪生效工资期间（月初）"
+                >
+                  <Input type="date" />
                 </Form.Item>
-                <Form.Item name="branch_name" label="支行名称">
-                  <Input />
+                <Form.Item
+                  name="base_effective_from"
+                  label="base 地变更生效日期"
+                >
+                  <Input type="date" />
+                </Form.Item>
+                <Form.Item
+                  name="bank_effective_from"
+                  label="银行卡变更生效日期"
+                >
+                  <Input type="date" />
                 </Form.Item>
               </>
             ) : null}

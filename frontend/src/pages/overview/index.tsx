@@ -110,7 +110,7 @@ export function OverviewPage() {
             type="warning"
             showIcon
             title="无法连接本机服务"
-            description="请确认 FastAPI 已在 127.0.0.1:8000 启动，然后刷新页面。"
+            description="请确认 FastAPI 已在 127.0.0.1:31000 启动，然后刷新页面。"
           />
         ) : (
           <Alert

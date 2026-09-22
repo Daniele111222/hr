@@ -35,6 +35,86 @@ class CityOut(CityIn):
     id: int
 
 
+class SocialSecurityItemRuleIn(BaseModel):
+    item_code: str = Field(min_length=1, max_length=30)
+    item_name: str = Field(min_length=1, max_length=100)
+    company_rate: Decimal = Field(ge=0)
+    employee_rate: Decimal = Field(ge=0)
+
+
+class CityRuleIn(BaseModel):
+    city_id: int
+    effective_from: date
+    effective_to: date | None = None
+    version: str = Field(min_length=1, max_length=50)
+    source: str | None = None
+    fixed_base: Decimal = Field(ge=0)
+    social_items: list[SocialSecurityItemRuleIn] = Field(min_length=1)
+    housing_company_rate: Decimal = Decimal("0.05")
+    housing_employee_rate: Decimal = Decimal("0.05")
+
+    @model_validator(mode="after")
+    def valid_rule(self):
+        if self.effective_to and self.effective_to <= self.effective_from:
+            raise ValueError("规则结束日期必须晚于生效日期")
+        if self.housing_company_rate != Decimal("0.05") or self.housing_employee_rate != Decimal(
+            "0.05"
+        ):
+            raise ValueError("公积金个人和公司比例必须均为 5%")
+        return self
+
+
+class SocialSecurityItemRuleOut(SocialSecurityItemRuleIn):
+    model_config = ConfigDict(from_attributes=True)
+    id: int
+
+
+class CityRuleOut(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+    id: int
+    city_id: int
+    city_name: str
+    effective_from: date
+    effective_to: date | None
+    version: str
+    source: str | None
+    fixed_base: Decimal | None
+    social_items: list[SocialSecurityItemRuleOut]
+    housing_company_rate: Decimal | None
+    housing_employee_rate: Decimal | None
+    housing_base_source: str | None
+
+
+class AttendanceRuleIn(BaseModel):
+    effective_from: date
+    effective_to: date | None = None
+    standard_hours: Decimal = Decimal("8")
+    missed_punch_amount: Decimal = Decimal("30")
+    exempt_level_number: int = 7
+    makeup_punch_exempt: bool = True
+    version: str = Field(min_length=1, max_length=50)
+    source: str | None = None
+
+    @model_validator(mode="after")
+    def valid_attendance_rule(self):
+        if self.effective_to and self.effective_to <= self.effective_from:
+            raise ValueError("规则结束日期必须晚于生效日期")
+        if self.standard_hours != Decimal("8"):
+            raise ValueError("每日标准工时必须为 8 小时")
+        if self.missed_punch_amount != Decimal("30"):
+            raise ValueError("忘打卡每次罚款必须为 30 元")
+        if self.exempt_level_number != 7:
+            raise ValueError("免考勤罚款职级必须为 P7 及以上")
+        if not self.makeup_punch_exempt:
+            raise ValueError("补卡后必须免除忘打卡罚款")
+        return self
+
+
+class AttendanceRuleOut(AttendanceRuleIn):
+    model_config = ConfigDict(from_attributes=True)
+    id: int
+
+
 class SubjectIn(BaseModel):
     company_id: int
     code: str = Field(min_length=1, max_length=50)
@@ -184,6 +264,8 @@ class EmployeeIn(BaseModel):
 
 
 class EmployeePatch(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
     name: str | None = Field(default=None, min_length=1, max_length=100)
     employee_type: str | None = Field(default=None, min_length=1, max_length=50)
     level_code: str | None = Field(default=None, max_length=30)

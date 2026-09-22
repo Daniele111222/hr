@@ -14,8 +14,21 @@ const FeaturePlaceholderPage = lazy(() =>
   })),
 );
 
-const OrganizationPage = lazy(() => import("../pages/organization/index.tsx").then((module) => ({ default: module.OrganizationPage })));
-const EmployeesPage = lazy(() => import("../pages/employees/index.tsx").then((module) => ({ default: module.EmployeesPage })));
+const OrganizationPage = lazy(() =>
+  import("../pages/organization/index.tsx").then((module) => ({
+    default: module.OrganizationPage,
+  })),
+);
+const EmployeesPage = lazy(() =>
+  import("../pages/employees/index.tsx").then((module) => ({
+    default: module.EmployeesPage,
+  })),
+);
+const RulesPage = lazy(() =>
+  import("../pages/rules/index.tsx").then((module) => ({
+    default: module.RulesPage,
+  })),
+);
 
 const placeholders = [
   {
@@ -34,11 +47,6 @@ const placeholders = [
     description: "按期间执行试算、确认、锁定和更正。",
   },
   {
-    path: "rules",
-    title: "规则维护",
-    description: "维护城市社保基数和公积金规则。",
-  },
-  {
     path: "exports",
     title: "结果导出",
     description: "生成工资表、代发文件和人工成本表。",
@@ -53,18 +61,21 @@ export function AppRouter() {
           <Route index element={<OverviewPage />} />
           <Route path="organization" element={<OrganizationPage />} />
           <Route path="employees" element={<EmployeesPage />} />
-          {placeholders.filter((item) => item.path !== "employees").map((item) => (
-            <Route
-              key={item.path}
-              path={item.path}
-              element={
-                <FeaturePlaceholderPage
-                  title={item.title}
-                  description={item.description}
-                />
-              }
-            />
-          ))}
+          <Route path="rules" element={<RulesPage />} />
+          {placeholders
+            .filter((item) => item.path !== "employees")
+            .map((item) => (
+              <Route
+                key={item.path}
+                path={item.path}
+                element={
+                  <FeaturePlaceholderPage
+                    title={item.title}
+                    description={item.description}
+                  />
+                }
+              />
+            ))}
           <Route path="*" element={<Navigate to="/" replace />} />
         </Route>
       </Routes>

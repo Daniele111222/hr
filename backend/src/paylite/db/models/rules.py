@@ -2,6 +2,7 @@ from datetime import date, datetime
 from decimal import Decimal
 
 from sqlalchemy import (
+    Boolean,
     CheckConstraint,
     Date,
     ForeignKey,
@@ -47,6 +48,7 @@ class SocialSecurityRule(Base):
     effective_to: Mapped[date | None] = mapped_column(Date)
     version: Mapped[str] = mapped_column(String(50), nullable=False)
     source: Mapped[str | None] = mapped_column(Text)
+    fixed_base: Mapped[Decimal | None] = mapped_column(Money)
     created_at: Mapped[datetime] = created_at_column()
 
 
@@ -102,6 +104,7 @@ class HousingFundRule(Base):
     base_max: Mapped[Decimal] = mapped_column(Money, nullable=False)
     version: Mapped[str] = mapped_column(String(50), nullable=False)
     source: Mapped[str | None] = mapped_column(Text)
+    base_source: Mapped[str | None] = mapped_column(String(30))
     created_at: Mapped[datetime] = created_at_column()
 
 
@@ -130,7 +133,11 @@ class AttendanceRule(Base):
     )
     missed_punch_amount: Mapped[Decimal] = mapped_column(Money, nullable=False, server_default="30")
     exempt_level_number: Mapped[int] = mapped_column(Integer, nullable=False, server_default="7")
+    makeup_punch_exempt: Mapped[bool] = mapped_column(
+        Boolean, nullable=False, server_default="true"
+    )
     version: Mapped[str] = mapped_column(String(50), nullable=False)
+    source: Mapped[str | None] = mapped_column(Text)
     created_at: Mapped[datetime] = created_at_column()
 
 

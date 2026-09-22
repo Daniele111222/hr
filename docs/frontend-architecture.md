@@ -18,6 +18,7 @@ frontend/src/
 │   ├── overview/            # index.tsx + index.module.less
 │   ├── organization/        # index.tsx + index.module.less
 │   ├── employees/           # index.tsx + index.module.less
+│   ├── rules/               # index.tsx + index.module.less
 │   └── feature-placeholder/ # index.tsx + index.module.less
 ├── features/     # 按员工、导入、工资、规则、导出等业务能力组织
 └── shared/       # API 客户端、通用 UI、格式化和配置
@@ -47,6 +48,6 @@ FastAPI OpenAPI 是请求与响应类型的唯一来源。`openapi-typescript` �
 
 ## 运行边界
 
-开发环境由 Vite 把 `/api` 转发到本机 FastAPI。正式本地运行保持同源访问，后续在发布竖切中确定由 FastAPI 直接托管静态文件还是增加静态 Web 容器。
+开发环境由 Vite 把 `/api` 转发到本机 FastAPI `127.0.0.1:31000`。规则维护页面 `/rules` 通过 TanStack Query 读取和新增城市规则、考勤规则，展示版本、生效期、来源及缺失/过期状态。正式本地运行保持同源访问，后续在发布竖切中确定由 FastAPI 直接托管静态文件还是增加静态 Web 容器。
 
 第一版不实现登录和复杂权限。服务只监听 `127.0.0.1`；身份证号、银行卡号和工资结果不得写入 `localStorage`、浏览器持久缓存或前端日志。
