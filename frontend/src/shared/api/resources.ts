@@ -102,6 +102,55 @@ export type Employee = {
   } | null;
 };
 
+export type PayrollPeriod = {
+  id: number;
+  year: number;
+  month: number;
+  period: string;
+  period_start: string;
+  period_end: string;
+  payment_date: string | null;
+  payment_date_confirmed: boolean;
+  batch_count: number;
+  normal_batch_count: number;
+};
+export type PayrollPreparationItem = {
+  status: "ready" | "partial" | "missing" | "blocked" | "not_required";
+  prepared_count: number;
+  missing_count: number;
+  message: string | null;
+};
+export type PayrollBatch = {
+  id: number;
+  period_id: number;
+  subject: Subject;
+  batch_type: "normal" | "supplement" | "performance_supplement" | "other";
+  batch_no: number;
+  name: string | null;
+  status: "draft" | "trial" | "confirmed" | "locked" | "exported" | "cancelled";
+  scope: {
+    source: string;
+    criteria: Record<string, unknown>;
+    employee_count: number;
+    employee_ids: number[];
+    ambiguous_employee_ids: number[];
+    status: "ready" | "blocked" | "empty";
+  };
+  data_preparation: {
+    attendance: PayrollPreparationItem;
+    performance: PayrollPreparationItem;
+    city_rules: PayrollPreparationItem;
+    overall_status: "ready" | "partial" | "blocked";
+  };
+  payment_date: string | null;
+  payment_date_confirmed: boolean;
+};
+export type PayrollWorkbench = {
+  period: PayrollPeriod | null;
+  periods: PayrollPeriod[];
+  batches: PayrollBatch[];
+};
+
 const json = (method: string, body?: unknown): RequestInit => ({
   method,
   body: body === undefined ? undefined : JSON.stringify(body),
@@ -158,4 +207,22 @@ export const resources = {
     request<Employee>("/employees", json("POST", v)),
   updateEmployee: (id: number, v: unknown) =>
     request<Employee>(`/employees/${id}`, json("PATCH", v)),
+  payrollWorkbench: (period?: string) =>
+    request<PayrollWorkbench>(
+      `/payroll/workbench${period ? `?period=${encodeURIComponent(period)}` : ""}`,
+    ),
+  createPayrollPeriod: (v: { period: string }) =>
+    request<PayrollPeriod>("/payroll/periods", json("POST", v)),
+  createPayrollBatch: (
+    periodId: number,
+    v: {
+      subject_id: number;
+      batch_type?: "normal";
+      name?: string;
+    },
+  ) =>
+    request<PayrollBatch>(
+      `/payroll/periods/${periodId}/batches`,
+      json("POST", v),
+    ),
 };

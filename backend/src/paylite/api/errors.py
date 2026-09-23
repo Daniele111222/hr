@@ -21,6 +21,16 @@ def integrity_detail(exc: IntegrityError) -> str:
         "ex_attendance_rule_dates": "考勤规则有效期与已有版本重叠",
         "uq_attendance_rule_start": "考勤规则生效日期已存在",
         "ck_housing_fund_confirmed_rates": "公积金个人和公司比例必须均为 5%",
+        "uq_payroll_period_start": "该工资期间已存在",
+        "uq_payroll_period_year_month": "该工资期间已存在",
+        "uq_payroll_batch_normal": "该主体在此工资期间已有正常批次",
+        "uq_payroll_batch_identity": "该工资批次已存在",
+        "ck_payroll_period_year": "工资期间年份与起始日期不一致",
+        "ck_payroll_period_month_match": "工资期间月份与起始日期不一致",
+        "ck_payroll_period_first_day": "工资期间必须从每月第一天开始",
+        "ck_payroll_period_last_day": "工资期间必须结束于当月最后一天",
+        "ck_payroll_batch_type": "工资批次类型无效",
+        "ck_payroll_batch_status": "工资批次状态无效",
         "ck_department_not_self_parent": "上级部门不能是自身",
     }
     for constraint, message_text in details.items():

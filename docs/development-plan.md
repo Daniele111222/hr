@@ -19,7 +19,7 @@
 | 02 | [员工与薪酬维护](../.scratch/paylite-mvp/issues/02-employees.md) | 01 | 已完成 |
 | 03 | [城市及考勤规则维护](../.scratch/paylite-mvp/issues/03-rules.md) | 01 ✅ | 已完成 |
 | 04 | [员工 Excel 导入](../.scratch/paylite-mvp/issues/04-employee-import.md) | 02 ✅ | 等待决策 |
-| 05 | [工资期间与批次工作台](../.scratch/paylite-mvp/issues/05-period-batches.md) | 01 ✅ | 未开始 |
+| 05 | [工资期间与批次工作台](../.scratch/paylite-mvp/issues/05-period-batches.md) | 01 ✅ | 已完成 |
 | 06 | [考勤导入与错误修正](../.scratch/paylite-mvp/issues/06-attendance-import.md) | 02 ✅、05 | 未开始 |
 | 07 | [绩效导入与错误修正](../.scratch/paylite-mvp/issues/07-performance-import.md) | 02 ✅、05 | 未开始 |
 | 08 | [普通工资试算与核对](../.scratch/paylite-mvp/issues/08-payroll-trial.md) | 03、06、07 | 未开始 |

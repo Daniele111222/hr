@@ -1,5 +1,6 @@
 import os
 from collections.abc import Generator
+from concurrent.futures import ThreadPoolExecutor
 from datetime import date
 from decimal import Decimal
 from pathlib import Path
@@ -31,6 +32,7 @@ from paylite.db.models import (
     SocialSecurityRule,
     Subject,
 )
+from paylite.services.payroll_workbench import PayrollWorkbenchError, create_batch
 
 TEST_DATABASE_URL = os.getenv("PAYLITE_TEST_DATABASE_URL")
 ALLOW_TEST_DATABASE_RESET = os.getenv("PAYLITE_ALLOW_TEST_DATABASE_RESET") == "1"
@@ -100,13 +102,15 @@ def api_client(postgres_engine):
     application.dependency_overrides.clear()
 
 
-def create_base_records(session: Session) -> tuple[Company, City, Subject, PayrollPeriod, Employee]:
-    company = Company(code="ACME", name="Acme")
-    city = City(code="BJ", name="北京")
+def create_base_records(
+    session: Session, suffix: str = ""
+) -> tuple[Company, City, Subject, PayrollPeriod, Employee]:
+    company = Company(code=f"ACME{suffix}", name="Acme")
+    city = City(code=f"BJ{suffix}", name="北京")
     session.add_all([company, city])
     session.flush()
 
-    subject = Subject(company_id=company.id, code="MAIN", name="主主体")
+    subject = Subject(company_id=company.id, code=f"MAIN{suffix}", name="主主体")
     period = PayrollPeriod(
         year=2026,
         month=6,
@@ -115,8 +119,8 @@ def create_base_records(session: Session) -> tuple[Company, City, Subject, Payro
     )
     employee = Employee(
         company_id=company.id,
-        id_number="11010119900101123X",
-        employee_no="E001",
+        id_number=f"11010119900101123X{suffix}",
+        employee_no=f"E001{suffix}",
         name="测试员工",
         employee_type="employee",
         formal_status=True,
@@ -740,3 +744,126 @@ def test_city_and_attendance_rules_api_flow(api_client: TestClient) -> None:
     )
     assert overlapping_attendance.status_code == 409
     assert "重叠" in overlapping_attendance.json()["detail"]
+
+
+def test_payroll_workbench_api_flow(api_client: TestClient) -> None:
+    company = api_client.get("/organization/company")
+    assert company.status_code == 200
+    if company.json() is None:
+        company = api_client.post(
+            "/organization/company", json={"code": "PAY05", "name": "05 测试公司"}
+        )
+        assert company.status_code == 201
+    company_id = company.json()["id"]
+    subject = api_client.post(
+        "/organization/subjects",
+        json={"company_id": company_id, "code": "PAY05-MAIN", "name": "05 主体"},
+    )
+    assert subject.status_code == 201
+    subject_id = subject.json()["id"]
+    department = api_client.post(
+        "/organization/departments",
+        json={"company_id": company_id, "code": "PAY05-D", "name": "05 部门"},
+    )
+    assert department.status_code == 201
+    subject_department = api_client.post(
+        "/organization/subject-departments",
+        json={
+            "company_id": company_id,
+            "subject_id": subject_id,
+            "department_id": department.json()["id"],
+            "code": "PAY05-SD",
+            "name": "05 主体部门",
+        },
+    )
+    assert subject_department.status_code == 201
+    city = api_client.post("/organization/cities", json={"code": "PAY05-C", "name": "05 城市"})
+    assert city.status_code == 201
+    employee = api_client.post(
+        "/employees",
+        json={
+            "company_id": company_id,
+            "id_number": "11010119900101125X",
+            "employee_no": "PAY05-E001",
+            "name": "05 员工",
+            "employee_type": "employee",
+            "formal_status": True,
+            "probation_status": "confirmed",
+            "hire_date": "2020-01-01",
+            "assignment": {
+                "subject_id": subject_id,
+                "subject_department_id": subject_department.json()["id"],
+                "position_title": "工程师",
+                "effective_from": "2020-01-01",
+            },
+            "salary": {
+                "fixed_salary": "8000.00",
+                "performance_base": "2000.00",
+                "effective_from": "2020-01-01",
+            },
+            "base": {"city_id": city.json()["id"], "effective_from": "2020-01-01"},
+            "bank_account": {
+                "account_number": "6222000000000002",
+                "account_name": "05 员工",
+                "effective_from": "2020-01-01",
+            },
+        },
+    )
+    assert employee.status_code == 201, employee.text
+
+    period = api_client.post("/payroll/periods", json={"period": "2026-02"})
+    assert period.status_code == 200
+    assert period.json()["period_start"] == "2026-02-01"
+    assert period.json()["period_end"] == "2026-02-28"
+    failed_batch = api_client.post(
+        f"/payroll/periods/{period.json()['id']}/batches",
+        json={"subject_id": 999999},
+    )
+    assert failed_batch.status_code == 404
+    assert api_client.get("/payroll/workbench?period=2026-02").json()["batches"] == []
+    batch = api_client.post(
+        f"/payroll/periods/{period.json()['id']}/batches",
+        json={"subject_id": subject_id},
+    )
+    assert batch.status_code == 201
+    assert batch.json()["scope"]["employee_count"] == 1
+    assert batch.json()["scope"]["source"] == "employee_assignment_for_period"
+    assert batch.json()["data_preparation"]["attendance"]["status"] == "missing"
+
+    duplicate = api_client.post(
+        f"/payroll/periods/{period.json()['id']}/batches",
+        json={"subject_id": subject_id, "batch_type": "normal"},
+    )
+    assert duplicate.status_code == 409
+    assert "已有正常批次" in duplicate.json()["detail"]
+    assert api_client.get("/payroll/workbench?period=2026-02").status_code == 200
+    assert api_client.get("/payroll/workbench?period=2026-03").status_code == 404
+
+
+def test_concurrent_normal_batch_creation_keeps_one_batch(
+    db_session: Session, postgres_engine
+) -> None:
+    _, _, subject, period, _ = create_base_records(db_session, suffix="CONCURRENT")
+    subject_id, period_id = subject.id, period.id
+    db_session.commit()
+
+    def create() -> str:
+        with Session(postgres_engine) as session:
+            try:
+                create_batch(session, period_id, subject_id, "normal", None)
+                return "created"
+            except PayrollWorkbenchError as exc:
+                return str(exc.status_code)
+
+    with ThreadPoolExecutor(max_workers=2) as executor:
+        results = list(executor.map(lambda _: create(), range(2)))
+
+    assert sorted(results) == ["409", "created"]
+    with Session(postgres_engine) as session:
+        assert session.scalar(
+            select(PayrollBatch.id).where(
+                PayrollBatch.payroll_period_id == period_id,
+                PayrollBatch.subject_id == subject_id,
+                PayrollBatch.batch_type == "normal",
+            )
+        )

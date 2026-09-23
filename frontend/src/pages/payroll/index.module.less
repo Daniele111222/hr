@@ -1,0 +1,25 @@
+.page {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+  width: 100%;
+}
+.lead {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  gap: 16px;
+}
+.lead :global(.ant-typography) { margin-bottom: 0; }
+.card { border-color: var(--color-border); }
+.loading { min-height: 240px; display: grid; place-items: center; }
+.mono { font-family: var(--font-mono); }
+.sub, .muted { color: var(--color-muted); font-size: 12px; }
+.selectedRow { background: color-mix(in srgb, var(--color-accent) 8%, transparent); cursor: pointer; }
+.notice { margin-top: 14px; }
+.formHint { margin-bottom: 0; }
+@media (max-width: 760px) {
+  .lead { flex-direction: column; }
+  .lead :global(.ant-space) { width: 100%; }
+  .lead :global(.ant-btn) { flex: 1; }
+}

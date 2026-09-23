@@ -301,3 +301,75 @@ class EmployeeOut(BaseModel):
     salary: SalaryIn | None = None
     base: BaseIn | None = None
     bank_account: BankIn | None = None
+
+
+class PayrollPeriodCreate(BaseModel):
+    period: str = Field(pattern=r"^\d{4}-(0[1-9]|1[0-2])$")
+
+
+class PayrollPeriodOut(BaseModel):
+    id: int
+    year: int
+    month: int
+    period: str
+    period_start: date
+    period_end: date
+    payment_date: date | None
+    payment_date_confirmed: bool
+    batch_count: int = 0
+    normal_batch_count: int = 0
+
+
+class PayrollBatchCreate(BaseModel):
+    subject_id: int
+    batch_type: Literal["normal"] = "normal"
+    name: str | None = Field(default=None, max_length=200)
+
+
+class PayrollSubjectOut(BaseModel):
+    id: int
+    code: str
+    name: str
+
+
+class PayrollScopeOut(BaseModel):
+    source: str
+    criteria: dict[str, object]
+    employee_count: int
+    employee_ids: list[int]
+    ambiguous_employee_ids: list[int]
+    status: Literal["ready", "blocked", "empty"]
+
+
+class PayrollPreparationItemOut(BaseModel):
+    status: Literal["ready", "partial", "missing", "blocked", "not_required"]
+    prepared_count: int
+    missing_count: int
+    message: str | None = None
+
+
+class PayrollDataPreparationOut(BaseModel):
+    attendance: PayrollPreparationItemOut
+    performance: PayrollPreparationItemOut
+    city_rules: PayrollPreparationItemOut
+    overall_status: Literal["ready", "partial", "blocked"]
+
+
+class PayrollBatchOut(BaseModel):
+    id: int
+    period_id: int
+    subject: PayrollSubjectOut
+    batch_type: Literal["normal", "supplement", "performance_supplement", "other"]
+    batch_no: int
+    name: str | None
+    status: Literal["draft", "trial", "confirmed", "locked", "exported", "cancelled"]
+    scope: PayrollScopeOut
+    data_preparation: PayrollDataPreparationOut
+    payment_date: date | None
+    payment_date_confirmed: bool
+
+
+class PayrollWorkbenchOut(BaseModel):
+    period: PayrollPeriodOut | None
+    periods: list[PayrollPeriodOut]
+    batches: list[PayrollBatchOut]
