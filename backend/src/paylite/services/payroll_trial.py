@@ -11,6 +11,7 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from paylite.db.models import (
+    AttendanceIncentiveRun,
     AttendanceRecord,
     AttendanceRule,
     City,
@@ -479,6 +480,12 @@ def _result(run: PayrollTrialRun, *, stale: bool) -> dict[str, Any]:
             key: str(sum((Decimal(row["amounts"][key]) for row in successful), Decimal("0.00")))
             for key in ("gross", "untaxed_amount", "employer_cost")
         }
+    includes_final_incentive = bool(run.includes_final_incentive)
+    blockers = ["试算输入已变化，请重新试算"] if stale else []
+    if failed:
+        blockers.append("存在员工试算错误")
+    if not includes_final_incentive:
+        blockers.append("尚未计算全公司考勤激励")
     return {
         "id": run.id,
         "payroll_batch_id": run.payroll_batch_id,
@@ -490,14 +497,28 @@ def _result(run: PayrollTrialRun, *, stale: bool) -> dict[str, Any]:
         "total_count": len(run.results),
         "totals": totals,
         "results": run.results,
-        "includes_final_incentive": False,
-        "ready_for_confirmation": False,
-        "confirmation_blockers": [
-            *(["试算输入已变化，请重新试算"] if stale else []),
-            *(["存在员工试算错误"] if failed else []),
-            "尚未计算全公司考勤激励",
-        ],
+        "includes_final_incentive": includes_final_incentive,
+        "ready_for_confirmation": not stale and failed == 0 and includes_final_incentive,
+        "confirmation_blockers": blockers,
     }
+
+
+def _incentive_stale(db: Session, run: PayrollTrialRun) -> bool:
+    if not run.includes_final_incentive or run.incentive_run_id is None:
+        return False
+    incentive = db.get(AttendanceIncentiveRun, run.incentive_run_id)
+    if incentive is None:
+        return True
+    from paylite.services.attendance_incentive import get_incentive
+
+    current = get_incentive(db, incentive.payroll_period_id)
+    current_run = current.get("run")
+    return (
+        current.get("input_fingerprint") != incentive.input_fingerprint
+        or current_run is None
+        or current_run.get("id") != incentive.id
+        or current_run.get("stale")
+    )
 
 
 def get_trial(db: Session, batch_id: int) -> dict[str, Any] | None:
@@ -509,7 +530,9 @@ def get_trial(db: Session, batch_id: int) -> dict[str, Any] | None:
         return None
     period = db.get(PayrollPeriod, batch.payroll_period_id)
     current, _ = _load_snapshot(db, batch, period)
-    return _result(run, stale=_fingerprint(current) != run.input_fingerprint)
+    ordinary_fingerprint = run.ordinary_input_fingerprint or run.input_fingerprint
+    stale = _fingerprint(current) != ordinary_fingerprint or _incentive_stale(db, run)
+    return _result(run, stale=stale)
 
 
 def run_trial(db: Session, batch_id: int) -> dict[str, Any]:
@@ -522,12 +545,17 @@ def run_trial(db: Session, batch_id: int) -> dict[str, Any]:
     snapshot, data = _load_snapshot(db, batch, period)
     fingerprint = _fingerprint(snapshot)
     previous = _latest(db, batch_id)
-    if previous is not None and previous.input_fingerprint == fingerprint:
-        return _result(previous, stale=False)
+    if (
+        previous is not None
+        and (previous.ordinary_input_fingerprint or previous.input_fingerprint) == fingerprint
+    ):
+        if not previous.includes_final_incentive or not _incentive_stale(db, previous):
+            return _result(previous, stale=False)
     results = [_employee_trial(employee, period, data) for employee in data["employees"]]
     run = PayrollTrialRun(
         payroll_batch_id=batch_id,
         input_fingerprint=fingerprint,
+        ordinary_input_fingerprint=fingerprint,
         input_snapshot=snapshot,
         results=results,
     )

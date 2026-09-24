@@ -177,10 +177,23 @@ export function PayrollBatchDetailPage() {
         />
       ) : null}
       <Alert
-        type="info"
+        type={result?.includes_final_incentive ? "success" : "info"}
         showIcon
-        title="当前结果只包含普通工资"
-        description="全公司考勤激励尚未计算，不能整批确认。金额均为未扣个税金额，不代表最终到账金额。"
+        title={
+          result?.includes_final_incentive
+            ? "当前结果已包含全公司考勤激励"
+            : "当前结果只包含普通工资"
+        }
+        description={
+          <span>
+            {result?.includes_final_incentive
+              ? "激励已写入本批次，金额均为未扣个税金额。"
+              : "全公司考勤激励尚未计算，不能整批确认。金额均为未扣个税金额，不代表最终到账金额。"}{" "}
+            <Link to={`/payroll/incentive?period=${detail.period_id}`}>
+              查看考勤激励
+            </Link>
+          </span>
+        }
       />
 
       <Card className={styles.content}>

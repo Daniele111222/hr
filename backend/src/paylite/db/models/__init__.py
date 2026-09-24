@@ -35,6 +35,7 @@ from paylite.db.models.organization import (
     SubjectDepartment,
 )
 from paylite.db.models.payroll import (
+    AttendanceIncentiveRun,
     CorrectionBatch,
     PayrollBatch,
     PayrollCalculationDetail,
@@ -52,6 +53,7 @@ from paylite.db.models.rules import (
 
 __all__ = [
     "AttendanceRecord",
+    "AttendanceIncentiveRun",
     "AttendanceRule",
     "City",
     "Coefficient",

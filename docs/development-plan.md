@@ -23,7 +23,7 @@
 | 06 | [考勤导入与错误修正](../.scratch/paylite-mvp/issues/06-attendance-import.md) | 02 ✅、05 ✅ | 已完成 |
 | 07 | [绩效导入与错误修正](../.scratch/paylite-mvp/issues/07-performance-import.md) | 02 ✅、05 ✅ | 已完成 |
 | 08 | [普通工资试算与核对](../.scratch/paylite-mvp/issues/08-payroll-trial.md) | 03 ✅、06 ✅、07 ✅ | 已完成 |
-| 09 | [全公司考勤激励](../.scratch/paylite-mvp/issues/09-attendance-incentive.md) | 08 | 未开始 |
+| 09 | [全公司考勤激励](../.scratch/paylite-mvp/issues/09-attendance-incentive.md) | 08 | 进行中 |
 | 10 | [整批确认、锁定与台账](../.scratch/paylite-mvp/issues/10-confirmation-ledger.md) | 09 | 未开始 |
 | 11 | [整批更正与有效版本切换](../.scratch/paylite-mvp/issues/11-corrections.md) | 10 | 未开始 |
 | 12 | [独立补发批次](../.scratch/paylite-mvp/issues/12-supplements.md) | 10 | 未开始 |

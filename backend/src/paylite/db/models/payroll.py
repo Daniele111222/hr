@@ -131,8 +131,55 @@ class PayrollTrialRun(Base):
         ForeignKey("payroll_batch.id", ondelete="RESTRICT"), nullable=False
     )
     input_fingerprint: Mapped[str] = mapped_column(String(64), nullable=False)
+    ordinary_input_fingerprint: Mapped[str | None] = mapped_column(String(64))
     input_snapshot: Mapped[dict[str, Any]] = mapped_column(JSONB, nullable=False)
     results: Mapped[list[dict[str, Any]]] = mapped_column(JSONB, nullable=False)
+    incentive_run_id: Mapped[int | None] = mapped_column(
+        ForeignKey("attendance_incentive_run.id", ondelete="RESTRICT")
+    )
+    includes_final_incentive: Mapped[bool] = mapped_column(
+        Boolean, nullable=False, server_default=text("false")
+    )
+    created_at: Mapped[datetime] = created_at_column()
+
+
+class AttendanceIncentiveRun(Base):
+    __tablename__ = "attendance_incentive_run"
+    __table_args__ = (
+        UniqueConstraint(
+            "company_id",
+            "payroll_period_id",
+            "input_fingerprint",
+            name="uq_attendance_incentive_version",
+        ),
+        CheckConstraint("status IN ('calculated', 'empty')", name="ck_attendance_incentive_status"),
+        CheckConstraint("pool_amount >= 0", name="ck_attendance_incentive_pool_nonnegative"),
+        CheckConstraint(
+            "allocated_amount >= 0", name="ck_attendance_incentive_allocated_nonnegative"
+        ),
+        Index("ix_attendance_incentive_company_period", "company_id", "payroll_period_id", "id"),
+    )
+
+    id: Mapped[int] = primary_key()
+    company_id: Mapped[int] = mapped_column(
+        ForeignKey("company.id", ondelete="RESTRICT"), nullable=False
+    )
+    payroll_period_id: Mapped[int] = mapped_column(
+        ForeignKey("payroll_period.id", ondelete="RESTRICT"), nullable=False
+    )
+    source_period_id: Mapped[int] = mapped_column(
+        ForeignKey("payroll_period.id", ondelete="RESTRICT"), nullable=False
+    )
+    status: Mapped[str] = mapped_column(String(20), nullable=False)
+    input_fingerprint: Mapped[str] = mapped_column(String(64), nullable=False)
+    pool_amount: Mapped[Decimal] = mapped_column(Money, nullable=False)
+    allocated_amount: Mapped[Decimal] = mapped_column(Money, nullable=False, server_default="0")
+    average_amount: Mapped[Decimal] = mapped_column(Money, nullable=False, server_default="0")
+    remainder_amount: Mapped[Decimal] = mapped_column(Money, nullable=False, server_default="0")
+    source_snapshot: Mapped[dict[str, Any]] = mapped_column(JSONB, nullable=False)
+    candidate_snapshot: Mapped[list[dict[str, Any]]] = mapped_column(JSONB, nullable=False)
+    allocations: Mapped[list[dict[str, Any]]] = mapped_column(JSONB, nullable=False)
+    message: Mapped[str | None] = mapped_column(Text)
     created_at: Mapped[datetime] = created_at_column()
 
 

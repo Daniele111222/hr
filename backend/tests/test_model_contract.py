@@ -26,6 +26,7 @@ EXPECTED_TABLES = {
     "employee_base",
     "payroll_period",
     "payroll_batch",
+    "attendance_incentive_run",
     "import_batch",
     "import_row",
     "attendance_record",

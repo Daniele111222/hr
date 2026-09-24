@@ -1,7 +1,7 @@
 """Calculate one employee's ordinary monthly payroll from normalized inputs."""
 
 from dataclasses import dataclass
-from decimal import ROUND_HALF_UP, Decimal, localcontext
+from decimal import ROUND_DOWN, ROUND_HALF_UP, Decimal, localcontext
 
 CENT = Decimal("0.01")
 
@@ -83,6 +83,53 @@ class PayrollResult:
     steps: tuple[CalculationStep, ...]
     warnings: tuple[str, ...]
     errors: tuple[str, ...]
+
+
+@dataclass(frozen=True)
+class IncentiveCandidate:
+    employee_id: int
+    subject_id: int
+    employee_no: str
+
+
+@dataclass(frozen=True)
+class IncentiveAllocation:
+    employee_id: int
+    subject_id: int
+    employee_no: str
+    amount: Decimal
+
+
+@dataclass(frozen=True)
+class AttendanceIncentiveResult:
+    pool: Decimal
+    average: Decimal
+    remainder: Decimal
+    allocations: tuple[IncentiveAllocation, ...]
+
+
+def calculate_attendance_incentive(
+    pool: Decimal, candidates: tuple[IncentiveCandidate, ...]
+) -> AttendanceIncentiveResult:
+    """Split a locked attendance-deduction pool deterministically among eligible employees."""
+    normalized_pool = money(pool)
+    ordered = tuple(
+        sorted(candidates, key=lambda item: (item.subject_id, item.employee_no, item.employee_id))
+    )
+    if not ordered:
+        return AttendanceIncentiveResult(normalized_pool, Decimal("0.00"), Decimal("0.00"), ())
+    average = (normalized_pool / len(ordered)).quantize(CENT, rounding=ROUND_DOWN)
+    remainder = money(normalized_pool - average * len(ordered))
+    allocations = tuple(
+        IncentiveAllocation(
+            candidate.employee_id,
+            candidate.subject_id,
+            candidate.employee_no,
+            money(average + remainder if index == len(ordered) - 1 else average),
+        )
+        for index, candidate in enumerate(ordered)
+    )
+    return AttendanceIncentiveResult(normalized_pool, average, remainder, allocations)
 
 
 def calculate(value: PayrollInput) -> PayrollResult:

@@ -21,6 +21,7 @@ from paylite.api.deps import get_db
 from paylite.application import create_app
 from paylite.config import get_settings
 from paylite.db.models import (
+    AttendanceIncentiveRun,
     AttendanceRecord,
     AttendanceRule,
     City,
@@ -1540,3 +1541,238 @@ def test_ordinary_trial_is_partial_versioned_and_outside_ledger(
         error["code"] == "CROSS_SUBJECT_UNSUPPORTED" for error in moved["results"][0]["errors"]
     )
     assert moved["results"][0]["snapshot"]["last_effective_subject_id"] == other_subject.id
+
+
+def test_company_attendance_incentive_is_multi_subject_idempotent_and_stale(
+    api_client, db_session: Session
+) -> None:
+    company = Company(code="INC09", name="激励测试公司")
+    city = City(code="INC09-C", name="激励城市")
+    db_session.add_all([company, city])
+    db_session.flush()
+    department = Department(company_id=company.id, code="INC09-D", name="激励部门")
+    db_session.add(department)
+    previous = PayrollPeriod(
+        year=2028, month=3, period_start=date(2028, 3, 1), period_end=date(2028, 3, 31)
+    )
+    current = PayrollPeriod(
+        year=2028, month=4, period_start=date(2028, 4, 1), period_end=date(2028, 4, 30)
+    )
+    subjects = [
+        Subject(company_id=company.id, code="INC09-A", name="主体 A"),
+        Subject(company_id=company.id, code="INC09-B", name="主体 B"),
+    ]
+    db_session.add_all([previous, current, *subjects])
+    db_session.flush()
+    relations = [
+        SubjectDepartment(
+            company_id=company.id,
+            subject_id=subject.id,
+            department_id=department.id,
+            code=f"{subject.code}-D",
+            name="激励部门",
+        )
+        for subject in subjects
+    ]
+    previous_batches = [
+        PayrollBatch(
+            subject_id=subject.id,
+            payroll_period_id=previous.id,
+            batch_type="normal",
+            status="locked",
+        )
+        for subject in subjects
+    ]
+    current_batches = [
+        PayrollBatch(
+            subject_id=subject.id,
+            payroll_period_id=current.id,
+            batch_type="normal",
+            status="draft",
+        )
+        for subject in subjects
+    ]
+    db_session.add_all([*relations, *previous_batches, *current_batches])
+    db_session.flush()
+    rule = SocialSecurityRule(
+        city_id=city.id,
+        effective_from=date(2028, 1, 1),
+        version="inc09",
+        fixed_base=Decimal("5000"),
+    )
+    housing = HousingFundRule(
+        city_id=city.id,
+        effective_from=date(2028, 1, 1),
+        company_rate=Decimal("0.05"),
+        employee_rate=Decimal("0.05"),
+        base_min=0,
+        base_max=0,
+        version="inc09",
+        base_source="fixed_salary",
+    )
+    attendance_rule = AttendanceRule(
+        effective_from=date(2028, 1, 1),
+        version="inc09",
+        standard_hours=8,
+        missed_punch_amount=30,
+        exempt_level_number=7,
+        makeup_punch_exempt=True,
+    )
+    db_session.add_all([rule, housing, attendance_rule])
+    db_session.flush()
+    db_session.add(
+        SocialSecurityItemRule(
+            social_security_rule_id=rule.id,
+            item_code="pension",
+            item_name="养老",
+            employee_rate=Decimal("0.10"),
+            company_rate=Decimal("0.20"),
+            base_min=0,
+            base_max=0,
+        )
+    )
+    employees = []
+    current_attendance_imports = []
+    current_performance_imports = []
+    for index, subject in enumerate(subjects):
+        for offset in range(2 if index == 0 else 1):
+            employee = Employee(
+                company_id=company.id,
+                id_number=f"11010119900109{index}{offset}X",
+                employee_no=f"INC09-{index}-{offset}",
+                name=f"激励员工{index}-{offset}",
+                employee_type="employee",
+                formal_status=True,
+                probation_status="confirmed",
+                level_number=6,
+                hire_date=date(2020, 1, 1),
+            )
+            db_session.add(employee)
+            db_session.flush()
+            db_session.add_all(
+                [
+                    EmployeeAssignment(
+                        employee_id=employee.id,
+                        subject_id=subject.id,
+                        subject_department_id=relations[index].id,
+                        position_title="工程师",
+                        level_number=6,
+                        effective_from=date(2020, 1, 1),
+                    ),
+                    EmployeeSalary(
+                        employee_id=employee.id,
+                        fixed_salary=Decimal("8000"),
+                        performance_base=Decimal("2000"),
+                        effective_from=date(2020, 1, 1),
+                    ),
+                    EmployeeBase(
+                        employee_id=employee.id,
+                        city_id=city.id,
+                        effective_from=date(2020, 1, 1),
+                    ),
+                ]
+            )
+            employees.append((employee, index, offset))
+        att_import = ImportBatch(
+            company_id=company.id,
+            payroll_period_id=current.id,
+            payroll_batch_id=current_batches[index].id,
+            import_type="attendance",
+            original_filename=f"inc09-att-{index}.xlsx",
+            file_sha256=f"{index + 1}" * 64,
+            template_version="inc09",
+            status="imported",
+        )
+        perf_import = ImportBatch(
+            company_id=company.id,
+            payroll_period_id=current.id,
+            payroll_batch_id=current_batches[index].id,
+            import_type="performance",
+            original_filename=f"inc09-perf-{index}.xlsx",
+            file_sha256=f"{index + 3}" * 64,
+            template_version="inc09",
+            status="imported",
+        )
+        current_attendance_imports.append(att_import)
+        current_performance_imports.append(perf_import)
+    db_session.add_all([*current_attendance_imports, *current_performance_imports])
+    db_session.flush()
+    for employee, subject_index, offset in employees:
+        attendance_import = current_attendance_imports[subject_index]
+        performance_import = current_performance_imports[subject_index]
+        db_session.add(
+            AttendanceRecord(
+                import_batch_id=attendance_import.id,
+                payroll_period_id=current.id,
+                employee_id=employee.id,
+                expected_work_days=Decimal("20"),
+                late_minutes=10 if subject_index == 1 else 0,
+            )
+        )
+        db_session.add(
+            PerformanceRecord(
+                import_batch_id=performance_import.id,
+                payroll_period_id=current.id,
+                employee_id=employee.id,
+                coefficient=Decimal("1"),
+                source_value="1",
+            )
+        )
+    db_session.add_all(
+        [
+            PayrollTrialRun(
+                payroll_batch_id=previous_batches[0].id,
+                input_fingerprint="previous-a",
+                ordinary_input_fingerprint="previous-a",
+                input_snapshot={},
+                results=[
+                    {"employee_id": 1, "errors": [], "amounts": {"attendance_deduction": "10.00"}}
+                ],
+            ),
+            PayrollTrialRun(
+                payroll_batch_id=previous_batches[1].id,
+                input_fingerprint="previous-b",
+                ordinary_input_fingerprint="previous-b",
+                input_snapshot={},
+                results=[
+                    {"employee_id": 2, "errors": [], "amounts": {"attendance_deduction": "20.00"}}
+                ],
+            ),
+        ]
+    )
+    db_session.commit()
+
+    for batch in current_batches:
+        response = api_client.post(f"/payroll/batches/{batch.id}/trial")
+        assert response.status_code == 200, response.text
+        assert response.json()["error_count"] == 0
+    status = api_client.get(f"/payroll/periods/{current.id}/attendance-incentive")
+    assert status.status_code == 200, status.text
+    assert status.json()["status"] == "ready"
+    assert status.json()["pool_amount"] == "30.00"
+    calculated = api_client.post(f"/payroll/periods/{current.id}/attendance-incentive")
+    assert calculated.status_code == 200, calculated.text
+    payload = calculated.json()
+    assert payload["status"] == "calculated"
+    assert payload["run"]["average_amount"] == "15.00"
+    assert sum(
+        (Decimal(item["amount"]) for item in payload["run"]["allocations"]), Decimal("0")
+    ) == Decimal("30.00")
+    assert db_session.scalar(select(AttendanceIncentiveRun.id)) is not None
+
+    retried = api_client.post(f"/payroll/periods/{current.id}/attendance-incentive")
+    assert retried.json()["run"]["id"] == payload["run"]["id"]
+    for batch in current_batches:
+        trial = api_client.get(f"/payroll/batches/{batch.id}/trial").json()
+        assert trial["includes_final_incentive"] is True
+        assert trial["ready_for_confirmation"] is True
+
+    db_session.expire_all()
+    changed = db_session.scalar(
+        select(AttendanceRecord).where(AttendanceRecord.payroll_period_id == current.id)
+    )
+    changed.late_minutes = 1
+    db_session.commit()
+    stale = api_client.get(f"/payroll/periods/{current.id}/attendance-incentive").json()
+    assert stale["status"] == "blocked"
+    assert "试算已失效" in stale["message"]

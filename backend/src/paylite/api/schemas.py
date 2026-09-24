@@ -389,3 +389,39 @@ class PayrollTrialOut(BaseModel):
     includes_final_incentive: bool
     ready_for_confirmation: bool
     confirmation_blockers: list[str]
+
+
+class AttendanceIncentiveRunOut(BaseModel):
+    id: int
+    company_id: int
+    payroll_period_id: int
+    source_period_id: int
+    status: Literal["calculated", "empty", "stale"]
+    input_fingerprint: str
+    pool_amount: str
+    allocated_amount: str
+    average_amount: str
+    remainder_amount: str
+    source_snapshot: list[dict[str, Any]]
+    candidate_snapshot: list[dict[str, Any]]
+    allocations: list[dict[str, Any]]
+    message: str | None
+    created_at: datetime
+    stale: bool
+    ready: bool
+
+
+class AttendanceIncentiveOut(BaseModel):
+    period_id: int
+    period: str
+    source_period: str | None
+    company_id: int
+    status: Literal["blocked", "ready", "calculated", "empty", "stale"]
+    can_calculate: bool
+    message: str | None
+    source_rows: list[dict[str, Any]]
+    current_rows: list[dict[str, Any]]
+    pool_amount: str
+    candidate_snapshot: list[dict[str, Any]]
+    run: AttendanceIncentiveRunOut | None
+    input_fingerprint: str

@@ -7,6 +7,7 @@ from sqlalchemy.orm import Session
 
 from paylite.api.deps import get_db
 from paylite.api.schemas import (
+    AttendanceIncentiveOut,
     PayrollBatchCreate,
     PayrollBatchOut,
     PayrollDataPreparationOut,
@@ -19,6 +20,11 @@ from paylite.api.schemas import (
     PayrollWorkbenchOut,
 )
 from paylite.db.models import PayrollBatch, PayrollPeriod
+from paylite.services.attendance_incentive import (
+    AttendanceIncentiveError,
+    calculate_incentive,
+    get_incentive,
+)
 from paylite.services.payroll_trial import TrialError, get_trial, run_trial
 from paylite.services.payroll_workbench import (
     BatchType,
@@ -37,6 +43,23 @@ from paylite.services.payroll_workbench import (
 )
 
 router = APIRouter(prefix="/payroll", tags=["payroll"])
+
+
+@router.get("/periods/{period_id}/attendance-incentive", response_model=AttendanceIncentiveOut)
+def get_attendance_incentive(period_id: int, db: Session = Depends(get_db)):
+    try:
+        return get_incentive(db, period_id)
+    except AttendanceIncentiveError as exc:
+        raise HTTPException(exc.status_code, exc.detail) from exc
+
+
+@router.post("/periods/{period_id}/attendance-incentive", response_model=AttendanceIncentiveOut)
+def post_attendance_incentive(period_id: int, db: Session = Depends(get_db)):
+    try:
+        return calculate_incentive(db, period_id)
+    except AttendanceIncentiveError as exc:
+        db.rollback()
+        raise HTTPException(exc.status_code, exc.detail) from exc
 
 
 @router.get("/batches/{batch_id}/trial", response_model=PayrollTrialOut | None)

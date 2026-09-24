@@ -4,7 +4,7 @@
 
 **Blocked by（前置任务）：** 08：普通工资试算与核对
 
-**Status:** ready-for-agent
+**Status:** claimed
 
 ## 验收标准
 

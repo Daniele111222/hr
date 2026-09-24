@@ -227,6 +227,40 @@ export type PayrollTrial = {
   ready_for_confirmation: boolean;
   confirmation_blockers: string[];
 };
+export type AttendanceIncentiveRun = {
+  id: number;
+  company_id: number;
+  payroll_period_id: number;
+  source_period_id: number;
+  status: "calculated" | "empty" | "stale";
+  input_fingerprint: string;
+  pool_amount: string;
+  allocated_amount: string;
+  average_amount: string;
+  remainder_amount: string;
+  source_snapshot: Record<string, unknown>[];
+  candidate_snapshot: Record<string, unknown>[];
+  allocations: Record<string, unknown>[];
+  message: string | null;
+  created_at: string;
+  stale: boolean;
+  ready: boolean;
+};
+export type AttendanceIncentive = {
+  period_id: number;
+  period: string;
+  source_period: string | null;
+  company_id: number;
+  status: "blocked" | "ready" | "calculated" | "empty" | "stale";
+  can_calculate: boolean;
+  message: string | null;
+  source_rows: Record<string, unknown>[];
+  current_rows: Record<string, unknown>[];
+  pool_amount: string;
+  candidate_snapshot: Record<string, unknown>[];
+  run: AttendanceIncentiveRun | null;
+  input_fingerprint: string;
+};
 
 const json = (method: string, body?: unknown): RequestInit => ({
   method,
@@ -373,6 +407,15 @@ export const resources = {
     request<PayrollTrial | null>(`/payroll/batches/${batchId}/trial`),
   runPayrollTrial: (batchId: number) =>
     request<PayrollTrial>(`/payroll/batches/${batchId}/trial`, json("POST")),
+  attendanceIncentive: (periodId: number) =>
+    request<AttendanceIncentive>(
+      `/payroll/periods/${periodId}/attendance-incentive`,
+    ),
+  calculateAttendanceIncentive: (periodId: number) =>
+    request<AttendanceIncentive>(
+      `/payroll/periods/${periodId}/attendance-incentive`,
+      json("POST"),
+    ),
   createPayrollPeriod: (v: { period: string }) =>
     request<PayrollPeriod>("/payroll/periods", json("POST", v)),
   createPayrollBatch: (
