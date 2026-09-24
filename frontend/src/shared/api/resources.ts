@@ -110,7 +110,8 @@ export type ImportRow = {
   raw_data: Record<string, string>;
   correction_values: Record<string, string> | null;
   normalized_data: Record<string, unknown> | null;
-  errors: { code: string; field: string; column: string; message: string }[] | null;
+  errors:
+    { code: string; field: string; column: string; message: string }[] | null;
   correction_history: Record<string, unknown>[];
 };
 
@@ -127,6 +128,13 @@ export type EmployeeImportBatch = {
   success_rows: number;
   error_rows: number;
   rows: ImportRow[] | null;
+};
+
+export type AttendanceImportBatch = Omit<EmployeeImportBatch, "import_type"> & {
+  import_type: "attendance";
+  payroll_period_id: number;
+  payroll_batch_id: number;
+  subject_name: string;
 };
 
 export type PayrollPeriod = {
@@ -183,7 +191,10 @@ const json = (method: string, body?: unknown): RequestInit => ({
   body: body === undefined ? undefined : JSON.stringify(body),
 });
 const upload = async <T>(path: string, form: FormData): Promise<T> => {
-  const response = await fetch(`${base}${path}`, { method: "POST", body: form });
+  const response = await fetch(`${base}${path}`, {
+    method: "POST",
+    body: form,
+  });
   if (!response.ok) {
     const body = await response.json().catch(() => ({}));
     throw new Error(body.detail ?? "请求失败");
@@ -252,7 +263,31 @@ export const resources = {
       form,
     );
   },
-  employeeImport: (id: number) => request<EmployeeImportBatch>(`/imports/${id}`),
+  employeeImport: (id: number) =>
+    request<EmployeeImportBatch>(`/imports/${id}`),
+  attendanceImports: (companyId: number) =>
+    request<AttendanceImportBatch[]>(
+      `/imports/attendance?company_id=${companyId}`,
+    ),
+  attendanceImport: (id: number) =>
+    request<AttendanceImportBatch>(`/imports/attendance/${id}`),
+  uploadAttendanceImport: (batchId: number, file: File) => {
+    const form = new FormData();
+    form.set("file", file);
+    return upload<AttendanceImportBatch>(
+      `/imports/attendance?payroll_batch_id=${batchId}`,
+      form,
+    );
+  },
+  correctAttendanceRow: (
+    batchId: number,
+    rowId: number,
+    values: Record<string, string>,
+  ) =>
+    request<AttendanceImportBatch>(
+      `/imports/attendance/${batchId}/rows/${rowId}/correct`,
+      json("POST", { values }),
+    ),
   correctEmployeeImportRow: (
     batchId: number,
     rowId: number,

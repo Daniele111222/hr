@@ -26,6 +26,7 @@ from paylite.db.models import (
     CorrectionBatch,
     Department,
     Employee,
+    EmployeeAssignment,
     EmployeeSalary,
     ImportBatch,
     ImportRow,
@@ -36,6 +37,7 @@ from paylite.db.models import (
     Subject,
     SubjectDepartment,
 )
+from paylite.excel.attendance_template import make_template as make_attendance_template
 from paylite.excel.employee_template import make_template
 from paylite.services.payroll_workbench import PayrollWorkbenchError, create_batch
 
@@ -974,3 +976,157 @@ def test_employee_import_uploads_partial_rows_and_corrects_one_row(
     assert correction.json()["rows"][1]["correction_history"]
     assert db_session.scalar(select(Employee).where(Employee.employee_no == "IMP002"))
     assert existing.id
+
+
+def test_attendance_import_partial_correction_and_revision(api_client, db_session: Session) -> None:
+    company = Company(code="ATT06", name="考勤测试公司")
+    city = City(code="ATT06CITY", name="考勤测试城市")
+    db_session.add_all([company, city])
+    db_session.flush()
+    subject = Subject(company_id=company.id, code="ATT06SUBJECT", name="考勤测试主体")
+    department = Department(company_id=company.id, code="ATT06DEP", name="考勤测试部门")
+    period = PayrollPeriod(
+        year=2027, month=2, period_start=date(2027, 2, 1), period_end=date(2027, 2, 28)
+    )
+    db_session.add_all([subject, department, period])
+    db_session.flush()
+    relation = SubjectDepartment(
+        company_id=company.id,
+        subject_id=subject.id,
+        department_id=department.id,
+        code="ATT06REL",
+        name="考勤测试部门",
+    )
+    batch = PayrollBatch(subject_id=subject.id, payroll_period_id=period.id, batch_type="normal")
+    db_session.add_all([relation, batch])
+    db_session.flush()
+    identities = ["11010119900101123X", "11010119900101124X", "11010119900101125X"]
+    employees = []
+    for index, identity in enumerate(identities):
+        employee = Employee(
+            company_id=company.id,
+            id_number=identity,
+            employee_no=f"ATT06-{index}",
+            name=f"考勤员工{index}",
+            employee_type="employee",
+            hire_date=date(2020, 1, 1),
+        )
+        db_session.add(employee)
+        db_session.flush()
+        db_session.add(
+            EmployeeAssignment(
+                employee_id=employee.id,
+                subject_id=subject.id,
+                subject_department_id=relation.id,
+                position_title="工程师",
+                effective_from=date(2020, 1, 1),
+            )
+        )
+        employees.append(employee)
+    db_session.commit()
+
+    def row(index: int, days: object = "20", late: object = 10, missed: object = 2) -> list[object]:
+        return [
+            identities[index],
+            f"考勤员工{index}",
+            days,
+            late,
+            5,
+            "1.5",
+            "0.5",
+            missed,
+            1,
+            "考勤系统导出",
+        ]
+
+    workbook = load_workbook(BytesIO(make_attendance_template()))
+    sheet = workbook["月度考勤"]
+    sheet.append(row(0))
+    sheet.append(row(1, days=0))
+    sheet.append(row(0))
+    sheet.append(row(2, late="=1+1"))
+    content = BytesIO()
+    workbook.save(content)
+    files = {
+        "file": (
+            "attendance.xlsx",
+            content.getvalue(),
+            "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+        )
+    }
+    response = api_client.post(f"/imports/attendance?payroll_batch_id={batch.id}", files=files)
+    assert response.status_code == 201, response.text
+    imported = response.json()
+    assert (imported["success_rows"], imported["error_rows"]) == (1, 3)
+    assert imported["rows"][1]["errors"][0]["code"] == "WORK_DAYS_OUT_OF_RANGE"
+    assert any(item["code"] == "DUPLICATE_IN_FILE" for item in imported["rows"][2]["errors"])
+    assert any(item["code"] == "FORMULA_NOT_ALLOWED" for item in imported["rows"][3]["errors"])
+    db_session.expire_all()
+    assert db_session.get(PayrollPeriod, period.id).attendance_input_revision == 1
+    fact = db_session.scalar(
+        select(AttendanceRecord).where(AttendanceRecord.employee_id == employees[0].id)
+    )
+    assert (fact.paid_leave_days, fact.unpaid_leave_days, fact.corrected_punch_count) == (
+        Decimal("1.50"),
+        Decimal("0.50"),
+        1,
+    )
+    assert fact.leave_type == "mixed"
+    assert (
+        api_client.post(f"/imports/attendance?payroll_batch_id={batch.id}", files=files).status_code
+        == 409
+    )
+    assert (
+        api_client.get(f"/imports/attendance/{imported['id']}/file").content == content.getvalue()
+    )
+
+    correction = api_client.post(
+        f"/imports/attendance/{imported['id']}/rows/{imported['rows'][1]['id']}/correct",
+        json={"values": {"应出勤天数": "20"}},
+    )
+    assert correction.status_code == 200, correction.text
+    assert correction.json()["success_rows"] == 2
+    assert correction.json()["rows"][1]["correction_history"]
+    db_session.expire_all()
+    assert db_session.get(PayrollPeriod, period.id).attendance_input_revision == 2
+    assert (
+        api_client.post(
+            f"/imports/attendance/{imported['id']}/rows/{imported['rows'][1]['id']}/correct",
+            json={"values": {"应出勤天数": "20"}},
+        ).status_code
+        == 409
+    )
+    db_session.expire_all()
+    assert db_session.get(PayrollPeriod, period.id).attendance_input_revision == 2
+
+    second = load_workbook(BytesIO(make_attendance_template()))
+    second["月度考勤"].append(row(0, late=12))
+    second["月度考勤"].append(row(2, days="-1"))
+    second["月度考勤"].append(row(2, days="29"))
+    second["月度考勤"].append(row(2, late=20000))
+    second["月度考勤"].append(row(2, days="1", missed=3))
+    second_content = BytesIO()
+    second.save(second_content)
+    duplicate = api_client.post(
+        f"/imports/attendance?payroll_batch_id={batch.id}",
+        files={
+            "file": (
+                "again.xlsx",
+                second_content.getvalue(),
+                "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+            )
+        },
+    )
+    assert duplicate.status_code == 201
+    assert duplicate.json()["success_rows"] == 0
+    assert duplicate.json()["rows"][0]["errors"][0]["code"] == "DUPLICATE_PERIOD"
+    assert any(error["code"] == "INVALID_NUMBER" for error in duplicate.json()["rows"][1]["errors"])
+    assert any(
+        error["code"] == "WORK_DAYS_OUT_OF_RANGE" for error in duplicate.json()["rows"][2]["errors"]
+    )
+    assert any(
+        error["code"] == "MINUTES_OUT_OF_RANGE" for error in duplicate.json()["rows"][3]["errors"]
+    )
+    assert any(
+        error["code"] == "PUNCH_OUT_OF_RANGE" for error in duplicate.json()["rows"][4]["errors"]
+    )

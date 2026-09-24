@@ -27,10 +27,39 @@ import {
   type ImportRow,
 } from "../../shared/api/resources.ts";
 import styles from "./index.module.less";
+import { AttendanceImportsPage } from "./attendance.tsx";
 
 const API_BASE = import.meta.env.VITE_API_BASE_URL ?? "/api";
 
 export function ImportsPage() {
+  const [type, setType] = useState<"employee" | "attendance">("employee");
+  return (
+    <>
+      <Space wrap>
+        <Button
+          type={type === "employee" ? "primary" : "default"}
+          onClick={() => setType("employee")}
+        >
+          员工资料
+        </Button>
+        <Button
+          type={type === "attendance" ? "primary" : "default"}
+          onClick={() => setType("attendance")}
+        >
+          月度考勤
+        </Button>
+        <Button disabled>月度绩效（后续提供）</Button>
+      </Space>
+      {type === "employee" ? (
+        <EmployeeImportsPage />
+      ) : (
+        <AttendanceImportsPage />
+      )}
+    </>
+  );
+}
+
+function EmployeeImportsPage() {
   const [messageApi, contextHolder] = message.useMessage();
   const fileInput = useRef<HTMLInputElement>(null);
   const [selectedBatch, setSelectedBatch] =

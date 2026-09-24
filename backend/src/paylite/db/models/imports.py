@@ -114,8 +114,12 @@ class AttendanceRecord(Base):
     early_leave_minutes: Mapped[int] = mapped_column(Integer, nullable=False, server_default="0")
     leave_days: Mapped[Decimal] = mapped_column(Numeric(8, 2), nullable=False, server_default="0")
     leave_type: Mapped[str] = mapped_column(String(20), nullable=False, server_default="none")
-    paid_leave_days: Mapped[Decimal] = mapped_column(Numeric(8, 2), nullable=False, server_default="0")
-    unpaid_leave_days: Mapped[Decimal] = mapped_column(Numeric(8, 2), nullable=False, server_default="0")
+    paid_leave_days: Mapped[Decimal] = mapped_column(
+        Numeric(8, 2), nullable=False, server_default="0"
+    )
+    unpaid_leave_days: Mapped[Decimal] = mapped_column(
+        Numeric(8, 2), nullable=False, server_default="0"
+    )
     missed_punch_count: Mapped[int] = mapped_column(Integer, nullable=False, server_default="0")
     corrected_punch_count: Mapped[int] = mapped_column(Integer, nullable=False, server_default="0")
     punch_corrected: Mapped[bool] = mapped_column(Boolean, nullable=False, server_default="false")
