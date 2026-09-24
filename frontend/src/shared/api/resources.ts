@@ -191,6 +191,42 @@ export type PayrollWorkbench = {
   periods: PayrollPeriod[];
   batches: PayrollBatch[];
 };
+export type PayrollTrialRow = {
+  employee_id: number;
+  employee_name: string;
+  snapshot: {
+    employee_no: string;
+    department_name: string | null;
+    position_title: string | null;
+    level_number: number | null;
+    last_effective_subject_id: number | null;
+  };
+  errors: { code: string; message: string }[];
+  warnings: string[];
+  amounts: Record<string, string> | null;
+  items: { code: string; name: string; category: string; amount: string }[];
+  steps: {
+    code: string;
+    formula: string;
+    inputs: Record<string, string>;
+    amount: string;
+  }[];
+};
+export type PayrollTrial = {
+  id: number;
+  payroll_batch_id: number;
+  input_fingerprint: string;
+  created_at: string;
+  stale: boolean;
+  success_count: number;
+  error_count: number;
+  total_count: number;
+  totals: Record<string, string>;
+  results: PayrollTrialRow[];
+  includes_final_incentive: boolean;
+  ready_for_confirmation: boolean;
+  confirmation_blockers: string[];
+};
 
 const json = (method: string, body?: unknown): RequestInit => ({
   method,
@@ -331,6 +367,12 @@ export const resources = {
     request<PayrollWorkbench>(
       `/payroll/workbench${period ? `?period=${encodeURIComponent(period)}` : ""}`,
     ),
+  payrollBatch: (batchId: number) =>
+    request<PayrollBatch>(`/payroll/batches/${batchId}`),
+  payrollTrial: (batchId: number) =>
+    request<PayrollTrial | null>(`/payroll/batches/${batchId}/trial`),
+  runPayrollTrial: (batchId: number) =>
+    request<PayrollTrial>(`/payroll/batches/${batchId}/trial`, json("POST")),
   createPayrollPeriod: (v: { period: string }) =>
     request<PayrollPeriod>("/payroll/periods", json("POST", v)),
   createPayrollBatch: (

@@ -41,6 +41,7 @@ from paylite.db.models.payroll import (
     PayrollItem,
     PayrollPeriod,
     PayrollRecord,
+    PayrollTrialRun,
 )
 from paylite.db.models.rules import (
     AttendanceRule,
@@ -73,6 +74,7 @@ __all__ = [
     "PayrollItem",
     "PayrollPeriod",
     "PayrollRecord",
+    "PayrollTrialRun",
     "PerformanceRecord",
     "Ratio",
     "SocialSecurityItemRule",

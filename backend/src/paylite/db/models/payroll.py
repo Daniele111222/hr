@@ -122,6 +122,20 @@ class PayrollBatch(Base):
     )
 
 
+class PayrollTrialRun(Base):
+    __tablename__ = "payroll_trial_run"
+    __table_args__ = (Index("ix_payroll_trial_batch_id", "payroll_batch_id", "id"),)
+
+    id: Mapped[int] = primary_key()
+    payroll_batch_id: Mapped[int] = mapped_column(
+        ForeignKey("payroll_batch.id", ondelete="RESTRICT"), nullable=False
+    )
+    input_fingerprint: Mapped[str] = mapped_column(String(64), nullable=False)
+    input_snapshot: Mapped[dict[str, Any]] = mapped_column(JSONB, nullable=False)
+    results: Mapped[list[dict[str, Any]]] = mapped_column(JSONB, nullable=False)
+    created_at: Mapped[datetime] = created_at_column()
+
+
 class PayrollRecord(Base):
     __tablename__ = "payroll_record"
     __table_args__ = (
@@ -270,4 +284,5 @@ __all__ = [
     "PayrollItem",
     "PayrollPeriod",
     "PayrollRecord",
+    "PayrollTrialRun",
 ]

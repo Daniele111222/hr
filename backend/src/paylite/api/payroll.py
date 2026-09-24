@@ -15,9 +15,11 @@ from paylite.api.schemas import (
     PayrollPreparationItemOut,
     PayrollScopeOut,
     PayrollSubjectOut,
+    PayrollTrialOut,
     PayrollWorkbenchOut,
 )
 from paylite.db.models import PayrollBatch, PayrollPeriod
+from paylite.services.payroll_trial import TrialError, get_trial, run_trial
 from paylite.services.payroll_workbench import (
     BatchType,
     DataPreparation,
@@ -35,6 +37,32 @@ from paylite.services.payroll_workbench import (
 )
 
 router = APIRouter(prefix="/payroll", tags=["payroll"])
+
+
+@router.get("/batches/{batch_id}/trial", response_model=PayrollTrialOut | None)
+def get_batch_trial(batch_id: int, db: Session = Depends(get_db)):
+    try:
+        return get_trial(db, batch_id)
+    except TrialError as exc:
+        raise HTTPException(exc.status_code, exc.detail) from exc
+
+
+@router.get("/batches/{batch_id}", response_model=PayrollBatchOut)
+def get_batch(batch_id: int, db: Session = Depends(get_db)):
+    batch = db.get(PayrollBatch, batch_id)
+    if batch is None:
+        raise HTTPException(404, "工资批次不存在")
+    period = get_period(db, batch.payroll_period_id)
+    return _batch_out(db, period, batch)
+
+
+@router.post("/batches/{batch_id}/trial", response_model=PayrollTrialOut)
+def post_batch_trial(batch_id: int, db: Session = Depends(get_db)):
+    try:
+        return run_trial(db, batch_id)
+    except TrialError as exc:
+        db.rollback()
+        raise HTTPException(exc.status_code, exc.detail) from exc
 
 
 BatchStatus = Literal["draft", "trial", "confirmed", "locked", "exported", "cancelled"]
@@ -89,9 +117,7 @@ def _scope_out(period: PayrollPeriod, scope: EmployeeScope) -> PayrollScopeOut:
     )
 
 
-def _batch_out(
-    db: Session, period: PayrollPeriod, batch: PayrollBatch
-) -> PayrollBatchOut:
+def _batch_out(db: Session, period: PayrollPeriod, batch: PayrollBatch) -> PayrollBatchOut:
     subject = get_batch_subject(db, batch)
     scope, preparation = batch_scope_and_preparation(db, period, batch)
     return PayrollBatchOut(

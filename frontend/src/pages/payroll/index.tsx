@@ -17,6 +17,7 @@ import {
   Typography,
 } from "antd";
 import { useMemo, useState } from "react";
+import { Link } from "react-router-dom";
 import { resources, type PayrollBatch } from "../../shared/api/resources";
 import styles from "./index.module.less";
 
@@ -172,7 +173,7 @@ export function PayrollPage() {
               dataSource={visibleBatches}
               pagination={false}
               columns={[
-                { title: "批次", render: (_, row) => <><span className={styles.mono}>{row.subject.code}-N{row.batch_no}</span><div className={styles.sub}>{batchTypeLabels[row.batch_type]}</div></> },
+                { title: "批次", render: (_, row) => <><Link className={styles.mono} to={`/payroll/batches/${row.id}`}>{row.subject.code}-N{row.batch_no}</Link><div className={styles.sub}>{batchTypeLabels[row.batch_type]}</div></> },
                 { title: "主体", render: (_, row) => <>{row.subject.name}<div className={styles.sub}>{row.subject.code}</div></> },
                 { title: "员工范围", render: (_, row) => <><strong>{row.scope.employee_count} 人</strong><div className={styles.sub}>{row.scope.source === "employee_assignment_for_period" ? "期间有效任职关系" : row.scope.source}</div>{row.scope.status === "blocked" ? <Tag color="error">存在归属歧义</Tag> : null}</> },
                 { title: "数据准备", render: (_, row) => <Space wrap>{preparationTag("考勤", row.data_preparation.attendance)}{preparationTag("绩效", row.data_preparation.performance)}{preparationTag("规则", row.data_preparation.city_rules)}</Space> },

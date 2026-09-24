@@ -1,6 +1,6 @@
-from datetime import date
+from datetime import date, datetime
 from decimal import Decimal
-from typing import Literal
+from typing import Any, Literal
 
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
@@ -373,3 +373,19 @@ class PayrollWorkbenchOut(BaseModel):
     period: PayrollPeriodOut | None
     periods: list[PayrollPeriodOut]
     batches: list[PayrollBatchOut]
+
+
+class PayrollTrialOut(BaseModel):
+    id: int
+    payroll_batch_id: int
+    input_fingerprint: str
+    created_at: datetime
+    stale: bool
+    success_count: int
+    error_count: int
+    total_count: int
+    totals: dict[str, str]
+    results: list[dict[str, Any]]
+    includes_final_incentive: bool
+    ready_for_confirmation: bool
+    confirmation_blockers: list[str]

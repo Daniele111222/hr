@@ -40,6 +40,11 @@ const PayrollPage = lazy(() =>
     default: module.PayrollPage,
   })),
 );
+const PayrollBatchDetailPage = lazy(() =>
+  import("../pages/payroll/batch-detail.tsx").then((module) => ({
+    default: module.PayrollBatchDetailPage,
+  })),
+);
 
 const placeholders = [
   {
@@ -75,8 +80,14 @@ export function AppRouter() {
           <Route path="imports" element={<ImportsPage />} />
           <Route path="rules" element={<RulesPage />} />
           <Route path="payroll" element={<PayrollPage />} />
+          <Route
+            path="payroll/batches/:batchId"
+            element={<PayrollBatchDetailPage />}
+          />
           {placeholders
-            .filter((item) => item.path !== "employees" && item.path !== "payroll")
+            .filter(
+              (item) => item.path !== "employees" && item.path !== "payroll",
+            )
             .map((item) => (
               <Route
                 key={item.path}

@@ -309,10 +309,10 @@
           '<td><a class="btn btn-sm' + (r.state === 'ok' ? '' : ' btn-primary') + '" href="' + r.href + '">' + esc(r.hrefText) + '</a></td></tr>';
       }).join('') + '</tbody></table></div>' +
       '<div class="section-title" style="margin-top:6px">本期试算口径 <span class="meta">与「考勤与薪酬规则」一致</span></div>' +
-      '<div class="calc">固定薪资　　= 薪酬标准 × 80% × (计薪天数 ÷ 21)　<span class="cm">// 入离职当月按实际计薪天数折算，转正前后固定薪资不变</span>\n' +
-      '绩效金额　　= 薪酬标准 × 20% × 绩效系数　<span class="cm">// 试用期无绩效；转正当月按转正后整月标准</span>\n' +
+      '<div class="calc">固定薪资　　= 固定月薪 × (计薪自然日 ÷ 当月自然日)　<span class="cm">// 入离职当月折算；转正前后固定薪资不变</span>\n' +
+      '绩效金额　　= 转正后绩效基数 × 绩效系数 × (计薪自然日 ÷ 当月自然日)　<span class="cm">// 试用期无绩效；转正当月采用整月转正后标准</span>\n' +
       '考勤扣款　　= (迟到分钟 + 早退分钟) × 分钟单价 + 忘打卡次数 × 30　<span class="cm">// P7 及以上不参与</span>\n' +
-      '应发金额　　= 固定薪资 + 绩效金额 + 考勤激励 − 考勤扣款\n' +
+      '普通试算应发金额 = 固定薪资 + 绩效金额 − 考勤扣款　<span class="cm">// 考勤激励在全公司数据齐备后另行计算</span>\n' +
       '未扣个税金额 = 应发金额 − 个人社保 − 个人公积金　<span class="cm">// 个税请在导出后于 Excel 中手工计算</span>\n' +
       '公司成本　　= 应发金额 + 公司社保 + 公司公积金</div>' +
       '<div class="callout is-info"><span>' + Q.icon('info') + '</span><div>员工名册以<b>本期全部应发薪员工</b>为准，而不是仅以导入成功的行数为准；因此导入部分成功时，名单不会缩小。</div></div>';

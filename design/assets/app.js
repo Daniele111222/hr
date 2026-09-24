@@ -286,10 +286,10 @@
   function companyRate(city) { return ruleVersions(city)[0].company.reduce(function (s, x) { return s + x.r; }, 0); }
 
   function workedDays(emp, period) {
-    var d = STD_DAYS;
-    if (emp.hireDate.slice(0, 7) === period) d = Math.max(0, STD_DAYS - (Number(emp.hireDate.slice(8, 10)) - 1));
-    if (emp.leaveDate && emp.leaveDate.slice(0, 7) === period) d = Math.min(d, Number(emp.leaveDate.slice(8, 10)));
-    return d;
+    var monthDays = new Date(Number(period.slice(0, 4)), Number(period.slice(5, 7)), 0).getDate();
+    var first = emp.hireDate.slice(0, 7) === period ? Number(emp.hireDate.slice(8, 10)) : 1;
+    var last = emp.leaveDate && emp.leaveDate.slice(0, 7) === period ? Number(emp.leaveDate.slice(8, 10)) : monthDays;
+    return Math.max(0, last - first + 1);
   }
 
   /* 单名员工在指定期间的计算结果 */
@@ -304,12 +304,13 @@
     var fixedFull = round2(std * 0.8);
     var perfBase = round2(std * 0.2);
     var days = workedDays(emp, period);
-    var fixed = round2(fixedFull * days / STD_DAYS);
+    var monthDays = new Date(Number(period.slice(0, 4)), Number(period.slice(5, 7)), 0).getDate();
+    var fixed = round2(fixedFull * days / monthDays);
 
     var regularInPeriod = emp.regularDate && emp.regularDate.slice(0, 7) === period;
     var isRegular = !emp.probation || regularInPeriod;
     var coef = opt.perfMissing ? null : coefficient(emp, period);
-    var perfAmount = (isRegular && coef != null) ? round2(perfBase * coef) : 0;
+    var perfAmount = (isRegular && coef != null) ? round2(perfBase * coef * days / monthDays) : 0;
 
     var att = attendance(emp, period);
     var penalized = emp.grade !== 'P7' && emp.grade !== 'P8';

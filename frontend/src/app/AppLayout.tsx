@@ -72,7 +72,9 @@ export function AppLayout() {
     queryKey: ["org", "company"],
     queryFn: resources.company,
   });
-  const current = routeMeta[location.pathname] ?? routeMeta["/"];
+  const current = location.pathname.startsWith("/payroll/batches/")
+    ? { group: "工资处理", title: "批次核算详情" }
+    : (routeMeta[location.pathname] ?? routeMeta["/"]);
 
   return (
     <Layout className={styles.shell}>
@@ -103,7 +105,11 @@ export function AppLayout() {
           className={styles.menu}
           mode="inline"
           items={navigation}
-          selectedKeys={[location.pathname]}
+          selectedKeys={[
+            location.pathname.startsWith("/payroll/batches/")
+              ? "/payroll"
+              : location.pathname,
+          ]}
           onClick={({ key }) => navigate(key)}
         />
         <div className={styles.localNote}>

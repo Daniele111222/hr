@@ -35,6 +35,7 @@ EXPECTED_TABLES = {
     "housing_fund_rule",
     "attendance_rule",
     "payroll_record",
+    "payroll_trial_run",
     "payroll_item",
     "payroll_calculation_detail",
     "correction_batch",

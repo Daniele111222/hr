@@ -16,24 +16,30 @@ from sqlalchemy.engine import URL, make_url
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
+import paylite.services.payroll_trial as payroll_trial_service
 from paylite.api.deps import get_db
 from paylite.application import create_app
 from paylite.config import get_settings
 from paylite.db.models import (
     AttendanceRecord,
+    AttendanceRule,
     City,
     Company,
     CorrectionBatch,
     Department,
     Employee,
     EmployeeAssignment,
+    EmployeeBase,
     EmployeeSalary,
+    HousingFundRule,
     ImportBatch,
     ImportRow,
     PayrollBatch,
     PayrollPeriod,
     PayrollRecord,
+    PayrollTrialRun,
     PerformanceRecord,
+    SocialSecurityItemRule,
     SocialSecurityRule,
     Subject,
     SubjectDepartment,
@@ -1270,3 +1276,267 @@ def test_performance_import_partial_correction_and_probation(
     # Downgrade cannot narrow this large coefficient; clear its test fact.
     db_session.delete(high)
     db_session.commit()
+
+
+def test_ordinary_trial_is_partial_versioned_and_outside_ledger(
+    api_client, db_session: Session, monkeypatch
+) -> None:
+    company = Company(code="TRIAL08", name="试算测试公司")
+    city = City(code="TRIAL08-C", name="测试城市")
+    missing_city = City(code="TRIAL08-M", name="缺规则城市")
+    db_session.add_all([company, city, missing_city])
+    db_session.flush()
+    subject = Subject(company_id=company.id, code="TRIAL08-S", name="测试主体")
+    department = Department(company_id=company.id, code="TRIAL08-D", name="测试部门")
+    period = PayrollPeriod(
+        year=2028, month=3, period_start=date(2028, 3, 1), period_end=date(2028, 3, 31)
+    )
+    db_session.add_all([subject, department, period])
+    db_session.flush()
+    relation = SubjectDepartment(
+        company_id=company.id,
+        subject_id=subject.id,
+        department_id=department.id,
+        code="TRIAL08-R",
+        name="测试部门",
+    )
+    batch = PayrollBatch(subject_id=subject.id, payroll_period_id=period.id, batch_type="normal")
+    city_rule = SocialSecurityRule(
+        city_id=city.id,
+        effective_from=date(2028, 1, 1),
+        version="trial-08",
+        fixed_base=Decimal("5000"),
+    )
+    housing = HousingFundRule(
+        city_id=city.id,
+        effective_from=date(2028, 1, 1),
+        company_rate=Decimal("0.05"),
+        employee_rate=Decimal("0.05"),
+        base_min=0,
+        base_max=0,
+        version="trial-08",
+        base_source="fixed_salary",
+    )
+    attendance_rule = AttendanceRule(
+        effective_from=date(2028, 1, 1),
+        version="trial-08",
+        standard_hours=8,
+        missed_punch_amount=30,
+        exempt_level_number=7,
+        makeup_punch_exempt=True,
+    )
+    db_session.add_all([relation, batch, city_rule, housing, attendance_rule])
+    db_session.flush()
+    db_session.add(
+        SocialSecurityItemRule(
+            social_security_rule_id=city_rule.id,
+            item_code="pension",
+            item_name="养老",
+            employee_rate=Decimal("0.10"),
+            company_rate=Decimal("0.20"),
+            base_min=0,
+            base_max=0,
+        )
+    )
+    employees = []
+    for index in range(3):
+        employee = Employee(
+            company_id=company.id,
+            id_number=f"1101011990010112{index}X",
+            employee_no=f"TRIAL08-{index}",
+            name=f"试算员工{index}",
+            employee_type="employee",
+            level_number=6,
+            probation_status="in_probation" if index == 1 else "confirmed",
+            hire_date=date(2020, 1, 1),
+        )
+        db_session.add(employee)
+        db_session.flush()
+        db_session.add_all(
+            [
+                EmployeeAssignment(
+                    employee_id=employee.id,
+                    subject_id=subject.id,
+                    subject_department_id=relation.id,
+                    position_title="工程师",
+                    level_number=6,
+                    effective_from=date(2020, 1, 1),
+                ),
+                EmployeeSalary(
+                    employee_id=employee.id,
+                    fixed_salary=Decimal("8000"),
+                    performance_base=Decimal("0" if index == 1 else "2000"),
+                    effective_from=date(2020, 1, 1),
+                ),
+                EmployeeBase(
+                    employee_id=employee.id,
+                    city_id=missing_city.id if index == 2 else city.id,
+                    effective_from=date(2020, 1, 1),
+                ),
+            ]
+        )
+        employees.append(employee)
+    db_session.flush()
+    att_import = ImportBatch(
+        company_id=company.id,
+        payroll_period_id=period.id,
+        payroll_batch_id=batch.id,
+        import_type="attendance",
+        original_filename="attendance.xlsx",
+        file_sha256="8" * 64,
+        template_version="TPL-ATT-v1",
+        status="imported",
+    )
+    perf_import = ImportBatch(
+        company_id=company.id,
+        payroll_period_id=period.id,
+        payroll_batch_id=batch.id,
+        import_type="performance",
+        original_filename="performance.xlsx",
+        file_sha256="9" * 64,
+        template_version="TPL-PERF-v1",
+        status="imported",
+    )
+    db_session.add_all([att_import, perf_import])
+    db_session.flush()
+    for index, employee in enumerate(employees):
+        db_session.add(
+            AttendanceRecord(
+                import_batch_id=att_import.id,
+                payroll_period_id=period.id,
+                employee_id=employee.id,
+                expected_work_days=Decimal("20"),
+                late_minutes=60 if index == 0 else 0,
+                missed_punch_count=1 if index == 0 else 0,
+            )
+        )
+        if index != 1:
+            db_session.add(
+                PerformanceRecord(
+                    import_batch_id=perf_import.id,
+                    payroll_period_id=period.id,
+                    employee_id=employee.id,
+                    coefficient=Decimal("1"),
+                    source_value="1",
+                )
+            )
+    db_session.commit()
+
+    batch_response = api_client.get(f"/payroll/batches/{batch.id}")
+    assert batch_response.status_code == 200
+    assert batch_response.json()["scope"]["employee_count"] == 3
+    response = api_client.post(f"/payroll/batches/{batch.id}/trial")
+    assert response.status_code == 200, response.text
+    trial = response.json()
+    assert (trial["success_count"], trial["error_count"]) == (2, 1)
+    assert trial["includes_final_incentive"] is False
+    assert trial["ready_for_confirmation"] is False
+    assert trial["results"][0]["amounts"]["untaxed_amount"] == "9020.00"
+    assert trial["results"][1]["amounts"]["performance"] == "0.00"
+    assert trial["results"][2]["errors"][0]["code"] == "CITY_RULE_MISSING"
+    assert trial["results"][0]["steps"]
+    assert (
+        db_session.scalar(
+            select(PayrollRecord.id).where(PayrollRecord.payroll_batch_id == batch.id)
+        )
+        is None
+    )
+    assert api_client.post(f"/payroll/batches/{batch.id}/trial").json()["id"] == trial["id"]
+
+    db_session.expire_all()
+    salary = db_session.scalar(
+        select(EmployeeSalary).where(EmployeeSalary.employee_id == employees[0].id)
+    )
+    salary.fixed_salary = Decimal("8800")
+    salary.performance_base = Decimal("2200")
+    db_session.commit()
+    stale = api_client.get(f"/payroll/batches/{batch.id}/trial").json()
+    assert stale["stale"] is True
+    assert "试算输入已变化，请重新试算" in stale["confirmation_blockers"]
+    with monkeypatch.context() as patch:
+        patch.setattr(
+            payroll_trial_service,
+            "calculate",
+            lambda _value: (_ for _ in ()).throw(RuntimeError("calculation aborted")),
+        )
+        with pytest.raises(RuntimeError, match="calculation aborted"):
+            api_client.post(f"/payroll/batches/{batch.id}/trial")
+    db_session.expire_all()
+    assert len(list(db_session.scalars(select(PayrollTrialRun)))) == 1
+    rerun = api_client.post(f"/payroll/batches/{batch.id}/trial")
+    assert rerun.status_code == 200, rerun.text
+    assert rerun.json()["id"] != trial["id"]
+    assert rerun.json()["results"][0]["amounts"]["untaxed_amount"] == "9975.00"
+    assert db_session.scalar(
+        select(PayrollTrialRun.id).where(PayrollTrialRun.payroll_batch_id == batch.id)
+    )
+    probation_employee = db_session.get(Employee, employees[1].id)
+    probation_employee.probation_status = "confirmed"
+    probation_employee.probation_date = date(2028, 3, 16)
+    probation_salary = db_session.scalar(
+        select(EmployeeSalary).where(EmployeeSalary.employee_id == probation_employee.id)
+    )
+    probation_salary.effective_to = date(2028, 3, 16)
+    db_session.add_all(
+        [
+            EmployeeSalary(
+                employee_id=probation_employee.id,
+                fixed_salary=Decimal("8000"),
+                performance_base=Decimal("2000"),
+                effective_from=date(2028, 3, 16),
+            ),
+            PerformanceRecord(
+                import_batch_id=perf_import.id,
+                payroll_period_id=period.id,
+                employee_id=probation_employee.id,
+                coefficient=Decimal("1"),
+                source_value="1",
+            ),
+        ]
+    )
+    db_session.commit()
+    promoted = api_client.post(f"/payroll/batches/{batch.id}/trial").json()
+    assert promoted["results"][1]["amounts"]["fixed"] == "8000.00"
+    assert promoted["results"][1]["amounts"]["performance"] == "2000.00"
+
+    item_rule = db_session.scalar(
+        select(SocialSecurityItemRule).where(
+            SocialSecurityItemRule.social_security_rule_id == city_rule.id
+        )
+    )
+    item_rule.employee_rate = Decimal("0.11")
+    db_session.commit()
+    assert api_client.get(f"/payroll/batches/{batch.id}/trial").json()["stale"] is True
+
+    other_subject = Subject(company_id=company.id, code="TRIAL08-S2", name="另一主体")
+    db_session.add(other_subject)
+    db_session.flush()
+    other_relation = SubjectDepartment(
+        company_id=company.id,
+        subject_id=other_subject.id,
+        department_id=department.id,
+        code="TRIAL08-R2",
+        name="另一主体部门",
+    )
+    db_session.add(other_relation)
+    db_session.flush()
+    assignment = db_session.scalar(
+        select(EmployeeAssignment).where(EmployeeAssignment.employee_id == employees[0].id)
+    )
+    assignment.effective_to = date(2028, 3, 16)
+    db_session.add(
+        EmployeeAssignment(
+            employee_id=employees[0].id,
+            subject_id=other_subject.id,
+            subject_department_id=other_relation.id,
+            position_title="工程师",
+            level_number=6,
+            effective_from=date(2028, 3, 16),
+        )
+    )
+    db_session.commit()
+    moved = api_client.post(f"/payroll/batches/{batch.id}/trial").json()
+    assert any(
+        error["code"] == "CROSS_SUBJECT_UNSUPPORTED" for error in moved["results"][0]["errors"]
+    )
+    assert moved["results"][0]["snapshot"]["last_effective_subject_id"] == other_subject.id

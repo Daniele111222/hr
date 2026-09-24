@@ -220,7 +220,9 @@ def employee_scope(db: Session, period: PayrollPeriod, subject_id: int) -> Emplo
 def requires_performance(employee: Employee, period: PayrollPeriod) -> bool:
     """Promotion month uses the post-promotion performance base for the whole month."""
     if employee.probation_date:
-        return employee.probation_date <= period.period_end
+        return employee.probation_date <= min(
+            period.period_end, employee.termination_date or period.period_end
+        )
     return employee.probation_status != "in_probation"
 
 
