@@ -263,7 +263,7 @@
     var input = Q.q('#fix-coef'), err = Q.q('#fix-err');
     var v = parseFloat(input.value);
     if (!input.value.trim() || isNaN(v) || v < 0) {
-      err.textContent = '请输入非负绩效系数，最多两位小数。';
+      err.textContent = '请输入非负绩效系数，不设固定上限。';
       err.hidden = false; return;
     }
     FIX[fixing] = true;

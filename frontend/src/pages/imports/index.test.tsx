@@ -266,3 +266,126 @@ test("考勤导入在未建立工资批次时禁用上传并提示范围", async
   ).toBeDisabled();
   expect(screen.getByText("暂无月度考勤导入记录")).toBeInTheDocument();
 });
+
+test("绩效导入区分缺失与零值并支持逐行修正", async () => {
+  const batch = {
+    id: 17,
+    company_id: 1,
+    payroll_period_id: 3,
+    payroll_batch_id: 9,
+    import_type: "performance",
+    original_filename: "performance.xlsx",
+    file_sha256: "c".repeat(64),
+    template_version: "TPL-PERF-v1",
+    field_mapping: {},
+    status: "partially_imported",
+    total_rows: 2,
+    success_rows: 1,
+    error_rows: 1,
+    rows: [
+      {
+        id: 1,
+        sheet_name: "月度绩效",
+        source_row_number: 3,
+        validation_status: "imported",
+        raw_data: {
+          身份证号: "11010119900101123X",
+          姓名: "张三",
+          绩效系数: "0",
+        },
+        correction_values: null,
+        normalized_data: { coefficient: "0" },
+        errors: null,
+        correction_history: [],
+      },
+      {
+        id: 2,
+        sheet_name: "月度绩效",
+        source_row_number: 4,
+        validation_status: "invalid",
+        raw_data: {
+          身份证号: "11010119900101124X",
+          姓名: "李四",
+          绩效系数: "",
+        },
+        correction_values: null,
+        normalized_data: null,
+        errors: [
+          {
+            code: "COEFFICIENT_REQUIRED",
+            field: "绩效系数",
+            column: "C",
+            message: "绩效系数缺失；0 须明确填写",
+          },
+        ],
+        correction_history: [],
+      },
+    ],
+  };
+  const fetchMock = vi.fn(
+    async (input: RequestInfo | URL, init?: RequestInit) => {
+      const path = String(input);
+      if (path.endsWith("/organization/company"))
+        return Response.json({ id: 1, name: "测试公司" });
+      if (path.endsWith("/payroll/workbench"))
+        return Response.json({
+          period: { id: 3, period: "2027-03" },
+          periods: [{ id: 3, period: "2027-03" }],
+          batches: [
+            {
+              id: 9,
+              batch_type: "normal",
+              status: "draft",
+              subject: { name: "上海主体" },
+            },
+          ],
+        });
+      if (path.endsWith("/imports/performance?company_id=1"))
+        return Response.json([]);
+      if (path.endsWith("/imports/attendance?company_id=1"))
+        return Response.json([]);
+      if (
+        path.endsWith("/imports/performance?payroll_batch_id=9") &&
+        init?.method === "POST"
+      )
+        return Response.json(batch);
+      if (path.endsWith("/imports/performance/17/rows/2/correct"))
+        return Response.json({
+          ...batch,
+          success_rows: 2,
+          error_rows: 0,
+          rows: batch.rows.map((row) =>
+            row.id === 2
+              ? { ...row, validation_status: "imported", errors: null }
+              : row,
+          ),
+        });
+      return Response.json(batch);
+    },
+  );
+  vi.stubGlobal("fetch", fetchMock);
+  const user = userEvent.setup();
+  renderPage();
+  await user.click(screen.getByRole("button", { name: "月度绩效" }));
+  expect(await screen.findByText("固定模板 TPL-PERF-v1")).toBeInTheDocument();
+  expect(screen.getByText(/试用期不考核绩效/)).toBeInTheDocument();
+  await user.upload(
+    document.querySelector('input[type="file"]')!,
+    new File(["xlsx"], "performance.xlsx"),
+  );
+  expect(
+    await screen.findByText("正确行已保存，错误行未进入有效绩效"),
+  ).toBeInTheDocument();
+  await user.click(screen.getByRole("button", { name: "修正" }));
+  await user.type(screen.getByRole("textbox", { name: "修正绩效系数" }), "1.5");
+  await user.click(screen.getByRole("button", { name: "保存并重新校验" }));
+  expect(await screen.findByText("全部行已保存")).toBeInTheDocument();
+  expect(fetchMock).toHaveBeenCalledWith(
+    expect.stringContaining("/imports/performance/17/rows/2/correct"),
+    expect.objectContaining({ method: "POST" }),
+  );
+  await user.click(screen.getByRole("button", { name: "月度考勤" }));
+  expect(
+    screen.getByText("上传月度考勤模板后显示校验结果"),
+  ).toBeInTheDocument();
+});

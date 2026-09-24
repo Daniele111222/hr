@@ -5,7 +5,7 @@ from sqlalchemy.orm import mapped_column
 
 Money = Numeric(18, 2)
 Ratio = Numeric(12, 8)
-Coefficient = Numeric(14, 6)
+Coefficient = Numeric()
 
 
 def primary_key() -> Any:

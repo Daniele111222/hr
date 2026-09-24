@@ -136,6 +136,12 @@ export type AttendanceImportBatch = Omit<EmployeeImportBatch, "import_type"> & {
   payroll_batch_id: number;
   subject_name: string;
 };
+export type PerformanceImportBatch = Omit<
+  AttendanceImportBatch,
+  "import_type"
+> & {
+  import_type: "performance";
+};
 
 export type PayrollPeriod = {
   id: number;
@@ -286,6 +292,29 @@ export const resources = {
   ) =>
     request<AttendanceImportBatch>(
       `/imports/attendance/${batchId}/rows/${rowId}/correct`,
+      json("POST", { values }),
+    ),
+  performanceImports: (companyId: number) =>
+    request<PerformanceImportBatch[]>(
+      `/imports/performance?company_id=${companyId}`,
+    ),
+  performanceImport: (id: number) =>
+    request<PerformanceImportBatch>(`/imports/performance/${id}`),
+  uploadPerformanceImport: (batchId: number, file: File) => {
+    const form = new FormData();
+    form.set("file", file);
+    return upload<PerformanceImportBatch>(
+      `/imports/performance?payroll_batch_id=${batchId}`,
+      form,
+    );
+  },
+  correctPerformanceRow: (
+    batchId: number,
+    rowId: number,
+    values: Record<string, string>,
+  ) =>
+    request<PerformanceImportBatch>(
+      `/imports/performance/${batchId}/rows/${rowId}/correct`,
       json("POST", { values }),
     ),
   correctEmployeeImportRow: (

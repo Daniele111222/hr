@@ -27,12 +27,14 @@ import {
   type ImportRow,
 } from "../../shared/api/resources.ts";
 import styles from "./index.module.less";
-import { AttendanceImportsPage } from "./attendance.tsx";
+import { MonthlyImportsPage } from "./attendance.tsx";
 
 const API_BASE = import.meta.env.VITE_API_BASE_URL ?? "/api";
 
 export function ImportsPage() {
-  const [type, setType] = useState<"employee" | "attendance">("employee");
+  const [type, setType] = useState<"employee" | "attendance" | "performance">(
+    "employee",
+  );
   return (
     <>
       <Space wrap>
@@ -48,12 +50,17 @@ export function ImportsPage() {
         >
           月度考勤
         </Button>
-        <Button disabled>月度绩效（后续提供）</Button>
+        <Button
+          type={type === "performance" ? "primary" : "default"}
+          onClick={() => setType("performance")}
+        >
+          月度绩效
+        </Button>
       </Space>
       {type === "employee" ? (
         <EmployeeImportsPage />
       ) : (
-        <AttendanceImportsPage />
+        <MonthlyImportsPage key={type} kind={type} />
       )}
     </>
   );

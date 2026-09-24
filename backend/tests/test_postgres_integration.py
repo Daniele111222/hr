@@ -33,12 +33,14 @@ from paylite.db.models import (
     PayrollBatch,
     PayrollPeriod,
     PayrollRecord,
+    PerformanceRecord,
     SocialSecurityRule,
     Subject,
     SubjectDepartment,
 )
 from paylite.excel.attendance_template import make_template as make_attendance_template
 from paylite.excel.employee_template import make_template
+from paylite.excel.performance_template import make_template as make_performance_template
 from paylite.services.payroll_workbench import PayrollWorkbenchError, create_batch
 
 TEST_DATABASE_URL = os.getenv("PAYLITE_TEST_DATABASE_URL")
@@ -1130,3 +1132,141 @@ def test_attendance_import_partial_correction_and_revision(api_client, db_sessio
     assert any(
         error["code"] == "PUNCH_OUT_OF_RANGE" for error in duplicate.json()["rows"][4]["errors"]
     )
+
+
+def test_performance_import_partial_correction_and_probation(
+    api_client, db_session: Session
+) -> None:
+    company = Company(code="PERF07", name="绩效测试公司")
+    db_session.add(company)
+    db_session.flush()
+    subject = Subject(company_id=company.id, code="PERF07SUB", name="绩效测试主体")
+    department = Department(company_id=company.id, code="PERF07DEP", name="绩效测试部门")
+    period = PayrollPeriod(
+        year=2027, month=3, period_start=date(2027, 3, 1), period_end=date(2027, 3, 31)
+    )
+    db_session.add_all([subject, department, period])
+    db_session.flush()
+    relation = SubjectDepartment(
+        company_id=company.id,
+        subject_id=subject.id,
+        department_id=department.id,
+        code="PERF07REL",
+        name="绩效测试部门",
+    )
+    batch = PayrollBatch(subject_id=subject.id, payroll_period_id=period.id, batch_type="normal")
+    db_session.add_all([relation, batch])
+    db_session.flush()
+    identities = [f"1101011990010112{i}X" for i in range(7)]
+    employees = []
+    for index, identity in enumerate(identities):
+        employee = Employee(
+            company_id=company.id,
+            id_number=identity,
+            employee_no=f"PERF07-{index}",
+            name=f"绩效员工{index}",
+            employee_type="employee",
+            hire_date=date(2020, 1, 1),
+            probation_status="in_probation" if index == 4 else "confirmed",
+            probation_date=date(2027, 4, 15)
+            if index == 4
+            else (date(2027, 3, 15) if index == 5 else None),
+        )
+        db_session.add(employee)
+        db_session.flush()
+        db_session.add(
+            EmployeeAssignment(
+                employee_id=employee.id,
+                subject_id=subject.id,
+                subject_department_id=relation.id,
+                position_title="工程师",
+                effective_from=date(2020, 1, 1),
+            )
+        )
+        employees.append(employee)
+    db_session.commit()
+
+    preparation = api_client.get("/payroll/workbench?period=2027-03").json()["batches"][0][
+        "data_preparation"
+    ]["performance"]
+    assert preparation["missing_count"] == 6  # 试用期员工不需要绩效记录
+
+    workbook = load_workbook(BytesIO(make_performance_template()))
+    sheet = workbook["月度绩效"]
+    for index, value in enumerate(["0", "", "123456789012345.123456789", "-1", "1", "1.2", "=1+1"]):
+        sheet.append([identities[index], f"绩效员工{index}", value, "绩效表"])
+    sheet.append([identities[0], "绩效员工0", "1", "重复行"])
+    content = BytesIO()
+    workbook.save(content)
+    files = {
+        "file": (
+            "performance.xlsx",
+            content.getvalue(),
+            "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+        )
+    }
+    response = api_client.post(f"/imports/performance?payroll_batch_id={batch.id}", files=files)
+    assert response.status_code == 201, response.text
+    imported = response.json()
+    assert (imported["success_rows"], imported["error_rows"]) == (3, 5)
+    assert imported["rows"][0]["normalized_data"]["coefficient"] == "0"
+    assert imported["rows"][1]["errors"][0]["code"] == "COEFFICIENT_REQUIRED"
+    assert imported["rows"][3]["errors"][0]["code"] == "INVALID_COEFFICIENT"
+    assert any(e["code"] == "PROBATION_NO_PERFORMANCE" for e in imported["rows"][4]["errors"])
+    assert imported["rows"][5]["normalized_data"]["coefficient"] == "1.2"
+    assert any(e["code"] == "FORMULA_NOT_ALLOWED" for e in imported["rows"][6]["errors"])
+    assert any(e["code"] == "DUPLICATE_IN_FILE" for e in imported["rows"][7]["errors"])
+    db_session.expire_all()
+    assert db_session.get(PayrollPeriod, period.id).performance_input_revision == 3
+    high = db_session.scalar(
+        select(PerformanceRecord).where(PerformanceRecord.employee_id == employees[2].id)
+    )
+    assert high.coefficient == Decimal("123456789012345.123456789")
+    assert high.source_value == "123456789012345.123456789"
+    assert (
+        api_client.get(f"/imports/performance/{imported['id']}/file").content == content.getvalue()
+    )
+    assert (
+        api_client.post(
+            f"/imports/performance?payroll_batch_id={batch.id}", files=files
+        ).status_code
+        == 409
+    )
+
+    for index, value in [(1, "0.8"), (3, "1.5"), (6, "1")]:
+        correction = api_client.post(
+            f"/imports/performance/{imported['id']}/rows/{imported['rows'][index]['id']}/correct",
+            json={"values": {"绩效系数": value}},
+        )
+        assert correction.status_code == 200, correction.text
+        assert correction.json()["rows"][index]["correction_history"]
+    db_session.expire_all()
+    assert db_session.get(PayrollPeriod, period.id).performance_input_revision == 6
+    assert (
+        api_client.post(
+            f"/imports/performance/{imported['id']}/rows/{imported['rows'][1]['id']}/correct",
+            json={"values": {"绩效系数": "0.8"}},
+        ).status_code
+        == 409
+    )
+    assert (
+        api_client.get("/payroll/workbench?period=2027-03").json()["batches"][0][
+            "data_preparation"
+        ]["performance"]["status"]
+        == "ready"
+    )
+
+    another = load_workbook(BytesIO(make_performance_template()))
+    another["月度绩效"].append([identities[0], "绩效员工0", "2", "再次导入"])
+    second_content = BytesIO()
+    another.save(second_content)
+    duplicate = api_client.post(
+        f"/imports/performance?payroll_batch_id={batch.id}",
+        files={"file": ("again.xlsx", second_content.getvalue(), files["file"][2])},
+    )
+    assert duplicate.status_code == 201
+    assert duplicate.json()["rows"][0]["errors"][0]["code"] == "DUPLICATE_PERIOD"
+
+    # Downgrade cannot narrow this large coefficient; clear its test fact.
+    db_session.delete(high)
+    db_session.commit()

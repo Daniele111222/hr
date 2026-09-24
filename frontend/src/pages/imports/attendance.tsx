@@ -20,11 +20,14 @@ import {
   resources,
   type AttendanceImportBatch,
   type ImportRow,
+  type PerformanceImportBatch,
 } from "../../shared/api/resources.ts";
 import styles from "./index.module.less";
 
 const API_BASE = import.meta.env.VITE_API_BASE_URL ?? "/api";
-const fields = [
+type MonthlyKind = "attendance" | "performance";
+type MonthlyBatch = AttendanceImportBatch | PerformanceImportBatch;
+const attendanceFields = [
   "身份证号",
   "姓名",
   "应出勤天数",
@@ -36,14 +39,17 @@ const fields = [
   "补卡次数",
   "来源说明",
 ];
+const performanceFields = ["身份证号", "姓名", "绩效系数", "来源说明"];
 
-export function AttendanceImportsPage() {
+export function MonthlyImportsPage({ kind }: { kind: MonthlyKind }) {
+  const performance = kind === "performance";
+  const label = performance ? "绩效" : "考勤";
   const [messageApi, contextHolder] = message.useMessage();
   const fileInput = useRef<HTMLInputElement>(null);
   const [period, setPeriod] = useState<string>();
   const [batchId, setBatchId] = useState<number>();
-  const [selected, setSelected] = useState<AttendanceImportBatch | null>(null);
-  const [preview, setPreview] = useState<AttendanceImportBatch | null>(null);
+  const [selected, setSelected] = useState<MonthlyBatch | null>(null);
+  const [preview, setPreview] = useState<MonthlyBatch | null>(null);
   const client = useQueryClient();
   const company = useQuery({
     queryKey: ["org", "company"],
@@ -58,9 +64,12 @@ export function AttendanceImportsPage() {
     queryFn: () => resources.payrollWorkbench(period),
     enabled: !!period && period !== workbench.data?.period?.period,
   });
-  const history = useQuery({
-    queryKey: ["attendance-imports", company.data?.id],
-    queryFn: () => resources.attendanceImports(company.data!.id),
+  const history = useQuery<MonthlyBatch[]>({
+    queryKey: [kind, "imports", company.data?.id],
+    queryFn: async () =>
+      performance
+        ? await resources.performanceImports(company.data!.id)
+        : await resources.attendanceImports(company.data!.id),
     enabled: !!company.data?.id,
   });
   const current =
@@ -74,13 +83,15 @@ export function AttendanceImportsPage() {
         ["draft", "trial"].includes(item.status),
     ) ?? [];
   const chosenBatch = batches.find((item) => item.id === batchId) ?? batches[0];
-  const upload = useMutation({
-    mutationFn: (file: File) =>
-      resources.uploadAttendanceImport(chosenBatch.id, file),
+  const upload = useMutation<MonthlyBatch, Error, File>({
+    mutationFn: async (file: File) =>
+      performance
+        ? await resources.uploadPerformanceImport(chosenBatch.id, file)
+        : await resources.uploadAttendanceImport(chosenBatch.id, file),
     onSuccess: (result) => {
       setPreview(result);
       setSelected(result);
-      void client.invalidateQueries({ queryKey: ["attendance-imports"] });
+      void client.invalidateQueries({ queryKey: [kind, "imports"] });
       void client.invalidateQueries({ queryKey: ["payroll-workbench"] });
       messageApi.success(
         `已保存 ${result.success_rows} 行，${result.error_rows} 行待修正`,
@@ -91,24 +102,28 @@ export function AttendanceImportsPage() {
   const chooseFile = (file?: File) => {
     if (!file || !chosenBatch || upload.isPending) return;
     if (!file.name.toLowerCase().endsWith(".xlsx")) {
-      messageApi.error("考勤导入仅支持 .xlsx 固定模板");
+      messageApi.error(`${label}导入仅支持 .xlsx 固定模板`);
     } else if (chosenBatch) {
       upload.mutate(file);
     }
   };
   const openBatch = async (id: number) => {
     try {
-      setSelected(await resources.attendanceImport(id));
+      setSelected(
+        performance
+          ? await resources.performanceImport(id)
+          : await resources.attendanceImport(id),
+      );
     } catch (error) {
       messageApi.error(
         error instanceof Error ? error.message : "读取导入批次失败",
       );
     }
   };
-  const updateBatch = (result: AttendanceImportBatch) => {
+  const updateBatch = (result: MonthlyBatch) => {
     setSelected(result);
     if (preview?.id === result.id) setPreview(result);
-    void client.invalidateQueries({ queryKey: ["attendance-imports"] });
+    void client.invalidateQueries({ queryKey: [kind, "imports"] });
     void client.invalidateQueries({ queryKey: ["payroll-workbench"] });
   };
 
@@ -117,9 +132,11 @@ export function AttendanceImportsPage() {
       {contextHolder}
       <div className={styles.lead}>
         <div>
-          <Typography.Title level={2}>月度考勤导入</Typography.Title>
+          <Typography.Title level={2}>月度{label}导入</Typography.Title>
           <Typography.Paragraph type="secondary">
-            按工资期间和主体导入考勤事实。正确行先保存，错误行修正后重新校验；扣款由试算统一计算。
+            {performance
+              ? "按工资期间和主体导入绩效系数。试用期不考核绩效；转正当月需填写系数。正确行先保存，错误行可逐行修正。"
+              : "按工资期间和主体导入考勤事实。正确行先保存，错误行修正后重新校验；扣款由试算统一计算。"}
           </Typography.Paragraph>
         </div>
         <Tag color="blue">{company.data?.name ?? "目标公司未初始化"}</Tag>
@@ -139,7 +156,7 @@ export function AttendanceImportsPage() {
         />
       </Card>
 
-      <Card title="导入设置" extra={<Tag color="geekblue">月度考勤</Tag>}>
+      <Card title="导入设置" extra={<Tag color="geekblue">月度{label}</Tag>}>
         <div className={styles.settings}>
           <Space wrap>
             <label>
@@ -191,13 +208,17 @@ export function AttendanceImportsPage() {
           <Alert
             type="info"
             showIcon
-            message="固定模板 TPL-ATT-v1"
-            description="身份证号按文本填写；应出勤天数须大于零且不超过当月自然日天数。异常数值和公式按行报错。"
+            message={`固定模板 ${performance ? "TPL-PERF-v1" : "TPL-ATT-v1"}`}
+            description={
+              performance
+                ? "身份证号按文本填写；系数须为非负数，不设固定上限。缺失和零值不同；公式按行报错。"
+                : "身份证号按文本填写；应出勤天数须大于零且不超过当月自然日天数。异常数值和公式按行报错。"
+            }
             action={
               <Button
                 size="small"
                 icon={<DownloadOutlined />}
-                href={`${API_BASE}/imports/attendance-template`}
+                href={`${API_BASE}/imports/${kind}-template`}
               >
                 下载模板
               </Button>
@@ -249,10 +270,10 @@ export function AttendanceImportsPage() {
               type={preview.error_rows ? "warning" : "success"}
               message={
                 preview.error_rows
-                  ? "正确行已保存，错误行未进入有效考勤"
-                  : "全部行已保存为考勤事实"
+                  ? `正确行已保存，错误行未进入有效${label}`
+                  : `全部行已保存为${label}事实`
               }
-              description="考勤变化会使旧试算失效，后续需要重新试算并核对。"
+              description={`${label}变化会使旧试算失效，后续需要重新试算并核对。`}
             />
             <Table<ImportRow>
               size="small"
@@ -271,7 +292,7 @@ export function AttendanceImportsPage() {
         ) : (
           <Empty
             image={Empty.PRESENTED_IMAGE_SIMPLE}
-            description="上传月度考勤模板后显示校验结果"
+            description={`上传月度${label}模板后显示校验结果`}
           />
         )}
       </Card>
@@ -287,13 +308,13 @@ export function AttendanceImportsPage() {
         {history.isError && (
           <Alert type="error" showIcon message="导入历史读取失败" />
         )}
-        <Table<AttendanceImportBatch>
+        <Table<MonthlyBatch>
           size="small"
           rowKey="id"
           loading={history.isLoading}
           dataSource={history.data ?? []}
           pagination={{ pageSize: 8, showSizeChanger: false }}
-          locale={{ emptyText: "暂无月度考勤导入记录" }}
+          locale={{ emptyText: `暂无月度${label}导入记录` }}
           scroll={{ x: 800 }}
           columns={[
             {
@@ -322,14 +343,16 @@ export function AttendanceImportsPage() {
       </Card>
       <Drawer
         title={
-          selected ? `月度考勤导入批次 #${selected.id}` : "月度考勤导入批次"
+          selected
+            ? `月度${label}导入批次 #${selected.id}`
+            : `月度${label}导入批次`
         }
         open={!!selected}
         onClose={() => setSelected(null)}
         width="min(780px, 100vw)"
       >
         {selected && (
-          <AttendanceDetail batch={selected} onUpdated={updateBatch} />
+          <MonthlyDetail kind={kind} batch={selected} onUpdated={updateBatch} />
         )}
       </Drawer>
     </div>
@@ -362,7 +385,7 @@ const rowColumns = [
   },
 ];
 
-function StatusTag({ batch }: { batch: AttendanceImportBatch }) {
+function StatusTag({ batch }: { batch: MonthlyBatch }) {
   return (
     <Tag color={batch.error_rows ? "warning" : "success"}>
       {batch.error_rows
@@ -391,12 +414,14 @@ function Metric({
   );
 }
 
-function AttendanceDetail({
+function MonthlyDetail({
+  kind,
   batch,
   onUpdated,
 }: {
-  batch: AttendanceImportBatch;
-  onUpdated: (batch: AttendanceImportBatch) => void;
+  kind: MonthlyKind;
+  batch: MonthlyBatch;
+  onUpdated: (batch: MonthlyBatch) => void;
 }) {
   const [editing, setEditing] = useState<number | null>(null);
   const [values, setValues] = useState<Record<string, string>>({});
@@ -406,11 +431,10 @@ function AttendanceDetail({
     if (editing === null || !Object.keys(values).length) return;
     setSaving(true);
     try {
-      const result = await resources.correctAttendanceRow(
-        batch.id,
-        editing,
-        values,
-      );
+      const result =
+        kind === "performance"
+          ? await resources.correctPerformanceRow(batch.id, editing, values)
+          : await resources.correctAttendanceRow(batch.id, editing, values);
       onUpdated(result);
       setEditing(null);
       setValues({});
@@ -448,9 +472,7 @@ function AttendanceDetail({
         <span>模板</span>
         <strong>{batch.template_version}</strong>
         <span>原文件</span>
-        <a href={`${API_BASE}/imports/attendance/${batch.id}/file`}>
-          下载原文件
-        </a>
+        <a href={`${API_BASE}/imports/${kind}/${batch.id}/file`}>下载原文件</a>
         <span>成功 / 错误</span>
         <strong>
           {batch.success_rows} / {batch.error_rows}
@@ -494,7 +516,10 @@ function AttendanceDetail({
               .join("；")}
           />
           <div className={styles.correctionGrid}>
-            {fields.map((field) => (
+            {(kind === "performance"
+              ? performanceFields
+              : attendanceFields
+            ).map((field) => (
               <label key={field}>
                 {field}
                 <Input

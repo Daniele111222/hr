@@ -217,6 +217,13 @@ def employee_scope(db: Session, period: PayrollPeriod, subject_id: int) -> Emplo
     return EmployeeScope(employee_ids=employee_ids, ambiguous_employee_ids=sorted(ambiguous))
 
 
+def requires_performance(employee: Employee, period: PayrollPeriod) -> bool:
+    """Promotion month uses the post-promotion performance base for the whole month."""
+    if employee.probation_date:
+        return employee.probation_date <= period.period_end
+    return employee.probation_status != "in_probation"
+
+
 def _preparation_item(
     *,
     employee_ids: list[int],
@@ -301,8 +308,13 @@ def data_preparation(db: Session, period: PayrollPeriod, scope: EmployeeScope) -
         message="存在期间内跨主体任职员工" if scope_blocked else None,
         blocked=scope_blocked,
     )
+    performance_required_ids = [
+        employee.id
+        for employee in db.scalars(select(Employee).where(Employee.id.in_(employee_ids)))
+        if requires_performance(employee, period)
+    ]
     performance = _preparation_item(
-        employee_ids=employee_ids,
+        employee_ids=performance_required_ids,
         prepared_ids=performance_ids,
         message="存在期间内跨主体任职员工" if scope_blocked else None,
         blocked=scope_blocked,
@@ -314,8 +326,10 @@ def data_preparation(db: Session, period: PayrollPeriod, scope: EmployeeScope) -
         blocked=scope_blocked,
     )
     statuses = {attendance.status, performance.status, city_rules.status}
-    overall = "blocked" if scope_blocked or "blocked" in statuses else (
-        "ready" if statuses <= {"ready", "not_required"} else "partial"
+    overall = (
+        "blocked"
+        if scope_blocked or "blocked" in statuses
+        else ("ready" if statuses <= {"ready", "not_required"} else "partial")
     )
     return DataPreparation(attendance, performance, city_rules, overall)
 
@@ -356,11 +370,7 @@ def create_batch(
     try:
         with db.begin():
             period = get_period(db, period_id)
-            db.scalar(
-                select(PayrollPeriod)
-                .where(PayrollPeriod.id == period.id)
-                .with_for_update()
-            )
+            db.scalar(select(PayrollPeriod).where(PayrollPeriod.id == period.id).with_for_update())
             subject = get_subject(db, subject_id)
             if batch_type == "normal":
                 existing = db.scalar(

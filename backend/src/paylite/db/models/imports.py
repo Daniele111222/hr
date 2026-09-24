@@ -151,7 +151,7 @@ class PerformanceRecord(Base):
         ForeignKey("employee.id", ondelete="RESTRICT"), nullable=False
     )
     coefficient: Mapped[Decimal] = mapped_column(Coefficient, nullable=False)
-    source_value: Mapped[str | None] = mapped_column(String(100))
+    source_value: Mapped[str | None] = mapped_column(Text)
     created_at: Mapped[datetime] = created_at_column()
 
 

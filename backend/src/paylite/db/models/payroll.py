@@ -63,6 +63,9 @@ class PayrollPeriod(Base):
     attendance_input_revision: Mapped[int] = mapped_column(
         Integer, nullable=False, server_default="0"
     )
+    performance_input_revision: Mapped[int] = mapped_column(
+        Integer, nullable=False, server_default="0"
+    )
     created_at: Mapped[datetime] = created_at_column()
 
 
