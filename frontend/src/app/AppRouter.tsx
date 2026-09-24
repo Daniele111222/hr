@@ -24,6 +24,11 @@ const EmployeesPage = lazy(() =>
     default: module.EmployeesPage,
   })),
 );
+const ImportsPage = lazy(() =>
+  import("../pages/imports/index.tsx").then((module) => ({
+    default: module.ImportsPage,
+  })),
+);
 const RulesPage = lazy(() =>
   import("../pages/rules/index.tsx").then((module) => ({
     default: module.RulesPage,
@@ -67,6 +72,7 @@ export function AppRouter() {
           <Route index element={<OverviewPage />} />
           <Route path="organization" element={<OrganizationPage />} />
           <Route path="employees" element={<EmployeesPage />} />
+          <Route path="imports" element={<ImportsPage />} />
           <Route path="rules" element={<RulesPage />} />
           <Route path="payroll" element={<PayrollPage />} />
           {placeholders

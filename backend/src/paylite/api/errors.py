@@ -16,6 +16,7 @@ def integrity_detail(exc: IntegrityError) -> str:
         "uq_employee_company_employee_no": "员工编号已在本公司使用",
         "uq_subject_department": "该主体和部门关系已存在",
         "uq_employee_bank_account": "该银行卡已登记",
+        "uq_import_batch_company_type_file": "同一公司已导入过完全相同的文件",
         "ex_social_security_rule_dates": "社保规则有效期与已有版本重叠",
         "ex_housing_fund_rule_dates": "公积金规则有效期与已有版本重叠",
         "ex_attendance_rule_dates": "考勤规则有效期与已有版本重叠",

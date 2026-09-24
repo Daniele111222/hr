@@ -1,8 +1,8 @@
 # PayLite MVP 开发任务计划
 
 > 建立日期：2026-09-17  
-> 最近更新：2026-09-22
-> 状态：16 项任务拆分已确认；01—03 已验收，04—16 未开始。
+> 最近更新：2026-09-24
+> 状态：16 项任务拆分已确认；01—03、05 已完成，04 开发及自动化验证完成、待用户页面验收，06—16 未开始。
 > 范围：从当前后端基础设施推进至资料维护、月度输入、算薪、确认、更正、补发及四类 Excel 输出。
 
 ## 任务入口与状态
@@ -11,18 +11,18 @@
 
 `ready-for-agent` 表示任务已登记且描述可供执行，不表示前置任务或业务决策已全部完成。开始前必须检查 Blocked by 和“开始前需收敛的事项”。
 
-当前 frontier（前置票已完成、可立即开工）：**03、04、05**。04、05 另需先收敛各自的业务决策；03 无待收敛决策，按“优先完成 01—03”的口径应最先推进。06、07 需 02 与 05 同时完成。
+下一批为 **06 考勤导入、07 绩效导入**，两票的前置任务 02、05 均已完成；06 的异常数值与公式错误处理级别仍需在实现前确认。04 的页面视觉与交互验收由用户处理，不阻塞 06、07。
 
 | 编号 | 任务 | 前置任务 | 执行状态 |
 | --- | --- | --- | --- |
 | 01 | [公司与组织维护](../.scratch/paylite-mvp/issues/01-organization.md) | 无 | 已完成 |
 | 02 | [员工与薪酬维护](../.scratch/paylite-mvp/issues/02-employees.md) | 01 | 已完成 |
 | 03 | [城市及考勤规则维护](../.scratch/paylite-mvp/issues/03-rules.md) | 01 ✅ | 已完成 |
-| 04 | [员工 Excel 导入](../.scratch/paylite-mvp/issues/04-employee-import.md) | 02 ✅ | 等待决策 |
+| 04 | [员工 Excel 导入](../.scratch/paylite-mvp/issues/04-employee-import.md) | 02 ✅ | 待验收 |
 | 05 | [工资期间与批次工作台](../.scratch/paylite-mvp/issues/05-period-batches.md) | 01 ✅ | 已完成 |
-| 06 | [考勤导入与错误修正](../.scratch/paylite-mvp/issues/06-attendance-import.md) | 02 ✅、05 | 未开始 |
-| 07 | [绩效导入与错误修正](../.scratch/paylite-mvp/issues/07-performance-import.md) | 02 ✅、05 | 未开始 |
-| 08 | [普通工资试算与核对](../.scratch/paylite-mvp/issues/08-payroll-trial.md) | 03、06、07 | 未开始 |
+| 06 | [考勤导入与错误修正](../.scratch/paylite-mvp/issues/06-attendance-import.md) | 02 ✅、05 ✅ | 未开始 |
+| 07 | [绩效导入与错误修正](../.scratch/paylite-mvp/issues/07-performance-import.md) | 02 ✅、05 ✅ | 未开始 |
+| 08 | [普通工资试算与核对](../.scratch/paylite-mvp/issues/08-payroll-trial.md) | 03 ✅、06、07 | 未开始 |
 | 09 | [全公司考勤激励](../.scratch/paylite-mvp/issues/09-attendance-incentive.md) | 08 | 未开始 |
 | 10 | [整批确认、锁定与台账](../.scratch/paylite-mvp/issues/10-confirmation-ledger.md) | 09 | 未开始 |
 | 11 | [整批更正与有效版本切换](../.scratch/paylite-mvp/issues/11-corrections.md) | 10 | 未开始 |
@@ -42,11 +42,11 @@
 
 ## 事实基线和设计依据
 
-以 2026-09-21 的实际代码为准。
+以 2026-09-24 的当前工作区代码为准；04 的实现尚未提交。
 
-**已有：** 应用工厂、健康检查、ORM、初始迁移（`0001_initial_schema`）、约束测试、后端 CI；业务接口 `api/organization.py`（公司、城市、主体、部门、主体部门关系）与 `api/employees.py`（员工主档、任职、薪酬、base 地、银行卡）；统一错误映射 `api/errors.py`、DTO `api/schemas.py`、会话依赖 `api/deps.py`；前端工程（Vite 8 + React 19 + TypeScript 6 + Less，页面位于 `frontend/src/pages/<name>/index.tsx`）。
+**已有：** 应用工厂、健康检查、ORM、`0001`—`0003` 迁移与后端 CI；组织、员工、规则、工资期间和批次、员工 Excel 导入接口及对应前端页面；`services/payroll_workbench.py`、`services/employee_import.py` 与 `excel/employee_template.py` 已随功能落地；前端工程使用 Vite、React、TypeScript 和 Less。
 
-**尚无：** `services`、`domain`、`excel` 三个分层模块（按“不预建空目录”的约束，应在对应竖切实现时才创建）；算薪核心；Excel 适配器；`0001` 之后的 Alembic revision；项目内 Playwright 依赖（验收使用临时 CLI）。
+**尚无：** 考勤与绩效导入、算薪核心及其纯计算 `domain` 模块、正式工资台账与四类导出；项目内 Playwright 依赖（此前验收使用临时 CLI）。
 
 数据库中存在字段不等于对应业务已实现；`api/` 下有文件不等于该业务闭环已验收。
 
@@ -120,6 +120,6 @@
 
 2026-09-17：用户确认将 16 项草案整理为正式任务并存入仓库。本次仅新增任务与索引，不执行业务实现、不提交 Git、不启动发布流程。登记前已有未跟踪的后端依赖锁文件保持原状。
 
-2026-09-20：同步索引与实际进度。01、02 已于 `08aa5b1` 实现（前端 Less 重构于 `35bacc5`），票文件 `Status:` 已为 `completed`，本索引据实记为**待验收**并列出证据缺口，理由见上文“01、02 为何是待验收而非已完成”。同时更新事实基线为当前代码实况，补记 frontier 为 03、04、05，并登记 `docs/agents/` 配置（issue tracker 为本地 markdown、triage 状态字符串、单上下文领域文档）。本次同步未改动任何业务代码，未对 01、02 的验收标准做勾选——勾选需由实际验证产生。
+2026-09-20：同步索引与实际进度。01、02 已于 `08aa5b1` 实现（前端 Less 重构于 `35bacc5`），当时票文件 `Status:` 已为 `completed`，本索引仍记为**待验收**；相关验收于 2026-09-22 补齐，见上文记录。同时补记当时可推进的 03、04、05，并登记 `docs/agents/` 配置。本次同步未改动业务代码，也未提前勾选 01、02 的验收标准。
 
 2026-09-22：03 城市及考勤规则维护完成验收。新增城市固定社保基数、公积金固定薪资 5%/5%、考勤固定口径及有效期重叠约束；完成 API、前端页面、迁移 SQL、PostgreSQL 集成测试和运行态检查。

@@ -102,6 +102,33 @@ export type Employee = {
   } | null;
 };
 
+export type ImportRow = {
+  id: number;
+  sheet_name: string;
+  source_row_number: number;
+  validation_status: "invalid" | "imported" | "corrected" | "valid";
+  raw_data: Record<string, string>;
+  correction_values: Record<string, string> | null;
+  normalized_data: Record<string, unknown> | null;
+  errors: { code: string; field: string; column: string; message: string }[] | null;
+  correction_history: Record<string, unknown>[];
+};
+
+export type EmployeeImportBatch = {
+  id: number;
+  company_id: number;
+  import_type: "employee_master";
+  original_filename: string;
+  file_sha256: string;
+  template_version: string;
+  field_mapping: Record<string, number>;
+  status: "uploaded" | "partially_imported" | "imported" | "rejected";
+  total_rows: number;
+  success_rows: number;
+  error_rows: number;
+  rows: ImportRow[] | null;
+};
+
 export type PayrollPeriod = {
   id: number;
   year: number;
@@ -155,6 +182,14 @@ const json = (method: string, body?: unknown): RequestInit => ({
   method,
   body: body === undefined ? undefined : JSON.stringify(body),
 });
+const upload = async <T>(path: string, form: FormData): Promise<T> => {
+  const response = await fetch(`${base}${path}`, { method: "POST", body: form });
+  if (!response.ok) {
+    const body = await response.json().catch(() => ({}));
+    throw new Error(body.detail ?? "请求失败");
+  }
+  return response.json();
+};
 export const resources = {
   company: () => request<Company | null>("/organization/company"),
   createCompany: (v: unknown) =>
@@ -207,6 +242,27 @@ export const resources = {
     request<Employee>("/employees", json("POST", v)),
   updateEmployee: (id: number, v: unknown) =>
     request<Employee>(`/employees/${id}`, json("PATCH", v)),
+  employeeImports: (companyId: number) =>
+    request<EmployeeImportBatch[]>(`/imports?company_id=${companyId}`),
+  uploadEmployeeImport: (companyId: number, file: File) => {
+    const form = new FormData();
+    form.set("file", file);
+    return upload<EmployeeImportBatch>(
+      `/imports/employee-master?company_id=${companyId}`,
+      form,
+    );
+  },
+  employeeImport: (id: number) => request<EmployeeImportBatch>(`/imports/${id}`),
+  correctEmployeeImportRow: (
+    batchId: number,
+    rowId: number,
+    values: Record<string, string>,
+    action: "retry" | "update_existing" | "ignore" = "retry",
+  ) =>
+    request<EmployeeImportBatch>(
+      `/imports/${batchId}/rows/${rowId}/correct`,
+      json("POST", { values, action }),
+    ),
   payrollWorkbench: (period?: string) =>
     request<PayrollWorkbench>(
       `/payroll/workbench${period ? `?period=${encodeURIComponent(period)}` : ""}`,

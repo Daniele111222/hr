@@ -1,0 +1,83 @@
+from typing import Any
+
+from fastapi import APIRouter, Depends, File, HTTPException, Query, UploadFile
+from fastapi.responses import Response
+from pydantic import BaseModel, Field
+from sqlalchemy.orm import Session
+
+from paylite.api.deps import get_db
+from paylite.excel.employee_template import MAX_FILE_SIZE, TEMPLATE_VERSION, make_template
+from paylite.services.employee_import import (
+    ImportFailure,
+    correct_row,
+    get_batch,
+    list_batches,
+    upload_batch,
+)
+
+router = APIRouter(prefix="/imports", tags=["imports"])
+
+
+class RowCorrection(BaseModel):
+    values: dict[str, str] = Field(min_length=1)
+
+
+def _run(action):
+    try:
+        return action()
+    except ImportFailure as exc:
+        raise HTTPException(exc.status_code, exc.message) from exc
+
+
+@router.get("/employee-template")
+def download_employee_template() -> Response:
+    return Response(
+        content=make_template(),
+        media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+        headers={
+            "Content-Disposition": (
+                f'attachment; filename="employee-template-{TEMPLATE_VERSION}.xlsx"'
+            )
+        },
+    )
+
+
+@router.post("/employee-master", status_code=201)
+async def upload_employee_master(
+    company_id: int = Query(...), file: UploadFile = File(...), db: Session = Depends(get_db)
+) -> dict[str, Any]:
+    if not file.filename or not file.filename.lower().endswith(".xlsx"):
+        raise HTTPException(400, "员工导入仅支持 .xlsx 固定模板")
+    content = await file.read(MAX_FILE_SIZE + 1)
+    if not content or len(content) > MAX_FILE_SIZE:
+        raise HTTPException(400, "文件为空或超过 20MB")
+    return _run(lambda: upload_batch(db, company_id, file.filename or "", content))
+
+
+@router.get("")
+def list_employee_imports(
+    company_id: int = Query(...), db: Session = Depends(get_db)
+) -> list[dict[str, Any]]:
+    return _run(lambda: list_batches(db, company_id))
+
+
+@router.get("/{batch_id}")
+def get_employee_import(batch_id: int, db: Session = Depends(get_db)) -> dict[str, Any]:
+    return _run(lambda: get_batch(db, batch_id))
+
+
+@router.get("/{batch_id}/file")
+def download_original_file(batch_id: int, db: Session = Depends(get_db)) -> Response:
+    batch = _run(lambda: get_batch(db, batch_id, include_file=True))
+    return Response(
+        content=batch["original_file"],
+        media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+        headers={"Content-Disposition": f'attachment; filename="employee-import-{batch_id}.xlsx"'},
+    )
+
+
+@router.post("/{batch_id}/rows/{row_id}/correct")
+def correct_employee_import_row(
+    batch_id: int, row_id: int, payload: RowCorrection, db: Session = Depends(get_db)
+) -> dict[str, Any]:
+    return _run(lambda: correct_row(db, batch_id, row_id, payload.values))

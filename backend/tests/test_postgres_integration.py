@@ -3,12 +3,14 @@ from collections.abc import Generator
 from concurrent.futures import ThreadPoolExecutor
 from datetime import date
 from decimal import Decimal
+from io import BytesIO
 from pathlib import Path
 
 import pytest
 from alembic import command
 from alembic.config import Config
 from fastapi.testclient import TestClient
+from openpyxl import load_workbook
 from sqlalchemy import create_engine, select
 from sqlalchemy.engine import URL, make_url
 from sqlalchemy.exc import IntegrityError
@@ -22,6 +24,7 @@ from paylite.db.models import (
     City,
     Company,
     CorrectionBatch,
+    Department,
     Employee,
     EmployeeSalary,
     ImportBatch,
@@ -31,7 +34,9 @@ from paylite.db.models import (
     PayrollRecord,
     SocialSecurityRule,
     Subject,
+    SubjectDepartment,
 )
+from paylite.excel.employee_template import make_template
 from paylite.services.payroll_workbench import PayrollWorkbenchError, create_batch
 
 TEST_DATABASE_URL = os.getenv("PAYLITE_TEST_DATABASE_URL")
@@ -867,3 +872,105 @@ def test_concurrent_normal_batch_creation_keeps_one_batch(
                 PayrollBatch.batch_type == "normal",
             )
         )
+
+
+def test_employee_import_uploads_partial_rows_and_corrects_one_row(
+    api_client, db_session: Session
+) -> None:
+    company = Company(code="ACMEIMPORT", name="Acme")
+    city = City(code="BJIMPORT", name="北京")
+    subject = Subject(company_id=1, code="MAINIMPORT", name="主主体")
+    existing = Employee(
+        company_id=1,
+        id_number="11010119900101129X",
+        employee_no="EXISTING",
+        name="既有员工",
+        employee_type="employee",
+        formal_status=True,
+        probation_status="confirmed",
+        hire_date=date(2020, 1, 1),
+    )
+    db_session.add_all([company, city])
+    db_session.flush()
+    subject.company_id = company.id
+    existing.company_id = company.id
+    db_session.add_all([subject, existing])
+    db_session.flush()
+    department = Department(company_id=company.id, code="DEVIMPORT", name="研发")
+    db_session.add(department)
+    db_session.flush()
+    db_session.add(
+        SubjectDepartment(
+            company_id=company.id,
+            subject_id=subject.id,
+            department_id=department.id,
+            code="DEVIMPORT",
+            name="研发",
+        )
+    )
+    db_session.commit()
+
+    def row(
+        id_number: object, employee_no: str, fixed: str = "8000.00", performance: str = "2000.00"
+    ) -> list[object]:
+        return [
+            id_number,
+            employee_no,
+            "导入员工",
+            "employee",
+            "2026-01-01",
+            "",
+            "confirmed",
+            "2026-07-01",
+            "是",
+            subject.code,
+            "DEVIMPORT",
+            "工程师",
+            "P6",
+            "6",
+            fixed,
+            performance,
+            city.code,
+            "000012345678901234",
+            "导入员工",
+            "银行",
+            "支行",
+            "2026-01-01",
+        ]
+
+    workbook = load_workbook(BytesIO(make_template()))
+    sheet = workbook["员工资料"]
+    sheet.append(row("11010119900101123X", "IMP001"))
+    sheet.append(row("11010119900101124X", "IMP002", performance="1000.00"))
+    sheet.append(row("11010119900101123X", "IMP003"))
+    sheet.append(row(110101199001011250, "IMP004"))
+    content = BytesIO()
+    workbook.save(content)
+
+    response = api_client.post(
+        f"/imports/employee-master?company_id={company.id}",
+        files={
+            "file": (
+                "employees.xlsx",
+                content.getvalue(),
+                "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+            )
+        },
+    )
+    assert response.status_code == 201
+    batch = response.json()
+    assert (batch["total_rows"], batch["success_rows"], batch["error_rows"]) == (4, 1, 3)
+    assert batch["template_version"] == "TPL-EMP-v2.4"
+    assert batch["rows"][1]["errors"][0]["code"] == "SALARY_RATIO"
+    assert any(error["code"] == "EMPLOYEE_EXISTS" for error in batch["rows"][2]["errors"])
+    assert any(error["code"] == "IDENTIFIER_NOT_TEXT" for error in batch["rows"][3]["errors"])
+
+    correction = api_client.post(
+        f"/imports/{batch['id']}/rows/{batch['rows'][1]['id']}/correct",
+        json={"values": {"绩效基数": "2000.00"}},
+    )
+    assert correction.status_code == 200
+    assert correction.json()["success_rows"] == 2
+    assert correction.json()["rows"][1]["correction_history"]
+    assert db_session.scalar(select(Employee).where(Employee.employee_no == "IMP002"))
+    assert existing.id
