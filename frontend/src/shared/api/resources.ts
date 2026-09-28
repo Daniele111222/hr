@@ -169,6 +169,7 @@ export type PayrollBatch = {
   batch_no: number;
   name: string | null;
   status: "draft" | "trial" | "confirmed" | "locked" | "exported" | "cancelled";
+  is_effective: boolean;
   scope: {
     source: string;
     criteria: Record<string, unknown>;
@@ -245,6 +246,37 @@ export type PayrollConfirmation = {
   can_confirm: boolean;
   can_lock: boolean;
   blockers: string[];
+};
+export type PayrollCorrection = {
+  id: number;
+  original_batch_id: number;
+  replacement_batch_id: number;
+  reason: string;
+  input_history: {
+    employee_id: number;
+    source_note: string;
+    created_at: string;
+  }[];
+  status: "requested" | "applied" | "cancelled";
+  created_at: string;
+  original_status: PayrollBatch["status"];
+  replacement_status: PayrollBatch["status"];
+  replacement_is_effective: boolean;
+};
+export type PayrollCorrectionInput = {
+  employee_id: number;
+  employee_name: string;
+  attendance: {
+    expected_work_days: string;
+    late_minutes: number;
+    early_leave_minutes: number;
+    paid_leave_days: string;
+    unpaid_leave_days: string;
+    missed_punch_count: number;
+    corrected_punch_count: number;
+  } | null;
+  performance_coefficient: string | null;
+  source_note: string | null;
 };
 export type PayrollLedger = {
   period_id: number;
@@ -466,6 +498,35 @@ export const resources = {
     request<PayrollConfirmation>(
       `/payroll/periods/${periodId}/lock`,
       json("POST"),
+    ),
+  payrollCorrections: (batchId: number) =>
+    request<PayrollCorrection[]>(`/payroll/batches/${batchId}/corrections`),
+  requestPayrollCorrection: (batchId: number, reason: string) =>
+    request<PayrollCorrection>(
+      `/payroll/batches/${batchId}/corrections`,
+      json("POST", { reason }),
+    ),
+  cancelPayrollCorrection: (correctionId: number) =>
+    request<PayrollCorrection>(
+      `/payroll/corrections/${correctionId}/cancel`,
+      json("POST"),
+    ),
+  payrollCorrectionInputs: (correctionId: number) =>
+    request<PayrollCorrectionInput[]>(
+      `/payroll/corrections/${correctionId}/inputs`,
+    ),
+  updatePayrollCorrectionInputs: (
+    correctionId: number,
+    payload: {
+      employee_id: number;
+      source_note: string;
+      attendance?: Record<string, string>;
+      performance_coefficient?: string;
+    },
+  ) =>
+    request<PayrollCorrectionInput[]>(
+      `/payroll/corrections/${correctionId}/inputs`,
+      json("PUT", payload),
     ),
   payrollLedger: (
     periodId: number,

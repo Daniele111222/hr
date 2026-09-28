@@ -97,7 +97,7 @@ class PayrollBatch(Base):
             "subject_id",
             "payroll_period_id",
             unique=True,
-            postgresql_where=text("batch_type = 'normal'"),
+            postgresql_where=text("batch_type = 'normal' AND is_effective"),
         ),
     )
 
@@ -111,6 +111,7 @@ class PayrollBatch(Base):
     batch_type: Mapped[str] = mapped_column(String(30), nullable=False)
     batch_no: Mapped[int] = mapped_column(Integer, nullable=False, server_default="1")
     status: Mapped[str] = mapped_column(String(20), nullable=False, server_default="draft")
+    is_effective: Mapped[bool] = mapped_column(Boolean, nullable=False, server_default=text("true"))
     name: Mapped[str | None] = mapped_column(String(200))
     confirmed_trial_id: Mapped[int | None] = mapped_column(
         ForeignKey("payroll_trial_run.id", ondelete="RESTRICT")
@@ -327,6 +328,9 @@ class CorrectionBatch(Base):
         ForeignKey("payroll_batch.id", ondelete="RESTRICT"), nullable=False
     )
     reason: Mapped[str] = mapped_column(Text, nullable=False)
+    input_overrides: Mapped[dict[str, Any]] = mapped_column(
+        JSONB, nullable=False, default=dict, server_default=empty_json_default()
+    )
     status: Mapped[str] = mapped_column(String(20), nullable=False, server_default="requested")
     created_at: Mapped[datetime] = created_at_column()
 

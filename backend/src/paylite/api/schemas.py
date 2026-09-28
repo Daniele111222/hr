@@ -363,6 +363,7 @@ class PayrollBatchOut(BaseModel):
     batch_no: int
     name: str | None
     status: Literal["draft", "trial", "confirmed", "locked", "exported", "cancelled"]
+    is_effective: bool
     scope: PayrollScopeOut
     data_preparation: PayrollDataPreparationOut
     payment_date: date | None
@@ -411,6 +412,52 @@ class PayrollConfirmationOut(BaseModel):
     can_confirm: bool
     can_lock: bool
     blockers: list[str]
+
+
+class PayrollCorrectionCreate(BaseModel):
+    reason: str = Field(min_length=1, max_length=2000)
+
+
+class PayrollCorrectionAttendancePatch(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    expected_work_days: Decimal | None = Field(default=None, gt=0, le=31, decimal_places=2)
+    late_minutes: int | None = Field(default=None, ge=0)
+    early_leave_minutes: int | None = Field(default=None, ge=0)
+    paid_leave_days: Decimal | None = Field(default=None, ge=0, decimal_places=2)
+    unpaid_leave_days: Decimal | None = Field(default=None, ge=0, decimal_places=2)
+    missed_punch_count: int | None = Field(default=None, ge=0)
+    corrected_punch_count: int | None = Field(default=None, ge=0)
+
+
+class PayrollCorrectionInputPatch(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    employee_id: int = Field(gt=0)
+    source_note: str = Field(min_length=1, max_length=500)
+    attendance: PayrollCorrectionAttendancePatch | None = None
+    performance_coefficient: Decimal | None = Field(default=None, ge=0)
+
+
+class PayrollCorrectionInputOut(BaseModel):
+    employee_id: int
+    employee_name: str
+    attendance: dict[str, Any] | None
+    performance_coefficient: str | None
+    source_note: str | None
+
+
+class PayrollCorrectionOut(BaseModel):
+    id: int
+    original_batch_id: int
+    replacement_batch_id: int
+    reason: str
+    input_history: list[dict[str, Any]]
+    status: Literal["requested", "applied", "cancelled"]
+    created_at: datetime
+    original_status: Literal["draft", "trial", "confirmed", "locked", "exported", "cancelled"]
+    replacement_status: Literal["draft", "trial", "confirmed", "locked", "exported", "cancelled"]
+    replacement_is_effective: bool
 
 
 class PayrollLedgerRecordOut(BaseModel):

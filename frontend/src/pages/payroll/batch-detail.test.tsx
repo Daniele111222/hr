@@ -192,3 +192,178 @@ test("大额金额展示保持接口文本精度", async () => {
     await screen.findByText("¥9,007,199,254,740,993.00"),
   ).toBeInTheDocument();
 });
+
+test("已锁定批次可发起整批更正并保存原因", async () => {
+  const lockedBatch = { ...batch, status: "locked", is_effective: true };
+  const correction = {
+    id: 50,
+    original_batch_id: 10,
+    replacement_batch_id: 11,
+    reason: "修正绩效导入",
+    status: "requested",
+    created_at: "2026-09-28T10:00:00Z",
+    original_status: "locked",
+    replacement_status: "draft",
+    replacement_is_effective: false,
+  };
+  const fetchMock = vi.fn(
+    async (input: RequestInfo | URL, init?: RequestInit) => {
+      const path = String(input);
+      if (path.endsWith("/corrections")) {
+        return init?.method === "POST"
+          ? Response.json(correction, { status: 201 })
+          : Response.json([]);
+      }
+      if (path.endsWith("/trial")) return Response.json(null);
+      return Response.json(lockedBatch);
+    },
+  );
+  vi.stubGlobal("fetch", fetchMock);
+  renderPage();
+  const user = userEvent.setup();
+  await user.click(await screen.findByRole("button", { name: "发起整批更正" }));
+  await user.type(
+    screen.getByPlaceholderText("请填写更正原因，便于后续追溯"),
+    "修正绩效导入",
+  );
+  await user.click(screen.getByRole("button", { name: "生成替代版本" }));
+  await waitFor(() =>
+    expect(fetchMock).toHaveBeenCalledWith(
+      "/api/payroll/batches/10/corrections",
+      expect.objectContaining({
+        method: "POST",
+        body: JSON.stringify({ reason: "修正绩效导入" }),
+      }),
+    ),
+  );
+});
+
+test("替代版本可修正月度输入并保存来源说明", async () => {
+  const replacement = {
+    ...batch,
+    id: 10,
+    status: "draft",
+    is_effective: false,
+  };
+  const correction = {
+    id: 50,
+    original_batch_id: 9,
+    replacement_batch_id: 10,
+    reason: "修正考勤",
+    status: "requested",
+    created_at: "2026-09-28T10:00:00Z",
+    original_status: "locked",
+    replacement_status: "draft",
+    replacement_is_effective: false,
+  };
+  const inputs = [
+    {
+      employee_id: 1,
+      employee_name: "张三",
+      attendance: {
+        expected_work_days: "20.00",
+        late_minutes: 0,
+        early_leave_minutes: 0,
+        paid_leave_days: "0.00",
+        unpaid_leave_days: "0.00",
+        missed_punch_count: 0,
+        corrected_punch_count: 0,
+      },
+      performance_coefficient: "1",
+      source_note: null,
+    },
+  ];
+  const fetchMock = vi.fn(
+    async (input: RequestInfo | URL, _init?: RequestInit) => {
+      const path = String(input);
+      if (path.endsWith("/corrections")) return Response.json([correction]);
+      if (path.endsWith("/inputs")) return Response.json(inputs);
+      if (path.endsWith("/trial")) return Response.json(null);
+      return Response.json(replacement);
+    },
+  );
+  vi.stubGlobal("fetch", fetchMock);
+  renderPage();
+  const user = userEvent.setup();
+  expect(
+    await screen.findByText(/本次仅修正考勤与绩效；薪酬和规则沿用原确认快照/),
+  ).toBeInTheDocument();
+  await user.click(await screen.findByRole("button", { name: "修正输入" }));
+  expect(screen.getByRole("button", { name: "保存修正输入" })).toBeDisabled();
+  await user.clear(screen.getByRole("textbox", { name: "迟到分钟" }));
+  await user.type(screen.getByRole("textbox", { name: "迟到分钟" }), "30");
+  await user.clear(screen.getByRole("textbox", { name: "绩效系数" }));
+  await user.type(screen.getByRole("textbox", { name: "绩效系数" }), "1.5");
+  await user.type(
+    screen.getByRole("textbox", { name: "修正来源说明" }),
+    "考勤核对单",
+  );
+  await user.click(screen.getByRole("button", { name: "保存修正输入" }));
+  await waitFor(() =>
+    expect(fetchMock).toHaveBeenCalledWith(
+      "/api/payroll/corrections/50/inputs",
+      expect.objectContaining({
+        method: "PUT",
+        body: expect.stringContaining('"late_minutes":"30"'),
+      }),
+    ),
+  );
+  expect(
+    fetchMock.mock.calls.some(
+      ([, init]) =>
+        init?.method === "PUT" &&
+        String(init.body).includes('"source_note":"考勤核对单"'),
+    ),
+  ).toBe(true);
+});
+
+test("替代版本锁定后自动生效，无需单独应用", async () => {
+  const replacement = { ...batch, status: "confirmed", is_effective: false };
+  const correction = {
+    id: 50,
+    original_batch_id: 9,
+    replacement_batch_id: 10,
+    reason: "修正考勤",
+    status: "requested",
+    created_at: "2026-09-28T10:00:00Z",
+    original_status: "locked",
+    replacement_status: "confirmed",
+    replacement_is_effective: false,
+  };
+  const confirmation = {
+    period_id: 1,
+    period: "2026-09",
+    subject_count: 1,
+    batch_count: 1,
+    batches: [],
+    confirmed: true,
+    locked: false,
+    can_confirm: false,
+    can_lock: true,
+    blockers: [],
+  };
+  const fetchMock = vi.fn(async (input: RequestInfo | URL) => {
+    const path = String(input);
+    if (path.endsWith("/corrections")) return Response.json([correction]);
+    if (path.endsWith("/confirmation")) return Response.json(confirmation);
+    if (path.endsWith("/lock"))
+      return Response.json({ ...confirmation, locked: true, can_lock: false });
+    if (path.endsWith("/trial"))
+      return Response.json({ ...trial, ready_for_confirmation: true });
+    return Response.json(replacement);
+  });
+  vi.stubGlobal("fetch", fetchMock);
+  renderPage();
+  await userEvent
+    .setup()
+    .click(await screen.findByRole("button", { name: "锁定本期批次" }));
+  await waitFor(() =>
+    expect(fetchMock).toHaveBeenCalledWith(
+      "/api/payroll/periods/1/lock",
+      expect.objectContaining({ method: "POST" }),
+    ),
+  );
+  expect(
+    screen.queryByRole("button", { name: "使替代版本生效" }),
+  ).not.toBeInTheDocument();
+});

@@ -1,3 +1,4 @@
+import calendar
 import os
 from collections.abc import Generator
 from concurrent.futures import ThreadPoolExecutor
@@ -11,7 +12,7 @@ from alembic import command
 from alembic.config import Config
 from fastapi.testclient import TestClient
 from openpyxl import load_workbook
-from sqlalchemy import create_engine, select
+from sqlalchemy import create_engine, select, text
 from sqlalchemy.engine import URL, make_url
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
@@ -50,7 +51,13 @@ from paylite.db.models import (
 from paylite.excel.attendance_template import make_template as make_attendance_template
 from paylite.excel.employee_template import make_template
 from paylite.excel.performance_template import make_template as make_performance_template
-from paylite.services.payroll_workbench import PayrollWorkbenchError, create_batch
+from paylite.services.payroll_correction import cancel_correction, request_correction
+from paylite.services.payroll_ledger import get_ledger
+from paylite.services.payroll_workbench import (
+    PayrollWorkbenchError,
+    create_batch,
+    period_batch_counts,
+)
 
 TEST_DATABASE_URL = os.getenv("PAYLITE_TEST_DATABASE_URL")
 ALLOW_TEST_DATABASE_RESET = os.getenv("PAYLITE_ALLOW_TEST_DATABASE_RESET") == "1"
@@ -91,6 +98,8 @@ def postgres_engine():
     yield engine
 
     if engine.url.database != "paylite":
+        with engine.begin() as connection:
+            connection.execute(text("TRUNCATE payroll_batch CASCADE"))
         command.downgrade(alembic_config, "base")
     engine.dispose()
 
@@ -121,7 +130,7 @@ def api_client(postgres_engine):
 
 
 def create_base_records(
-    session: Session, suffix: str = ""
+    session: Session, suffix: str = "", month: int = 6, year: int = 2026
 ) -> tuple[Company, City, Subject, PayrollPeriod, Employee]:
     company = Company(code=f"ACME{suffix}", name="Acme")
     city = City(code=f"BJ{suffix}", name="北京")
@@ -130,10 +139,10 @@ def create_base_records(
 
     subject = Subject(company_id=company.id, code=f"MAIN{suffix}", name="主主体")
     period = PayrollPeriod(
-        year=2026,
-        month=6,
-        period_start=date(2026, 6, 1),
-        period_end=date(2026, 6, 30),
+        year=year,
+        month=month,
+        period_start=date(year, month, 1),
+        period_end=date(year, month, calendar.monthrange(year, month)[1]),
     )
     employee = Employee(
         company_id=company.id,
@@ -1928,3 +1937,347 @@ def test_payroll_confirmation_lock_and_ledger_use_snapshot(
     assert ledger.json()["record_count"] == 1
     assert ledger.json()["records"][0]["snapshot"]["name"] == "快照员工"
     assert ledger.json()["totals"]["untaxed_amount"] == "9000.00"
+
+
+def test_correction_switches_effective_version_without_rewriting_ledger(
+    api_client: TestClient, db_session: Session
+) -> None:
+    company, city, subject, period, employee = create_base_records(
+        db_session, "CORR", month=8, year=2031
+    )
+    previous = PayrollPeriod(
+        year=2031, month=7, period_start=date(2031, 7, 1), period_end=date(2031, 7, 31)
+    )
+    department = Department(company_id=company.id, code="CORR-D", name="原部门")
+    db_session.add_all([previous, department])
+    db_session.flush()
+    relation = SubjectDepartment(
+        company_id=company.id,
+        subject_id=subject.id,
+        department_id=department.id,
+        code="CORR-R",
+        name="原部门",
+    )
+    original = PayrollBatch(subject_id=subject.id, payroll_period_id=period.id, batch_type="normal")
+    source_batch = PayrollBatch(
+        subject_id=subject.id,
+        payroll_period_id=previous.id,
+        batch_type="normal",
+        status="locked",
+    )
+    social = SocialSecurityRule(
+        city_id=city.id,
+        effective_from=date(2031, 1, 1),
+        version="corr",
+        fixed_base=Decimal("5000"),
+    )
+    attendance_rule = db_session.scalar(
+        select(AttendanceRule).where(
+            AttendanceRule.effective_from <= period.period_start,
+            (AttendanceRule.effective_to.is_(None))
+            | (AttendanceRule.effective_to > period.period_end),
+        )
+    )
+    if attendance_rule is None:
+        attendance_rule = AttendanceRule(
+            effective_from=date(2031, 1, 1),
+            version="corr",
+            standard_hours=8,
+            missed_punch_amount=30,
+            exempt_level_number=7,
+            makeup_punch_exempt=True,
+        )
+        db_session.add(attendance_rule)
+    db_session.add_all(
+        [
+            relation,
+            original,
+            source_batch,
+            social,
+            HousingFundRule(
+                city_id=city.id,
+                effective_from=date(2031, 1, 1),
+                company_rate=Decimal("0.05"),
+                employee_rate=Decimal("0.05"),
+                base_min=0,
+                base_max=0,
+                version="corr",
+                base_source="fixed_salary",
+            ),
+        ]
+    )
+    db_session.flush()
+    db_session.add_all(
+        [
+            SocialSecurityItemRule(
+                social_security_rule_id=social.id,
+                item_code="pension",
+                item_name="养老",
+                employee_rate=Decimal("0.10"),
+                company_rate=Decimal("0.20"),
+                base_min=0,
+                base_max=0,
+            ),
+            EmployeeAssignment(
+                employee_id=employee.id,
+                subject_id=subject.id,
+                subject_department_id=relation.id,
+                position_title="工程师",
+                level_number=6,
+                effective_from=date(2020, 1, 1),
+            ),
+            EmployeeSalary(
+                employee_id=employee.id,
+                fixed_salary=Decimal("8000"),
+                performance_base=Decimal("2000"),
+                effective_from=date(2020, 1, 1),
+            ),
+            EmployeeBase(employee_id=employee.id, city_id=city.id, effective_from=date(2020, 1, 1)),
+            PayrollTrialRun(
+                payroll_batch_id=source_batch.id,
+                input_fingerprint="corr-previous",
+                input_snapshot={},
+                results=[
+                    {
+                        "employee_id": employee.id,
+                        "errors": [],
+                        "amounts": {"attendance_deduction": "0.00"},
+                    }
+                ],
+            ),
+        ]
+    )
+    attendance_import = ImportBatch(
+        company_id=company.id,
+        payroll_period_id=period.id,
+        payroll_batch_id=original.id,
+        import_type="attendance",
+        original_filename="corr-att.xlsx",
+        file_sha256="c" * 64,
+        template_version="corr",
+        status="imported",
+    )
+    performance_import = ImportBatch(
+        company_id=company.id,
+        payroll_period_id=period.id,
+        payroll_batch_id=original.id,
+        import_type="performance",
+        original_filename="corr-perf.xlsx",
+        file_sha256="d" * 64,
+        template_version="corr",
+        status="imported",
+    )
+    db_session.add_all([attendance_import, performance_import])
+    db_session.flush()
+    db_session.add_all(
+        [
+            AttendanceRecord(
+                import_batch_id=attendance_import.id,
+                payroll_period_id=period.id,
+                employee_id=employee.id,
+                expected_work_days=Decimal("20"),
+            ),
+            PerformanceRecord(
+                import_batch_id=performance_import.id,
+                payroll_period_id=period.id,
+                employee_id=employee.id,
+                coefficient=Decimal("1"),
+                source_value="1",
+            ),
+            ImportRow(
+                import_batch_id=attendance_import.id,
+                sheet_name="考勤",
+                source_row_number=2,
+                validation_status="imported",
+                raw_data={"姓名": employee.name},
+            ),
+        ]
+    )
+    db_session.commit()
+
+    first_trial = api_client.post(f"/payroll/batches/{original.id}/trial")
+    assert first_trial.status_code == 200, first_trial.text
+    assert first_trial.json()["error_count"] == 0
+    first_incentive = api_client.post(f"/payroll/periods/{period.id}/attendance-incentive")
+    assert first_incentive.status_code == 200, first_incentive.text
+    assert api_client.get(f"/payroll/batches/{original.id}/trial").json()["ready_for_confirmation"]
+    assert api_client.post(f"/payroll/periods/{period.id}/confirmation").status_code == 200
+    assert api_client.post(f"/payroll/periods/{period.id}/lock").status_code == 200
+    db_session.expire_all()
+    original_record = db_session.scalar(
+        select(PayrollRecord).where(PayrollRecord.payroll_batch_id == original.id)
+    )
+    assert original_record is not None
+    original_amount = original_record.net_amount
+    original_record_id = original_record.id
+    original_id = original.id
+    period_id = period.id
+    db_session.rollback()
+
+    with ThreadPoolExecutor(max_workers=2) as executor:
+        requests = list(
+            executor.map(
+                lambda _: api_client.post(
+                    f"/payroll/batches/{original_id}/corrections",
+                    json={"reason": "修正考勤和绩效"},
+                ),
+                range(2),
+            )
+        )
+    assert all(response.status_code == 201 for response in requests)
+    assert requests[0].json()["id"] == requests[1].json()["id"]
+    requested = requests[0].json()
+    replacement_id = requested["replacement_batch_id"]
+    assert request_correction(db_session, original.id, "重复点击")["id"] == requested["id"]
+    db_session.rollback()
+    assert api_client.post(f"/payroll/periods/{period.id}/lock").status_code == 409
+
+    employee.name = "现名不应覆盖旧快照"
+    employee.active = False
+    salary = db_session.scalar(
+        select(EmployeeSalary).where(EmployeeSalary.employee_id == employee.id)
+    )
+    salary.fixed_salary = Decimal("9000")
+    db_session.commit()
+    rejected = api_client.put(
+        f"/payroll/corrections/{requested['id']}/inputs",
+        json={
+            "employee_id": employee.id,
+            "source_note": "非法考勤值",
+            "attendance": {"late_minutes": -1},
+        },
+    )
+    assert rejected.status_code == 422
+    updated = api_client.put(
+        f"/payroll/corrections/{requested['id']}/inputs",
+        json={
+            "employee_id": employee.id,
+            "source_note": "考勤绩效核对单",
+            "attendance": {"late_minutes": 20},
+            "performance_coefficient": "1.5",
+        },
+    )
+    assert updated.status_code == 200, updated.text
+    assert updated.json()[0]["performance_coefficient"] == "1.5"
+    correction_trial = api_client.post(f"/payroll/batches/{replacement_id}/trial")
+    assert correction_trial.status_code == 200, correction_trial.text
+    assert correction_trial.json()["error_count"] == 0
+    assert correction_trial.json()["results"][0]["snapshot"]["name"] == "测试员工"
+    assert Decimal(correction_trial.json()["results"][0]["snapshot"]["fixed_salary"]) == 8000
+    replacement_detail = api_client.get(f"/payroll/batches/{replacement_id}").json()
+    assert replacement_detail["scope"]["source"] == "confirmed_trial_snapshot"
+    assert replacement_detail["scope"]["employee_ids"] == [employee.id]
+    source_snapshot = db_session.get(PayrollTrialRun, correction_trial.json()["id"]).input_snapshot
+    assert source_snapshot["imports"][0]["payroll_batch_id"] == original.id
+    assert source_snapshot["import_rows"][0]["raw_data"]["姓名"] == "测试员工"
+    assert (
+        source_snapshot["correction"]["input_overrides"]["attendance"][str(employee.id)][
+            "source_note"
+        ]
+        == "考勤绩效核对单"
+    )
+    assert get_ledger(db_session, period.id)["records"][0]["payroll_batch_id"] == original.id
+
+    changed = api_client.put(
+        f"/payroll/corrections/{requested['id']}/inputs",
+        json={
+            "employee_id": employee.id,
+            "source_note": "更正考勤分钟",
+            "attendance": {"late_minutes": 30},
+        },
+    )
+    assert changed.status_code == 200, changed.text
+    assert api_client.get(f"/payroll/batches/{replacement_id}/trial").json()["stale"] is True
+    retried_trial = api_client.post(f"/payroll/batches/{replacement_id}/trial")
+    assert retried_trial.status_code == 200
+    assert (
+        len(
+            db_session.get(PayrollTrialRun, retried_trial.json()["id"]).input_snapshot[
+                "correction"
+            ]["input_overrides"]["history"]
+        )
+        == 2
+    )
+    correction_history = api_client.get(f"/payroll/batches/{replacement_id}/corrections")
+    assert len(correction_history.json()[0]["input_history"]) == 2
+    corrected_incentive = api_client.post(f"/payroll/periods/{period.id}/attendance-incentive")
+    assert corrected_incentive.status_code == 200, corrected_incentive.text
+    assert api_client.get(f"/payroll/batches/{replacement_id}/trial").json()[
+        "ready_for_confirmation"
+    ]
+    assert api_client.post(f"/payroll/periods/{period.id}/confirmation").status_code == 200
+    db_session.rollback()
+    replacement_batch = db_session.get(PayrollBatch, replacement_id)
+    confirmed_fingerprint = replacement_batch.confirmed_input_fingerprint
+    replacement_batch.confirmed_input_fingerprint = "invalid"
+    db_session.commit()
+    assert api_client.post(f"/payroll/periods/{period_id}/lock").status_code == 409
+    db_session.expire_all()
+    assert db_session.get(PayrollBatch, replacement_id).status == "confirmed"
+    assert db_session.get(PayrollBatch, original_id).is_effective is True
+    assert (
+        db_session.scalar(
+            select(PayrollRecord.calculation_status).where(
+                PayrollRecord.payroll_batch_id == replacement_id
+            )
+        )
+        == "confirmed"
+    )
+    replacement_batch.confirmed_input_fingerprint = confirmed_fingerprint
+    db_session.commit()
+    assert get_ledger(db_session, period.id)["records"][0]["payroll_batch_id"] == original.id
+    db_session.rollback()
+    with ThreadPoolExecutor(max_workers=2) as executor:
+        locks = list(
+            executor.map(
+                lambda _: api_client.post(f"/payroll/periods/{period_id}/lock"),
+                range(2),
+            )
+        )
+    assert all(response.status_code == 200 for response in locks)
+    assert (
+        api_client.get(f"/payroll/batches/{replacement_id}/corrections").json()[0]["status"]
+        == "applied"
+    )
+    db_session.expire_all()
+    assert db_session.get(PayrollBatch, original.id).is_effective is False
+    assert db_session.get(PayrollBatch, replacement_id).is_effective is True
+    assert period_batch_counts(db_session, period.id)[1] == 1
+    ledger = get_ledger(db_session, period.id)
+    assert ledger["record_count"] == 1
+    assert ledger["records"][0]["payroll_batch_id"] == replacement_id
+    assert ledger["records"][0]["amounts"]["untaxed_amount"] != str(original_amount)
+    assert db_session.get(PayrollRecord, original_record_id).net_amount == original_amount
+
+    next_correction = request_correction(db_session, replacement_id, "再次修正")
+    next_replacement_id = next_correction["replacement_batch_id"]
+    db_session.rollback()
+    assert (
+        api_client.put(
+            f"/payroll/corrections/{next_correction['id']}/inputs",
+            json={
+                "employee_id": employee.id,
+                "source_note": "再次核对考勤",
+                "attendance": {"late_minutes": 40},
+            },
+        ).status_code
+        == 200
+    )
+    assert api_client.post(f"/payroll/batches/{next_replacement_id}/trial").status_code == 200
+    assert api_client.post(f"/payroll/periods/{period_id}/attendance-incentive").status_code == 200
+    assert api_client.get(f"/payroll/batches/{next_replacement_id}/trial").json()[
+        "ready_for_confirmation"
+    ]
+    assert api_client.post(f"/payroll/periods/{period_id}/confirmation").status_code == 200
+    assert api_client.post(f"/payroll/periods/{period_id}/lock").status_code == 200
+    db_session.expire_all()
+    assert db_session.get(PayrollBatch, replacement_id).is_effective is False
+    assert db_session.get(PayrollBatch, next_replacement_id).is_effective is True
+    assert (
+        get_ledger(db_session, period_id)["records"][0]["payroll_batch_id"] == next_replacement_id
+    )
+
+    cancelled_correction = request_correction(db_session, next_replacement_id, "取消第三次修正")
+    cancelled = cancel_correction(db_session, cancelled_correction["id"])
+    assert cancelled["status"] == "cancelled"
+    assert db_session.get(PayrollBatch, next_replacement_id).is_effective is True

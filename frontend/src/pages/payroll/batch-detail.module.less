@@ -135,6 +135,21 @@
 .drawerContent {
     width: 100%;
 }
+.inputGrid {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 12px;
+}
+.inputGrid label,
+.sourceField {
+    display: flex;
+    flex-direction: column;
+    gap: 5px;
+    font-size: 12px;
+}
+.sourceField {
+    margin-top: 14px;
+}
 @media (max-width: 1180px) {
     .metrics {
         grid-template-columns: repeat(2, minmax(0, 1fr));
@@ -154,5 +169,8 @@
     }
     .panel {
         padding: 12px;
+    }
+    .inputGrid {
+        grid-template-columns: 1fr;
     }
 }

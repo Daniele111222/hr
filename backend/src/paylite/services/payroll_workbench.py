@@ -11,12 +11,14 @@ from sqlalchemy.orm import Session
 
 from paylite.db.models import (
     AttendanceRecord,
+    CorrectionBatch,
     Employee,
     EmployeeAssignment,
     EmployeeBase,
     HousingFundRule,
     PayrollBatch,
     PayrollPeriod,
+    PayrollTrialRun,
     PerformanceRecord,
     SocialSecurityRule,
     Subject,
@@ -44,6 +46,7 @@ class PeriodWindow:
 class EmployeeScope:
     employee_ids: list[int]
     ambiguous_employee_ids: list[int]
+    source: str = "employee_assignment_for_period"
 
     @property
     def status(self) -> str:
@@ -143,7 +146,9 @@ def period_batch_counts(db: Session, period_id: int) -> tuple[int, int]:
     return db.execute(
         select(
             func.count(PayrollBatch.id),
-            func.count(PayrollBatch.id).filter(PayrollBatch.batch_type == "normal"),
+            func.count(PayrollBatch.id).filter(
+                PayrollBatch.batch_type == "normal", PayrollBatch.is_effective.is_(True)
+            ),
         ).where(PayrollBatch.payroll_period_id == period_id)
     ).one()
 
@@ -405,5 +410,23 @@ def create_batch(
 def batch_scope_and_preparation(
     db: Session, period: PayrollPeriod, batch: PayrollBatch
 ) -> tuple[EmployeeScope, DataPreparation]:
+    source_trial_id = batch.confirmed_trial_id
+    if source_trial_id is None:
+        correction = db.scalar(
+            select(CorrectionBatch).where(CorrectionBatch.replacement_batch_id == batch.id)
+        )
+        if correction is not None:
+            original = db.get(PayrollBatch, correction.original_batch_id)
+            source_trial_id = original.confirmed_trial_id if original else None
+    source_trial = db.get(PayrollTrialRun, source_trial_id) if source_trial_id else None
+    if source_trial is not None and source_trial.input_snapshot.get("scope"):
+        source_scope = source_trial.input_snapshot["scope"]
+        scope = EmployeeScope(
+            employee_ids=source_scope["employee_ids"],
+            ambiguous_employee_ids=source_scope["ambiguous_employee_ids"],
+            source="confirmed_trial_snapshot",
+        )
+        item = PreparationItem("ready", len(scope.employee_ids), 0, "依据已确认试算快照")
+        return scope, DataPreparation(item, item, item, "ready")
     scope = employee_scope(db, period, batch.subject_id)
     return scope, data_preparation(db, period, scope)

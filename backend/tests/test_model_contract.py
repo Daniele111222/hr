@@ -92,7 +92,10 @@ class TestModelContract:
         indexes = Base.metadata.tables["payroll_batch"].indexes
         normal_index = next(index for index in indexes if index.name == "uq_payroll_batch_normal")
         assert normal_index.unique is True
-        assert normal_index.dialect_options["postgresql"]["where"].text == "batch_type = 'normal'"
+        assert (
+            normal_index.dialect_options["postgresql"]["where"].text
+            == "batch_type = 'normal' AND is_effective"
+        )
 
     def test_executable_sql_keeps_explicit_ddl_and_lock_trigger(self) -> None:
         sql_path = Path(__file__).parents[1] / "sql" / "001_initial_schema.sql"

@@ -11,6 +11,10 @@ from paylite.api.schemas import (
     PayrollBatchCreate,
     PayrollBatchOut,
     PayrollConfirmationOut,
+    PayrollCorrectionCreate,
+    PayrollCorrectionInputOut,
+    PayrollCorrectionInputPatch,
+    PayrollCorrectionOut,
     PayrollDataPreparationOut,
     PayrollLedgerOut,
     PayrollPeriodCreate,
@@ -33,6 +37,14 @@ from paylite.services.payroll_confirmation import (
     confirmation_state,
     lock_period,
     mark_latest_trial_viewed,
+)
+from paylite.services.payroll_correction import (
+    PayrollCorrectionError,
+    cancel_correction,
+    get_correction_inputs,
+    list_corrections,
+    request_correction,
+    update_correction_inputs,
 )
 from paylite.services.payroll_ledger import PayrollLedgerError, get_ledger
 from paylite.services.payroll_trial import TrialError, get_trial, run_trial
@@ -131,6 +143,71 @@ def post_batch_lock(batch_id: int, db: Session = Depends(get_db)):
         raise HTTPException(exc.status_code, exc.detail) from exc
 
 
+@router.get("/batches/{batch_id}/corrections", response_model=list[PayrollCorrectionOut])
+def get_batch_corrections(batch_id: int, db: Session = Depends(get_db)):
+    try:
+        return list_corrections(db, batch_id)
+    except PayrollCorrectionError as exc:
+        raise HTTPException(exc.status_code, exc.detail) from exc
+
+
+@router.post(
+    "/batches/{batch_id}/corrections",
+    response_model=PayrollCorrectionOut,
+    status_code=status.HTTP_201_CREATED,
+)
+def post_batch_correction(
+    batch_id: int, payload: PayrollCorrectionCreate, db: Session = Depends(get_db)
+):
+    try:
+        return request_correction(db, batch_id, payload.reason)
+    except PayrollCorrectionError as exc:
+        db.rollback()
+        raise HTTPException(exc.status_code, exc.detail) from exc
+
+
+@router.get("/corrections/{correction_id}/inputs", response_model=list[PayrollCorrectionInputOut])
+def get_correction_input_rows(correction_id: int, db: Session = Depends(get_db)):
+    try:
+        return get_correction_inputs(db, correction_id)
+    except PayrollCorrectionError as exc:
+        raise HTTPException(exc.status_code, exc.detail) from exc
+
+
+@router.put("/corrections/{correction_id}/inputs", response_model=list[PayrollCorrectionInputOut])
+def put_correction_input_row(
+    correction_id: int,
+    payload: PayrollCorrectionInputPatch,
+    db: Session = Depends(get_db),
+):
+    try:
+        attendance = (
+            payload.attendance.model_dump(exclude_unset=True, exclude_none=True)
+            if payload.attendance
+            else None
+        )
+        return update_correction_inputs(
+            db,
+            correction_id,
+            payload.employee_id,
+            payload.source_note,
+            attendance,
+            payload.performance_coefficient,
+        )
+    except PayrollCorrectionError as exc:
+        db.rollback()
+        raise HTTPException(exc.status_code, exc.detail) from exc
+
+
+@router.post("/corrections/{correction_id}/cancel", response_model=PayrollCorrectionOut)
+def post_correction_cancel(correction_id: int, db: Session = Depends(get_db)):
+    try:
+        return cancel_correction(db, correction_id)
+    except PayrollCorrectionError as exc:
+        db.rollback()
+        raise HTTPException(exc.status_code, exc.detail) from exc
+
+
 @router.get("/ledger", response_model=PayrollLedgerOut)
 def get_payroll_ledger(
     period_id: int | None = Query(default=None),
@@ -213,13 +290,17 @@ def _preparation_out(data: DataPreparation) -> PayrollDataPreparationOut:
 
 def _scope_out(period: PayrollPeriod, scope: EmployeeScope) -> PayrollScopeOut:
     return PayrollScopeOut(
-        source="employee_assignment_for_period",
-        criteria={
-            "period": f"{period.year:04d}-{period.month:02d}",
-            "hire_date_at_or_before_period_end": True,
-            "termination_date_after_or_equal_period_start": True,
-            "assignment_effective_during_period": True,
-        },
+        source=scope.source,
+        criteria=(
+            {"period": f"{period.year:04d}-{period.month:02d}", "confirmed_snapshot": True}
+            if scope.source == "confirmed_trial_snapshot"
+            else {
+                "period": f"{period.year:04d}-{period.month:02d}",
+                "hire_date_at_or_before_period_end": True,
+                "termination_date_after_or_equal_period_start": True,
+                "assignment_effective_during_period": True,
+            }
+        ),
         employee_count=len(scope.employee_ids),
         employee_ids=scope.employee_ids,
         ambiguous_employee_ids=scope.ambiguous_employee_ids,
@@ -238,6 +319,7 @@ def _batch_out(db: Session, period: PayrollPeriod, batch: PayrollBatch) -> Payro
         batch_no=batch.batch_no,
         name=batch.name,
         status=batch.status,
+        is_effective=batch.is_effective,
         scope=_scope_out(period, scope),
         data_preparation=_preparation_out(preparation),
         payment_date=period.actual_payment_date,

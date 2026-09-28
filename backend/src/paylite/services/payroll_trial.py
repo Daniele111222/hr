@@ -3,11 +3,13 @@
 import hashlib
 import json
 from collections import defaultdict
-from datetime import date, timedelta
+from copy import deepcopy
+from datetime import date, datetime, timedelta
 from decimal import Decimal, localcontext
+from types import SimpleNamespace
 from typing import Any
 
-from sqlalchemy import select
+from sqlalchemy import Date, DateTime, Numeric, select
 from sqlalchemy.orm import Session
 
 from paylite.db.models import (
@@ -15,6 +17,7 @@ from paylite.db.models import (
     AttendanceRecord,
     AttendanceRule,
     City,
+    CorrectionBatch,
     Department,
     Employee,
     EmployeeAssignment,
@@ -96,9 +99,85 @@ def _one(rows: list[Any], day: date) -> Any | None:
     return matched[0] if len(matched) == 1 else None
 
 
+def _snapshot_rows(model: Any, rows: list[dict[str, Any]]) -> list[Any]:
+    columns = {column.name: column.type for column in model.__table__.columns}
+    restored = []
+    for row in rows:
+        values = {}
+        for key, value in row.items():
+            column_type = columns[key]
+            if value is not None and isinstance(column_type, DateTime):
+                value = datetime.fromisoformat(value)
+            elif value is not None and isinstance(column_type, Date):
+                value = date.fromisoformat(value)
+            elif value is not None and isinstance(column_type, Numeric):
+                value = Decimal(str(value))
+            values[key] = value
+        restored.append(SimpleNamespace(**values))
+    return restored
+
+
+def _correction_snapshot(
+    db: Session, batch: PayrollBatch
+) -> tuple[dict[str, Any], dict[str, Any]] | None:
+    correction = db.scalar(
+        select(CorrectionBatch).where(CorrectionBatch.replacement_batch_id == batch.id)
+    )
+    if correction is None:
+        return None
+    original = db.get(PayrollBatch, correction.original_batch_id)
+    source = db.get(PayrollTrialRun, original.confirmed_trial_id) if original else None
+    if source is None or not source.input_snapshot.get("employees"):
+        raise TrialError(409, "原批次缺少已确认的试算快照，不能重新试算")
+    snapshot = deepcopy(source.input_snapshot)
+    snapshot.pop("attendance_incentive", None)
+    overrides = correction.input_overrides or {}
+    for category, fields in (("attendance", "attendance"), ("performance", "performance")):
+        for row in snapshot[category]:
+            row.update(overrides.get(fields, {}).get(str(row["employee_id"]), {}).get("values", {}))
+    snapshot["correction"] = {
+        "original_batch_id": correction.original_batch_id,
+        "source_trial_id": source.id,
+        "correction_id": correction.id,
+        "input_overrides": overrides,
+    }
+
+    employees = _snapshot_rows(Employee, snapshot["employees"])
+    assignments = _snapshot_rows(EmployeeAssignment, snapshot["assignments"])
+    salaries = _snapshot_rows(EmployeeSalary, snapshot["salaries"])
+    bases = _snapshot_rows(EmployeeBase, snapshot["bases"])
+    banks = _snapshot_rows(EmployeeBankAccount, snapshot["banks"])
+    attendance = _snapshot_rows(AttendanceRecord, snapshot["attendance"])
+    performance = _snapshot_rows(PerformanceRecord, snapshot["performance"])
+    cities = _snapshot_rows(City, snapshot["cities"])
+    relations = _snapshot_rows(SubjectDepartment, snapshot["relations"])
+    departments = _snapshot_rows(Department, snapshot["departments"])
+    data = {
+        "employees": employees,
+        "assignments": _index(assignments),
+        "salaries": _index(salaries),
+        "bases": _index(bases),
+        "banks": _index(banks),
+        "attendance": {row.employee_id: row for row in attendance},
+        "performance": {row.employee_id: row for row in performance},
+        "cities": {row.id: row for row in cities},
+        "social_rules": _snapshot_rows(SocialSecurityRule, snapshot["social_rules"]),
+        "social_items": _snapshot_rows(SocialSecurityItemRule, snapshot["social_items"]),
+        "housing_rules": _snapshot_rows(HousingFundRule, snapshot["housing_rules"]),
+        "attendance_rules": _snapshot_rows(AttendanceRule, snapshot["attendance_rules"]),
+        "relations": {row.id: row for row in relations},
+        "departments": {row.id: row for row in departments},
+        "ambiguous_ids": set(snapshot["scope"]["ambiguous_employee_ids"]),
+    }
+    return snapshot, data
+
+
 def _load_snapshot(
     db: Session, batch: PayrollBatch, period: PayrollPeriod
 ) -> tuple[dict[str, Any], dict[str, Any]]:
+    correction_snapshot = _correction_snapshot(db, batch)
+    if correction_snapshot is not None:
+        return correction_snapshot
     subject = db.get(Subject, batch.subject_id)
     scope = employee_scope(db, period, batch.subject_id)
     ids = scope.employee_ids

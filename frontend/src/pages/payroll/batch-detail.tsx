@@ -8,6 +8,8 @@ import {
   Descriptions,
   Drawer,
   Empty,
+  Input,
+  Modal,
   Space,
   Spin,
   Table,
@@ -17,7 +19,11 @@ import {
 } from "antd";
 import { useState } from "react";
 import { Link, useParams } from "react-router-dom";
-import { resources, type PayrollTrialRow } from "../../shared/api/resources";
+import {
+  resources,
+  type PayrollCorrectionInput,
+  type PayrollTrialRow,
+} from "../../shared/api/resources";
 import styles from "./batch-detail.module.less";
 
 const steps = ["数据准备", "普通试算", "考勤激励", "核对确认", "锁定", "导出"];
@@ -40,6 +46,11 @@ export function PayrollBatchDetailPage() {
   const { message } = App.useApp();
   const queryClient = useQueryClient();
   const [selected, setSelected] = useState<PayrollTrialRow>();
+  const [correctionOpen, setCorrectionOpen] = useState(false);
+  const [correctionReason, setCorrectionReason] = useState("");
+  const [editingInput, setEditingInput] = useState<PayrollCorrectionInput>();
+  const [inputValues, setInputValues] = useState<Record<string, string>>({});
+  const [inputSource, setInputSource] = useState("");
   const batch = useQuery({
     queryKey: ["payroll", "batch", batchId],
     queryFn: () => resources.payrollBatch(batchId),
@@ -54,6 +65,24 @@ export function PayrollBatchDetailPage() {
     queryKey: ["payroll", "confirmation", batch.data?.period_id],
     queryFn: () => resources.payrollConfirmation(batch.data!.period_id),
     enabled: Boolean(batch.data?.period_id),
+  });
+  const corrections = useQuery({
+    queryKey: ["payroll", "corrections", batch.data?.id],
+    queryFn: () => resources.payrollCorrections(batch.data!.id),
+    enabled:
+      batch.data?.is_effective === false ||
+      ["confirmed", "locked", "exported"].includes(batch.data?.status ?? ""),
+  });
+  const replacementCorrection = corrections.data?.find(
+    (item) =>
+      item.status === "requested" && item.replacement_batch_id === batchId,
+  );
+  const correctionInputs = useQuery({
+    queryKey: ["payroll", "correction-inputs", replacementCorrection?.id],
+    queryFn: () => resources.payrollCorrectionInputs(replacementCorrection!.id),
+    enabled:
+      Boolean(replacementCorrection) &&
+      ["draft", "trial"].includes(batch.data?.status ?? ""),
   });
   const run = useMutation({
     mutationFn: () => resources.runPayrollTrial(batchId),
@@ -96,7 +125,91 @@ export function PayrollBatchDetailPage() {
         queryKey: ["payroll", "batch", batchId],
       });
       queryClient.invalidateQueries({ queryKey: ["payroll", "workbench"] });
-      message.success("本期正常工资已锁定");
+      queryClient.invalidateQueries({
+        queryKey: ["payroll", "corrections", batchId],
+      });
+      queryClient.invalidateQueries({ queryKey: ["payroll", "ledger"] });
+      message.success(
+        replacementCorrection
+          ? "本期工资已锁定，更正版本同步生效"
+          : "本期正常工资已锁定",
+      );
+    },
+    onError: (error) => message.error(error.message),
+  });
+  const correction = useMutation({
+    mutationFn: () =>
+      resources.requestPayrollCorrection(batchId, correctionReason),
+    onSuccess: (value) => {
+      setCorrectionOpen(false);
+      setCorrectionReason("");
+      queryClient.setQueryData(
+        ["payroll", "corrections", batchId],
+        (current: unknown[] | undefined) => [value, ...(current ?? [])],
+      );
+      queryClient.invalidateQueries({ queryKey: ["payroll", "workbench"] });
+      message.success(
+        `已生成替代版本批次 #${value.replacement_batch_id}，请重新试算并确认全体员工`,
+      );
+    },
+    onError: (error) => message.error(error.message),
+  });
+  const saveInput = useMutation({
+    mutationFn: () => {
+      if (!replacementCorrection || !editingInput)
+        throw new Error("更正输入未选择");
+      const attendance = editingInput.attendance
+        ? Object.fromEntries(
+            Object.entries(inputValues).filter(
+              ([key, value]) =>
+                key !== "performance_coefficient" &&
+                value !==
+                  String(
+                    editingInput.attendance![
+                      key as keyof typeof editingInput.attendance
+                    ],
+                  ),
+            ),
+          )
+        : undefined;
+      const performance =
+        inputValues.performance_coefficient !==
+        editingInput.performance_coefficient
+          ? inputValues.performance_coefficient
+          : undefined;
+      return resources.updatePayrollCorrectionInputs(replacementCorrection.id, {
+        employee_id: editingInput.employee_id,
+        source_note: inputSource.trim(),
+        attendance,
+        performance_coefficient: performance,
+      });
+    },
+    onSuccess: (rows) => {
+      queryClient.setQueryData(
+        ["payroll", "correction-inputs", replacementCorrection?.id],
+        rows,
+      );
+      queryClient.invalidateQueries({
+        queryKey: ["payroll", "trial", batchId],
+      });
+      queryClient.invalidateQueries({ queryKey: ["payroll", "confirmation"] });
+      setEditingInput(undefined);
+      message.success("更正输入已保存，请重新试算全体员工");
+    },
+    onError: (error) => message.error(error.message),
+  });
+  const cancelCorrection = useMutation({
+    mutationFn: (correctionId: number) =>
+      resources.cancelPayrollCorrection(correctionId),
+    onSuccess: () => {
+      queryClient.invalidateQueries({
+        queryKey: ["payroll", "corrections", batchId],
+      });
+      queryClient.invalidateQueries({
+        queryKey: ["payroll", "batch", batchId],
+      });
+      queryClient.invalidateQueries({ queryKey: ["payroll", "workbench"] });
+      message.success("未生效的更正已取消，原版本仍有效");
     },
     onError: (error) => message.error(error.message),
   });
@@ -121,9 +234,49 @@ export function PayrollBatchDetailPage() {
   if (!batch.data) return <Empty description="工资批次不存在" />;
 
   const detail = batch.data;
+  const pendingCorrection = corrections.data?.find(
+    (item) => item.status === "requested",
+  );
   const result = trial.data;
   const confirmationState = confirmation.data;
   const preparation = detail.data_preparation;
+  const inputChanged = editingInput
+    ? Object.entries(inputValues).some(([key, value]) =>
+        key === "performance_coefficient"
+          ? value !== editingInput.performance_coefficient
+          : value !==
+            String(
+              editingInput.attendance?.[
+                key as keyof typeof editingInput.attendance
+              ],
+            ),
+      )
+    : false;
+  const openInput = (row: PayrollCorrectionInput) => {
+    setEditingInput(row);
+    setInputSource(row.source_note ?? "");
+    setInputValues({
+      ...(row.attendance
+        ? Object.fromEntries(
+            [
+              "expected_work_days",
+              "late_minutes",
+              "early_leave_minutes",
+              "paid_leave_days",
+              "unpaid_leave_days",
+              "missed_punch_count",
+              "corrected_punch_count",
+            ].map((key) => [
+              key,
+              String(row.attendance![key as keyof typeof row.attendance]),
+            ]),
+          )
+        : {}),
+      ...(row.performance_coefficient !== null
+        ? { performance_coefficient: row.performance_coefficient }
+        : {}),
+    });
+  };
   const preparationRows = [
     {
       key: "attendance",
@@ -173,7 +326,11 @@ export function PayrollBatchDetailPage() {
                     : "default"
               }
             >
-              {statusLabels[detail.status]}
+              {pendingCorrection?.replacement_batch_id === detail.id
+                ? "待生效"
+                : detail.is_effective === false && detail.status !== "cancelled"
+                  ? "已被替代"
+                  : statusLabels[detail.status]}
             </Tag>
           </Space>
           <p>
@@ -232,6 +389,29 @@ export function PayrollBatchDetailPage() {
           description={confirmation.error.message}
         />
       ) : null}
+      {corrections.error ? (
+        <Alert
+          type="error"
+          showIcon
+          title="更正记录加载失败"
+          description={corrections.error.message}
+        />
+      ) : null}
+      {pendingCorrection &&
+      detail.id === pendingCorrection.original_batch_id ? (
+        <Alert
+          type="info"
+          showIcon
+          title="已有待生效的替代版本"
+          description={
+            <Link
+              to={`/payroll/batches/${pendingCorrection.replacement_batch_id}`}
+            >
+              前往替代版本重新试算、确认并锁定
+            </Link>
+          }
+        />
+      ) : null}
       <Alert
         type={result?.includes_final_incentive ? "success" : "info"}
         showIcon
@@ -260,6 +440,65 @@ export function PayrollBatchDetailPage() {
               label: "数据准备",
               children: (
                 <div className={styles.panel}>
+                  {replacementCorrection &&
+                  ["draft", "trial"].includes(detail.status) ? (
+                    <>
+                      <Alert
+                        type="info"
+                        showIcon
+                        title="替代版本沿用原确认快照"
+                        description="本次仅修正考勤与绩效；薪酬和规则沿用原确认快照，员工现况不会改写原工资事实。"
+                      />
+                      {correctionInputs.error ? (
+                        <Alert
+                          type="error"
+                          showIcon
+                          title="更正输入加载失败"
+                          description={correctionInputs.error.message}
+                        />
+                      ) : null}
+                      <Table<PayrollCorrectionInput>
+                        rowKey="employee_id"
+                        size="small"
+                        scroll={{ x: 640 }}
+                        loading={correctionInputs.isLoading}
+                        pagination={{ pageSize: 12 }}
+                        dataSource={correctionInputs.data ?? []}
+                        columns={[
+                          { title: "员工", dataIndex: "employee_name" },
+                          {
+                            title: "考勤",
+                            render: (_, row) =>
+                              row.attendance
+                                ? `迟到 ${row.attendance.late_minutes} 分钟 · 忘打卡 ${row.attendance.missed_punch_count} 次`
+                                : "—",
+                          },
+                          {
+                            title: "绩效系数",
+                            dataIndex: "performance_coefficient",
+                            render: (value: string | null) => value ?? "—",
+                          },
+                          {
+                            title: "修正来源",
+                            dataIndex: "source_note",
+                            render: (value: string | null) =>
+                              value ?? "尚未修正",
+                          },
+                          {
+                            title: "操作",
+                            render: (_, row) => (
+                              <Button
+                                size="small"
+                                onClick={() => openInput(row)}
+                              >
+                                修正输入
+                              </Button>
+                            ),
+                          },
+                        ]}
+                      />
+                    </>
+                  ) : null}
                   <Descriptions
                     size="small"
                     column={{ xs: 1, sm: 2 }}
@@ -268,7 +507,7 @@ export function PayrollBatchDetailPage() {
                       {
                         key: "scope",
                         label: "员工名册",
-                        children: `${detail.scope.employee_count} 人 · 期间有效任职关系`,
+                        children: `${detail.scope.employee_count} 人 · ${detail.scope.source === "confirmed_trial_snapshot" ? "原确认快照" : "期间有效任职关系"}`,
                       },
                       {
                         key: "status",
@@ -444,6 +683,68 @@ export function PayrollBatchDetailPage() {
               label: "版本与操作记录",
               children: (
                 <div className={styles.panel}>
+                  {corrections.data?.map((item) => (
+                    <Descriptions
+                      key={item.id}
+                      size="small"
+                      bordered
+                      column={1}
+                      items={[
+                        {
+                          key: "reason",
+                          label: "更正原因",
+                          children: item.reason,
+                        },
+                        {
+                          key: "source",
+                          label: "原批次",
+                          children: (
+                            <Link
+                              to={`/payroll/batches/${item.original_batch_id}`}
+                            >
+                              #{item.original_batch_id}
+                            </Link>
+                          ),
+                        },
+                        {
+                          key: "replacement",
+                          label: "替代版本",
+                          children: (
+                            <Link
+                              to={`/payroll/batches/${item.replacement_batch_id}`}
+                            >
+                              #{item.replacement_batch_id}
+                            </Link>
+                          ),
+                        },
+                        {
+                          key: "status",
+                          label: "更正状态",
+                          children:
+                            item.status === "applied"
+                              ? "已生效"
+                              : item.status === "cancelled"
+                                ? "已取消"
+                                : "待生效",
+                        },
+                        {
+                          key: "input_history",
+                          label: "输入修正记录",
+                          children: item.input_history?.length
+                            ? item.input_history.map((change, index) => (
+                                <div key={index}>
+                                  {new Date(change.created_at).toLocaleString(
+                                    "zh-CN",
+                                  )}{" "}
+                                  · 员工 #{change.employee_id} ·{" "}
+                                  {change.source_note}
+                                </div>
+                              ))
+                            : "尚无输入修正",
+                        },
+                      ]}
+                    />
+                  ))}
                   {result ? (
                     <Descriptions
                       size="small"
@@ -518,10 +819,108 @@ export function PayrollBatchDetailPage() {
         >
           锁定本期批次
         </Button>
+        {detail.is_effective !== false &&
+        (detail.status === "confirmed" ||
+          detail.status === "locked" ||
+          detail.status === "exported") ? (
+          <Button onClick={() => setCorrectionOpen(true)}>发起整批更正</Button>
+        ) : null}
+        {pendingCorrection ? (
+          <Button
+            loading={cancelCorrection.isPending}
+            onClick={() => cancelCorrection.mutate(pendingCorrection.id)}
+          >
+            取消更正
+          </Button>
+        ) : null}
         <Link to={`/payroll/ledger?period_id=${detail.period_id}`}>
           查看工资台账
         </Link>
       </footer>
+
+      <Modal
+        title="发起整批更正"
+        open={correctionOpen}
+        okText="生成替代版本"
+        cancelText="取消"
+        confirmLoading={correction.isPending}
+        okButtonProps={{ disabled: !correctionReason.trim() }}
+        onCancel={() => setCorrectionOpen(false)}
+        onOk={() => correction.mutate()}
+      >
+        <Alert
+          type="info"
+          showIcon
+          title="将覆盖本批次全体员工"
+          description="原批次内容保持不变。替代版本重新试算并全员确认后，锁定时自动成为期间有效版本。"
+        />
+        <Input.TextArea
+          autoFocus
+          rows={4}
+          maxLength={2000}
+          showCount
+          value={correctionReason}
+          onChange={(event) => setCorrectionReason(event.target.value)}
+          placeholder="请填写更正原因，便于后续追溯"
+          style={{ marginTop: 16 }}
+        />
+      </Modal>
+
+      <Modal
+        title={`修正月度输入 · ${editingInput?.employee_name ?? ""}`}
+        open={Boolean(editingInput)}
+        width="min(680px, calc(100vw - 32px))"
+        okText="保存修正输入"
+        confirmLoading={saveInput.isPending}
+        okButtonProps={{ disabled: !inputSource.trim() || !inputChanged }}
+        onCancel={() => setEditingInput(undefined)}
+        onOk={() => saveInput.mutate()}
+      >
+        <p>以原确认快照为基线，填写需要更正的值；原始导入记录保留。</p>
+        <div className={styles.inputGrid}>
+          {[
+            ["expected_work_days", "应出勤天数"],
+            ["late_minutes", "迟到分钟"],
+            ["early_leave_minutes", "早退分钟"],
+            ["paid_leave_days", "有薪请假天数"],
+            ["unpaid_leave_days", "无薪请假天数"],
+            ["missed_punch_count", "忘打卡次数"],
+            ["corrected_punch_count", "补卡次数"],
+            ["performance_coefficient", "绩效系数"],
+          ]
+            .filter(([key]) =>
+              key === "performance_coefficient"
+                ? editingInput?.performance_coefficient !== null
+                : Boolean(editingInput?.attendance),
+            )
+            .map(([key, label]) => (
+              <label key={key}>
+                <span>{label}</span>
+                <Input
+                  aria-label={label}
+                  inputMode="decimal"
+                  value={inputValues[key] ?? ""}
+                  onChange={(event) =>
+                    setInputValues((current) => ({
+                      ...current,
+                      [key]: event.target.value,
+                    }))
+                  }
+                />
+              </label>
+            ))}
+        </div>
+        <label className={styles.sourceField}>
+          <span>修正来源说明 *</span>
+          <Input.TextArea
+            aria-label="修正来源说明"
+            maxLength={500}
+            rows={2}
+            value={inputSource}
+            onChange={(event) => setInputSource(event.target.value)}
+          />
+        </label>
+      </Modal>
 
       <Drawer
         title={`${selected?.employee_name ?? "员工"} · 试算明细`}

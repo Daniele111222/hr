@@ -7,6 +7,7 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from paylite.db.models import (
+    PayrollBatch,
     PayrollCalculationDetail,
     PayrollItem,
     PayrollPeriod,
@@ -40,9 +41,11 @@ def get_ledger(
     query = (
         select(PayrollRecord, Subject.name)
         .join(Subject, Subject.id == PayrollRecord.subject_id)
+        .join(PayrollBatch, PayrollBatch.id == PayrollRecord.payroll_batch_id)
         .where(
             PayrollRecord.payroll_period_id == period_id,
             PayrollRecord.calculation_status.in_(["confirmed", "locked"]),
+            PayrollBatch.is_effective.is_(True),
         )
         .order_by(
             PayrollRecord.subject_id,

@@ -19,12 +19,12 @@ PayLite 当前使用本机 PostgreSQL 保存单一目标公司的工资数据。
 - `payroll_period` → `payroll_batch`；批次属于主体和工资期间。
 - `import_batch` / `import_row` 保存原始文件和逐行校验；`attendance_record`、`performance_record` 保存规范化月度输入。
 - `payroll_record` 保存员工工资结果和计算时快照；`payroll_item`、`payroll_calculation_detail` 保存项目和计算依据。
-- `correction_batch` 关联原批次与替代批次；`export_batch` / `export_warning` 保存输出和留空提示。
+- `correction_batch` 关联原批次与替代批次，`input_overrides` 保存历史输入修正及来源记录；`export_batch` / `export_warning` 保存输出和留空提示。
 
 ## 关键约束
 
 - 身份证号码使用 `TEXT`，并在公司范围内唯一。
-- 正常工资批次通过 PostgreSQL partial unique index 保证同一主体同一期间只有一个；补发和其他批次使用独立批次类型/批次号。
+- 正常工资批次通过 PostgreSQL partial unique index 保证同一主体同一期间只有一个有效版本；整批更正的历史版本使用 `is_effective = false` 保留，补发和其他批次使用独立批次类型/批次号。
 - 导入文件哈希按工资期间和导入类型唯一：同期间同类型重复文件被拒绝，跨期间可以保存为新批次。
 - 导入工作表/行号、规则城市/生效起始日均有唯一约束。
 - 金额使用 `NUMERIC(18, 2)`；绩效系数、比例和中间数量使用更高精度 `NUMERIC`。

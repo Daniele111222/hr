@@ -16,6 +16,7 @@ from paylite.db.models import (
     PayrollTrialRun,
     Subject,
 )
+from paylite.services.payroll_correction import PayrollCorrectionError, activate_locked_correction
 from paylite.services.payroll_trial import get_trial
 
 
@@ -47,12 +48,24 @@ def _batches(db: Session, period_id: int, *, lock: bool = False) -> list[Payroll
         .where(
             PayrollBatch.payroll_period_id == period_id,
             PayrollBatch.batch_type == "normal",
+            PayrollBatch.status != "cancelled",
         )
         .order_by(PayrollBatch.subject_id, PayrollBatch.id)
     )
     if lock:
         query = query.with_for_update()
-    return list(db.scalars(query))
+    batches = list(db.scalars(query))
+    selected: dict[int, PayrollBatch] = {}
+    for batch in batches:
+        if batch.is_effective or batch.status in {
+            "draft",
+            "trial",
+            "confirmed",
+            "locked",
+            "exported",
+        }:
+            selected[batch.subject_id] = batch
+    return list(selected.values())
 
 
 def _company_subjects(db: Session, period_id: int) -> list[Subject]:
@@ -118,6 +131,8 @@ def mark_latest_trial_viewed(db: Session, batch_id: int) -> None:
 
 def _batch_blockers(db: Session, batch: PayrollBatch) -> list[str]:
     blockers: list[str] = []
+    if batch.status in {"confirmed", "locked", "exported"}:
+        return blockers
     if batch.status not in {"draft", "trial"}:
         return [f"{batch.subject_id}批次当前状态为{batch.status}，不能重复确认"]
     trial = _latest_trial(db, batch.id)
@@ -271,6 +286,8 @@ def confirm_period(db: Session, period_id: int) -> dict[str, Any]:
         raise PayrollConfirmationError(409, "；".join(blockers))
     now = _now()
     for batch in batches:
+        if batch.status in {"confirmed", "locked", "exported"}:
+            continue
         trial = _latest_trial(db, batch.id, lock=True)
         assert trial is not None
         _create_records(db, batch, trial)
@@ -308,5 +325,11 @@ def lock_period(db: Session, period_id: int) -> dict[str, Any]:
         if batch.status == "confirmed":
             batch.status = "locked"
             batch.locked_at = now
+    db.flush()
+    try:
+        for batch in batches:
+            activate_locked_correction(db, batch)
+    except PayrollCorrectionError as exc:
+        raise PayrollConfirmationError(exc.status_code, exc.detail) from exc
     db.commit()
     return confirmation_state(db, period.id)

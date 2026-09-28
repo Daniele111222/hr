@@ -12,9 +12,6 @@ from sqlalchemy.orm import Session
 
 from paylite.db.models import (
     AttendanceIncentiveRun,
-    AttendanceRecord,
-    Employee,
-    EmployeeAssignment,
     PayrollBatch,
     PayrollPeriod,
     PayrollTrialRun,
@@ -61,6 +58,20 @@ def _money_text(value: Decimal | str | int | float) -> str:
     return str(money(Decimal(str(value))))
 
 
+def _current_batch(db: Session, period_id: int, subject_id: int) -> PayrollBatch | None:
+    return db.scalar(
+        select(PayrollBatch)
+        .where(
+            PayrollBatch.subject_id == subject_id,
+            PayrollBatch.payroll_period_id == period_id,
+            PayrollBatch.batch_type == "normal",
+            PayrollBatch.status != "cancelled",
+        )
+        .order_by(PayrollBatch.id.desc())
+        .limit(1)
+    )
+
+
 def _source_data(
     db: Session, source_period: PayrollPeriod, subjects: list[Subject]
 ) -> tuple[list[dict[str, Any]], Decimal, list[str]]:
@@ -73,6 +84,7 @@ def _source_data(
                 PayrollBatch.subject_id == subject.id,
                 PayrollBatch.payroll_period_id == source_period.id,
                 PayrollBatch.batch_type == "normal",
+                PayrollBatch.is_effective.is_(True),
             )
         )
         if batch is None or batch.status not in {"locked", "exported"}:
@@ -113,45 +125,21 @@ def _source_data(
 def _current_data(
     db: Session, period: PayrollPeriod, subjects: list[Subject]
 ) -> tuple[list[dict[str, Any]], list[str]]:
-    subject_ids = [subject.id for subject in subjects]
-    assignments = list(
-        db.scalars(
-            select(EmployeeAssignment)
-            .where(
-                EmployeeAssignment.subject_id.in_(subject_ids or [-1]),
-                EmployeeAssignment.effective_from <= period.period_end,
-                (EmployeeAssignment.effective_to.is_(None))
-                | (EmployeeAssignment.effective_to >= period.period_start),
-            )
-            .order_by(
-                EmployeeAssignment.employee_id,
-                EmployeeAssignment.effective_from,
-                EmployeeAssignment.id,
-            )
-        )
-    )
-    grouped: dict[int, list[EmployeeAssignment]] = defaultdict(list)
-    for assignment in assignments:
-        grouped[assignment.employee_id].append(assignment)
-    employees = list(
-        db.scalars(
-            select(Employee)
-            .where(
-                Employee.hire_date <= period.period_end,
-                (Employee.termination_date.is_(None))
-                | (Employee.termination_date >= period.period_start),
-            )
-            .order_by(Employee.id)
-        )
-    )
-    attendance = {
-        row.employee_id: row
-        for row in db.scalars(
-            select(AttendanceRecord).where(AttendanceRecord.payroll_period_id == period.id)
-        )
-    }
+    grouped: dict[int, list[Any]] = defaultdict(list)
+    employees: dict[int, Any] = {}
+    attendance: dict[int, Any] = {}
+    for subject in subjects:
+        batch = _current_batch(db, period.id, subject.id)
+        if batch is None:
+            continue
+        _, data = _load_snapshot(db, batch, period)
+        for employee in data["employees"]:
+            employees[employee.id] = employee
+        for employee_id, rows in data["assignments"].items():
+            grouped[employee_id].extend(rows)
+        attendance.update(data["attendance"])
     candidates: list[dict[str, Any]] = []
-    for employee in employees:
+    for employee in sorted(employees.values(), key=lambda row: row.id):
         rows = grouped.get(employee.id, [])
         subjects_for_employee = sorted({row.subject_id for row in rows})
         assignment = rows[-1] if rows else None
@@ -223,13 +211,7 @@ def _current_batch_data(
     rows: list[dict[str, Any]] = []
     errors: list[str] = []
     for subject in subjects:
-        batch = db.scalar(
-            select(PayrollBatch).where(
-                PayrollBatch.subject_id == subject.id,
-                PayrollBatch.payroll_period_id == period.id,
-                PayrollBatch.batch_type == "normal",
-            )
-        )
+        batch = _current_batch(db, period.id, subject.id)
         if batch is None:
             errors.append(f"{subject.name}缺少{_period_text(period)}正常工资批次")
             continue
@@ -261,11 +243,15 @@ def _current_batch_data(
 def _fingerprint_payload(
     source: list[dict[str, Any]], current: list[dict[str, Any]], candidates: list[dict[str, Any]]
 ) -> str:
+    stable_source = [
+        {key: value for key, value in row.items() if key != "batch_status"} for row in source
+    ]
     stable_current = [
-        {key: value for key, value in row.items() if key != "trial_id"} for row in current
+        {key: value for key, value in row.items() if key not in {"trial_id", "batch_status"}}
+        for row in current
     ]
     payload = json.dumps(
-        {"source": source, "current": stable_current, "candidates": candidates},
+        {"source": stable_source, "current": stable_current, "candidates": candidates},
         sort_keys=True,
         ensure_ascii=False,
         separators=(",", ":"),
