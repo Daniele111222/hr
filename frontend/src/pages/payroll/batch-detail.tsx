@@ -50,6 +50,11 @@ export function PayrollBatchDetailPage() {
     queryFn: () => resources.payrollTrial(batchId),
     enabled: Number.isInteger(batchId) && batchId > 0,
   });
+  const confirmation = useQuery({
+    queryKey: ["payroll", "confirmation", batch.data?.period_id],
+    queryFn: () => resources.payrollConfirmation(batch.data!.period_id),
+    enabled: Boolean(batch.data?.period_id),
+  });
   const run = useMutation({
     mutationFn: () => resources.runPayrollTrial(batchId),
     onSuccess: (value) => {
@@ -57,8 +62,41 @@ export function PayrollBatchDetailPage() {
       queryClient.invalidateQueries({
         queryKey: ["payroll", "batch", batchId],
       });
+      queryClient.invalidateQueries({
+        queryKey: ["payroll", "confirmation", batch.data?.period_id],
+      });
       queryClient.invalidateQueries({ queryKey: ["payroll", "workbench"] });
       message.success("普通工资试算完成");
+    },
+    onError: (error) => message.error(error.message),
+  });
+  const confirm = useMutation({
+    mutationFn: () => resources.confirmPayrollPeriod(batch.data!.period_id),
+    onSuccess: (value) => {
+      queryClient.setQueryData(
+        ["payroll", "confirmation", batch.data!.period_id],
+        value,
+      );
+      queryClient.invalidateQueries({
+        queryKey: ["payroll", "batch", batchId],
+      });
+      queryClient.invalidateQueries({ queryKey: ["payroll", "workbench"] });
+      message.success("本期正常工资已整批确认");
+    },
+    onError: (error) => message.error(error.message),
+  });
+  const lock = useMutation({
+    mutationFn: () => resources.lockPayrollPeriod(batch.data!.period_id),
+    onSuccess: (value) => {
+      queryClient.setQueryData(
+        ["payroll", "confirmation", batch.data!.period_id],
+        value,
+      );
+      queryClient.invalidateQueries({
+        queryKey: ["payroll", "batch", batchId],
+      });
+      queryClient.invalidateQueries({ queryKey: ["payroll", "workbench"] });
+      message.success("本期正常工资已锁定");
     },
     onError: (error) => message.error(error.message),
   });
@@ -84,6 +122,7 @@ export function PayrollBatchDetailPage() {
 
   const detail = batch.data;
   const result = trial.data;
+  const confirmationState = confirmation.data;
   const preparation = detail.data_preparation;
   const preparationRows = [
     {
@@ -174,6 +213,23 @@ export function PayrollBatchDetailPage() {
           showIcon
           title={`${result.error_count} 名员工试算失败`}
           description="已保留其他员工的试算结果；请在“校验与异常”查看具体原因。"
+        />
+      ) : null}
+      {Array.isArray(confirmationState?.blockers) &&
+      confirmationState.blockers.length ? (
+        <Alert
+          type="warning"
+          showIcon
+          title="整批确认仍有阻断项"
+          description={confirmationState.blockers.join("；")}
+        />
+      ) : null}
+      {confirmation.error ? (
+        <Alert
+          type="error"
+          showIcon
+          title="整批确认状态加载失败"
+          description={confirmation.error.message}
         />
       ) : null}
       <Alert
@@ -445,9 +501,26 @@ export function PayrollBatchDetailPage() {
         >
           {result ? "重新试算" : "开始普通试算"}
         </Button>
-        <Button disabled title="须完成全公司考勤激励并通过整批校验">
+        <Button
+          type="primary"
+          loading={confirm.isPending}
+          disabled={
+            !confirmationState?.can_confirm || !result?.ready_for_confirmation
+          }
+          onClick={() => confirm.mutate()}
+        >
           整批确认
         </Button>
+        <Button
+          loading={lock.isPending}
+          disabled={!confirmationState?.can_lock}
+          onClick={() => lock.mutate()}
+        >
+          锁定本期批次
+        </Button>
+        <Link to={`/payroll/ledger?period_id=${detail.period_id}`}>
+          查看工资台账
+        </Link>
       </footer>
 
       <Drawer

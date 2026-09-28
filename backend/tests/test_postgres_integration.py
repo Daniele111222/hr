@@ -16,6 +16,7 @@ from sqlalchemy.engine import URL, make_url
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
+import paylite.services.payroll_confirmation as payroll_confirmation_service
 import paylite.services.payroll_trial as payroll_trial_service
 from paylite.api.deps import get_db
 from paylite.application import create_app
@@ -36,6 +37,7 @@ from paylite.db.models import (
     ImportBatch,
     ImportRow,
     PayrollBatch,
+    PayrollItem,
     PayrollPeriod,
     PayrollRecord,
     PayrollTrialRun,
@@ -1553,10 +1555,10 @@ def test_company_attendance_incentive_is_multi_subject_idempotent_and_stale(
     department = Department(company_id=company.id, code="INC09-D", name="激励部门")
     db_session.add(department)
     previous = PayrollPeriod(
-        year=2028, month=3, period_start=date(2028, 3, 1), period_end=date(2028, 3, 31)
+        year=2028, month=7, period_start=date(2028, 7, 1), period_end=date(2028, 7, 31)
     )
     current = PayrollPeriod(
-        year=2028, month=4, period_start=date(2028, 4, 1), period_end=date(2028, 4, 30)
+        year=2028, month=8, period_start=date(2028, 8, 1), period_end=date(2028, 8, 31)
     )
     subjects = [
         Subject(company_id=company.id, code="INC09-A", name="主体 A"),
@@ -1596,13 +1598,13 @@ def test_company_attendance_incentive_is_multi_subject_idempotent_and_stale(
     db_session.flush()
     rule = SocialSecurityRule(
         city_id=city.id,
-        effective_from=date(2028, 1, 1),
+        effective_from=date(2028, 6, 1),
         version="inc09",
         fixed_base=Decimal("5000"),
     )
     housing = HousingFundRule(
         city_id=city.id,
-        effective_from=date(2028, 1, 1),
+        effective_from=date(2028, 6, 1),
         company_rate=Decimal("0.05"),
         employee_rate=Decimal("0.05"),
         base_min=0,
@@ -1610,15 +1612,18 @@ def test_company_attendance_incentive_is_multi_subject_idempotent_and_stale(
         version="inc09",
         base_source="fixed_salary",
     )
-    attendance_rule = AttendanceRule(
-        effective_from=date(2028, 1, 1),
-        version="inc09",
-        standard_hours=8,
-        missed_punch_amount=30,
-        exempt_level_number=7,
-        makeup_punch_exempt=True,
-    )
-    db_session.add_all([rule, housing, attendance_rule])
+    attendance_rule = db_session.scalar(select(AttendanceRule).order_by(AttendanceRule.id.desc()))
+    db_session.add_all([rule, housing])
+    if attendance_rule is None:
+        attendance_rule = AttendanceRule(
+            effective_from=date(2028, 6, 1),
+            version="inc09",
+            standard_hours=8,
+            missed_punch_amount=30,
+            exempt_level_number=7,
+            makeup_punch_exempt=True,
+        )
+        db_session.add(attendance_rule)
     db_session.flush()
     db_session.add(
         SocialSecurityItemRule(
@@ -1776,3 +1781,150 @@ def test_company_attendance_incentive_is_multi_subject_idempotent_and_stale(
     stale = api_client.get(f"/payroll/periods/{current.id}/attendance-incentive").json()
     assert stale["status"] == "blocked"
     assert "试算已失效" in stale["message"]
+
+
+def test_payroll_confirmation_lock_and_ledger_use_snapshot(
+    api_client, db_session: Session, monkeypatch
+) -> None:
+    company = Company(code="CONF10", name="确认测试公司")
+    subject = Subject(company_id=1, code="CONF10-S", name="确认主体")
+    period = PayrollPeriod(
+        year=2028, month=9, period_start=date(2028, 9, 1), period_end=date(2028, 9, 30)
+    )
+    employee = Employee(
+        company_id=1,
+        id_number="11010119900101001X",
+        employee_no="CONF10-001",
+        name="快照员工",
+        employee_type="employee",
+        hire_date=date(2020, 1, 1),
+    )
+    db_session.add(company)
+    db_session.flush()
+    subject.company_id = company.id
+    employee.company_id = company.id
+    db_session.add_all([subject, period, employee])
+    db_session.flush()
+    batch = PayrollBatch(
+        subject_id=subject.id,
+        payroll_period_id=period.id,
+        batch_type="normal",
+        status="trial",
+    )
+    db_session.add(batch)
+    db_session.flush()
+    trial = PayrollTrialRun(
+        payroll_batch_id=batch.id,
+        input_fingerprint="confirm10-fingerprint",
+        input_snapshot={},
+        viewed_at=None,
+        includes_final_incentive=True,
+        results=[
+            {
+                "employee_id": employee.id,
+                "employee_name": "快照员工",
+                "snapshot": {
+                    "id_number": employee.id_number,
+                    "employee_no": employee.employee_no,
+                    "name": employee.name,
+                    "department_name": "研发",
+                    "fixed_salary": "8000.00",
+                    "performance_base": "2000.00",
+                },
+                "errors": [],
+                "warnings": [],
+                "amounts": {
+                    "gross": "10000.00",
+                    "attendance_deduction": "0.00",
+                    "employee_social": "600.00",
+                    "employee_housing": "400.00",
+                    "untaxed_amount": "9000.00",
+                    "employer_cost": "11000.00",
+                },
+                "items": [
+                    {
+                        "code": "fixed_salary",
+                        "name": "固定薪资",
+                        "category": "income",
+                        "amount": "8000.00",
+                    }
+                ],
+                "steps": [],
+            }
+        ],
+    )
+    db_session.add(trial)
+    batch_id = batch.id
+    period_id = period.id
+    db_session.commit()
+    viewed = api_client.get(f"/payroll/batches/{batch_id}/trial")
+    assert viewed.status_code == 200
+    db_session.expire_all()
+    assert db_session.get(PayrollTrialRun, trial.id).viewed_at is not None
+    trial_state = {
+        "confirmation_blockers": ["存在员工试算错误"],
+        "total_count": 1,
+        "ready_for_confirmation": False,
+    }
+    monkeypatch.setattr(
+        payroll_confirmation_service, "get_trial", lambda _db, _batch_id: trial_state
+    )
+
+    blocked = api_client.post(f"/payroll/periods/{period_id}/confirmation")
+    assert blocked.status_code == 409
+    assert "存在员工试算错误" in blocked.json()["detail"]
+    trial_state.update(
+        confirmation_blockers=["试算输入已变化，请重新试算"], ready_for_confirmation=False
+    )
+    stale = api_client.post(f"/payroll/periods/{period_id}/confirmation")
+    assert stale.status_code == 409
+    assert "试算输入已变化" in stale.json()["detail"]
+    trial_state.update(confirmation_blockers=[], ready_for_confirmation=True)
+
+    with ThreadPoolExecutor(max_workers=2) as executor:
+        responses = list(
+            executor.map(
+                lambda _: api_client.post(f"/payroll/periods/{period_id}/confirmation"),
+                range(2),
+            )
+        )
+    assert all(response.status_code == 200 for response in responses)
+    confirmed = responses[0]
+    assert confirmed.json()["confirmed"] is True
+    retried_confirmation = api_client.post(f"/payroll/periods/{period_id}/confirmation")
+    assert retried_confirmation.status_code == 200
+    record = db_session.scalar(
+        select(PayrollRecord).where(PayrollRecord.payroll_batch_id == batch.id)
+    )
+    assert record is not None
+    record.snapshot_employee_name = "不应改写快照"
+    with pytest.raises(IntegrityError):
+        db_session.flush()
+    db_session.rollback()
+    item = db_session.scalar(select(PayrollItem).where(PayrollItem.payroll_record_id == record.id))
+    assert item is not None
+    item.amount = Decimal("1.00")
+    with pytest.raises(IntegrityError):
+        db_session.flush()
+    db_session.rollback()
+
+    with ThreadPoolExecutor(max_workers=2) as executor:
+        lock_responses = list(
+            executor.map(lambda _: api_client.post(f"/payroll/periods/{period_id}/lock"), range(2))
+        )
+    assert all(response.status_code == 200 for response in lock_responses)
+    record = db_session.scalar(
+        select(PayrollRecord).where(PayrollRecord.payroll_batch_id == batch.id)
+    )
+    assert record is not None
+    assert record.calculation_status == "locked"
+    record.snapshot_employee_name = "不应改写快照"
+    with pytest.raises(IntegrityError):
+        db_session.flush()
+    db_session.rollback()
+
+    ledger = api_client.get(f"/payroll/ledger?period_id={period_id}")
+    assert ledger.status_code == 200, ledger.text
+    assert ledger.json()["record_count"] == 1
+    assert ledger.json()["records"][0]["snapshot"]["name"] == "快照员工"
+    assert ledger.json()["totals"]["untaxed_amount"] == "9000.00"

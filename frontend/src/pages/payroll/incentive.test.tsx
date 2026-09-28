@@ -120,7 +120,7 @@ test("显示全公司激励池、候选快照并可计算", async () => {
   expect(screen.getByText("张三 · E007")).toBeInTheDocument();
   await userEvent
     .setup()
-    .click(screen.getByRole("button", { name: "计算本期激励" }));
+    .click(screen.getByRole("button", { name: /计算本期激励/ }));
   await waitFor(() =>
     expect(fetchMock).toHaveBeenCalledWith(
       "/api/payroll/periods/2/attendance-incentive",
@@ -145,5 +145,5 @@ test("数据未就绪时禁用计算", async () => {
   );
   renderPage();
   expect(await screen.findByText("全公司数据尚未就绪")).toBeInTheDocument();
-  expect(screen.getByRole("button", { name: "计算本期激励" })).toBeDisabled();
+  expect(screen.getByRole("button", { name: /计算本期激励/ })).toBeDisabled();
 });

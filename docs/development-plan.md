@@ -24,7 +24,7 @@
 | 07 | [绩效导入与错误修正](../.scratch/paylite-mvp/issues/07-performance-import.md) | 02 ✅、05 ✅ | 已完成 |
 | 08 | [普通工资试算与核对](../.scratch/paylite-mvp/issues/08-payroll-trial.md) | 03 ✅、06 ✅、07 ✅ | 已完成 |
 | 09 | [全公司考勤激励](../.scratch/paylite-mvp/issues/09-attendance-incentive.md) | 08 | 进行中 |
-| 10 | [整批确认、锁定与台账](../.scratch/paylite-mvp/issues/10-confirmation-ledger.md) | 09 | 未开始 |
+| 10 | [整批确认、锁定与台账](../.scratch/paylite-mvp/issues/10-confirmation-ledger.md) | 09 | 已完成 |
 | 11 | [整批更正与有效版本切换](../.scratch/paylite-mvp/issues/11-corrections.md) | 10 | 未开始 |
 | 12 | [独立补发批次](../.scratch/paylite-mvp/issues/12-supplements.md) | 10 | 未开始 |
 | 13 | [工资表导出](../.scratch/paylite-mvp/issues/13-payroll-export.md) | 10 | 未开始 |
@@ -44,9 +44,9 @@
 
 以 2026-09-24 的当前工作区代码为准；04、06、07 的实现已完成。
 
-**已有：** 应用工厂、健康检查、ORM、`0001`—`0005` 迁移与后端 CI；组织、员工、规则、工资期间和批次、员工、考勤及绩效 Excel 导入接口与前端页面；对应 service 与 Excel 适配器已随功能落地；前端工程使用 Vite、React、TypeScript 和 Less。
+**已有：** 应用工厂、健康检查、ORM、`0001`—`0008` 迁移与后端 CI；组织、员工、规则、工资期间和批次、员工、考勤及绩效 Excel 导入、试算、确认锁定和台账接口与前端页面；对应 service 与 Excel 适配器已随功能落地；前端工程使用 Vite、React、TypeScript 和 Less。
 
-**尚无：** 算薪核心及其纯计算 `domain` 模块、正式工资台账与四类导出；项目内 Playwright 依赖（页面核对使用临时 CLI）。
+**尚无：** 纯计算 `domain` 模块与四类导出；项目内 Playwright 依赖（页面核对使用临时 CLI）。
 
 数据库中存在字段不等于对应业务已实现；`api/` 下有文件不等于该业务闭环已验收。
 

@@ -350,6 +350,11 @@ def _employee_trial(
         "name": employee.name,
         "department_name": department.name if department else None,
         "position_title": last_assignment.position_title if last_assignment else None,
+        "level_code": (
+            last_assignment.level_code
+            if last_assignment and last_assignment.level_code is not None
+            else employee.level_code
+        ),
         "level_number": level_number,
         "fixed_salary": str(last_salary.fixed_salary) if last_salary else None,
         "performance_base": str(last_salary.performance_base) if last_salary else None,
@@ -536,12 +541,18 @@ def get_trial(db: Session, batch_id: int) -> dict[str, Any] | None:
 
 
 def run_trial(db: Session, batch_id: int) -> dict[str, Any]:
-    batch = db.get(PayrollBatch, batch_id, with_for_update=True)
+    batch = db.get(PayrollBatch, batch_id)
     if batch is None or batch.batch_type != "normal":
         raise TrialError(404, "正常工资批次不存在")
+    period = db.get(PayrollPeriod, batch.payroll_period_id, with_for_update=True)
+    batch = db.scalar(
+        select(PayrollBatch)
+        .where(PayrollBatch.id == batch_id)
+        .with_for_update()
+        .execution_options(populate_existing=True)
+    )
     if batch.status not in {"draft", "trial"}:
         raise TrialError(409, "已确认或锁定的批次不能重新试算")
-    period = db.get(PayrollPeriod, batch.payroll_period_id, with_for_update=True)
     snapshot, data = _load_snapshot(db, batch, period)
     fingerprint = _fingerprint(snapshot)
     previous = _latest(db, batch_id)

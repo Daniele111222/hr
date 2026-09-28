@@ -227,6 +227,45 @@ export type PayrollTrial = {
   ready_for_confirmation: boolean;
   confirmation_blockers: string[];
 };
+export type PayrollConfirmation = {
+  period_id: number;
+  period: string;
+  subject_count: number;
+  batch_count: number;
+  batches: {
+    id: number;
+    subject_id: number;
+    status: PayrollBatch["status"];
+    confirmed_trial_id: number | null;
+    confirmed_at: string | null;
+    locked_at: string | null;
+  }[];
+  confirmed: boolean;
+  locked: boolean;
+  can_confirm: boolean;
+  can_lock: boolean;
+  blockers: string[];
+};
+export type PayrollLedger = {
+  period_id: number;
+  period: string;
+  filters: Record<string, unknown>;
+  record_count: number;
+  records: {
+    id: number;
+    payroll_batch_id: number;
+    subject_id: number;
+    subject_name: string;
+    employee_id: number;
+    snapshot: Record<string, unknown>;
+    amounts: Record<string, string>;
+    items: Record<string, unknown>[];
+    steps: Record<string, unknown>[];
+    calculation_status: "confirmed" | "locked";
+  }[];
+  totals: Record<string, string>;
+  untaxed_tax_notice: string;
+};
 export type AttendanceIncentiveRun = {
   id: number;
   company_id: number;
@@ -416,6 +455,32 @@ export const resources = {
       `/payroll/periods/${periodId}/attendance-incentive`,
       json("POST"),
     ),
+  payrollConfirmation: (periodId: number) =>
+    request<PayrollConfirmation>(`/payroll/periods/${periodId}/confirmation`),
+  confirmPayrollPeriod: (periodId: number) =>
+    request<PayrollConfirmation>(
+      `/payroll/periods/${periodId}/confirmation`,
+      json("POST"),
+    ),
+  lockPayrollPeriod: (periodId: number) =>
+    request<PayrollConfirmation>(
+      `/payroll/periods/${periodId}/lock`,
+      json("POST"),
+    ),
+  payrollLedger: (
+    periodId: number,
+    filters?: {
+      subject_id?: number;
+      department?: string;
+      employee_id?: number;
+    },
+  ) => {
+    const query = new URLSearchParams({ period_id: String(periodId) });
+    Object.entries(filters ?? {}).forEach(([key, value]) => {
+      if (value !== undefined) query.set(key, String(value));
+    });
+    return request<PayrollLedger>(`/payroll/ledger?${query}`);
+  },
   createPayrollPeriod: (v: { period: string }) =>
     request<PayrollPeriod>("/payroll/periods", json("POST", v)),
   createPayrollBatch: (

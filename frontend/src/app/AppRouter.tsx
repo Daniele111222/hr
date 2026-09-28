@@ -50,6 +50,11 @@ const AttendanceIncentivePage = lazy(() =>
     default: module.AttendanceIncentivePage,
   })),
 );
+const PayrollLedgerPage = lazy(() =>
+  import("../pages/payroll/ledger.tsx").then((module) => ({
+    default: module.PayrollLedgerPage,
+  })),
+);
 
 const placeholders = [
   {
@@ -93,6 +98,7 @@ export function AppRouter() {
             path="payroll/incentive"
             element={<AttendanceIncentivePage />}
           />
+          <Route path="payroll/ledger" element={<PayrollLedgerPage />} />
           {placeholders
             .filter(
               (item) => item.path !== "employees" && item.path !== "payroll",

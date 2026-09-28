@@ -112,6 +112,12 @@ class PayrollBatch(Base):
     batch_no: Mapped[int] = mapped_column(Integer, nullable=False, server_default="1")
     status: Mapped[str] = mapped_column(String(20), nullable=False, server_default="draft")
     name: Mapped[str | None] = mapped_column(String(200))
+    confirmed_trial_id: Mapped[int | None] = mapped_column(
+        ForeignKey("payroll_trial_run.id", ondelete="RESTRICT")
+    )
+    confirmed_input_fingerprint: Mapped[str | None] = mapped_column(String(64))
+    confirmed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    locked_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     created_at: Mapped[datetime] = created_at_column()
     updated_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True),
@@ -140,6 +146,7 @@ class PayrollTrialRun(Base):
     includes_final_incentive: Mapped[bool] = mapped_column(
         Boolean, nullable=False, server_default=text("false")
     )
+    viewed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     created_at: Mapped[datetime] = created_at_column()
 
 

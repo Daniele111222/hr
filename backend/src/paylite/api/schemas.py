@@ -391,6 +391,51 @@ class PayrollTrialOut(BaseModel):
     confirmation_blockers: list[str]
 
 
+class PayrollConfirmationBatchOut(BaseModel):
+    id: int
+    subject_id: int
+    status: Literal["draft", "trial", "confirmed", "locked", "exported", "cancelled"]
+    confirmed_trial_id: int | None
+    confirmed_at: datetime | None
+    locked_at: datetime | None
+
+
+class PayrollConfirmationOut(BaseModel):
+    period_id: int
+    period: str
+    subject_count: int
+    batch_count: int
+    batches: list[PayrollConfirmationBatchOut]
+    confirmed: bool
+    locked: bool
+    can_confirm: bool
+    can_lock: bool
+    blockers: list[str]
+
+
+class PayrollLedgerRecordOut(BaseModel):
+    id: int
+    payroll_batch_id: int
+    subject_id: int
+    subject_name: str
+    employee_id: int
+    snapshot: dict[str, Any]
+    amounts: dict[str, str]
+    items: list[dict[str, Any]]
+    steps: list[dict[str, Any]]
+    calculation_status: Literal["confirmed", "locked"]
+
+
+class PayrollLedgerOut(BaseModel):
+    period_id: int
+    period: str
+    filters: dict[str, Any]
+    record_count: int
+    records: list[PayrollLedgerRecordOut]
+    totals: dict[str, str]
+    untaxed_tax_notice: str
+
+
 class AttendanceIncentiveRunOut(BaseModel):
     id: int
     company_id: int

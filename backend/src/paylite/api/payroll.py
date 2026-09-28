@@ -10,7 +10,9 @@ from paylite.api.schemas import (
     AttendanceIncentiveOut,
     PayrollBatchCreate,
     PayrollBatchOut,
+    PayrollConfirmationOut,
     PayrollDataPreparationOut,
+    PayrollLedgerOut,
     PayrollPeriodCreate,
     PayrollPeriodOut,
     PayrollPreparationItemOut,
@@ -25,6 +27,14 @@ from paylite.services.attendance_incentive import (
     calculate_incentive,
     get_incentive,
 )
+from paylite.services.payroll_confirmation import (
+    PayrollConfirmationError,
+    confirm_period,
+    confirmation_state,
+    lock_period,
+    mark_latest_trial_viewed,
+)
+from paylite.services.payroll_ledger import PayrollLedgerError, get_ledger
 from paylite.services.payroll_trial import TrialError, get_trial, run_trial
 from paylite.services.payroll_workbench import (
     BatchType,
@@ -65,8 +75,85 @@ def post_attendance_incentive(period_id: int, db: Session = Depends(get_db)):
 @router.get("/batches/{batch_id}/trial", response_model=PayrollTrialOut | None)
 def get_batch_trial(batch_id: int, db: Session = Depends(get_db)):
     try:
+        mark_latest_trial_viewed(db, batch_id)
         return get_trial(db, batch_id)
-    except TrialError as exc:
+    except (TrialError, PayrollConfirmationError) as exc:
+        raise HTTPException(exc.status_code, exc.detail) from exc
+
+
+@router.get("/periods/{period_id}/confirmation", response_model=PayrollConfirmationOut)
+def get_confirmation(period_id: int, db: Session = Depends(get_db)):
+    try:
+        return confirmation_state(db, period_id)
+    except PayrollConfirmationError as exc:
+        raise HTTPException(exc.status_code, exc.detail) from exc
+
+
+@router.post("/periods/{period_id}/confirmation", response_model=PayrollConfirmationOut)
+def post_confirmation(period_id: int, db: Session = Depends(get_db)):
+    try:
+        return confirm_period(db, period_id)
+    except PayrollConfirmationError as exc:
+        db.rollback()
+        raise HTTPException(exc.status_code, exc.detail) from exc
+
+
+@router.post("/periods/{period_id}/lock", response_model=PayrollConfirmationOut)
+def post_lock(period_id: int, db: Session = Depends(get_db)):
+    try:
+        return lock_period(db, period_id)
+    except PayrollConfirmationError as exc:
+        db.rollback()
+        raise HTTPException(exc.status_code, exc.detail) from exc
+
+
+@router.post("/batches/{batch_id}/confirm", response_model=PayrollConfirmationOut)
+def post_batch_confirmation(batch_id: int, db: Session = Depends(get_db)):
+    batch = db.get(PayrollBatch, batch_id)
+    if batch is None:
+        raise HTTPException(404, "工资批次不存在")
+    try:
+        return confirm_period(db, batch.payroll_period_id)
+    except PayrollConfirmationError as exc:
+        db.rollback()
+        raise HTTPException(exc.status_code, exc.detail) from exc
+
+
+@router.post("/batches/{batch_id}/lock", response_model=PayrollConfirmationOut)
+def post_batch_lock(batch_id: int, db: Session = Depends(get_db)):
+    batch = db.get(PayrollBatch, batch_id)
+    if batch is None:
+        raise HTTPException(404, "工资批次不存在")
+    try:
+        return lock_period(db, batch.payroll_period_id)
+    except PayrollConfirmationError as exc:
+        db.rollback()
+        raise HTTPException(exc.status_code, exc.detail) from exc
+
+
+@router.get("/ledger", response_model=PayrollLedgerOut)
+def get_payroll_ledger(
+    period_id: int | None = Query(default=None),
+    period: str | None = Query(default=None, pattern=r"^\d{4}-(0[1-9]|1[0-2])$"),
+    subject_id: int | None = Query(default=None),
+    department: str | None = Query(default=None),
+    employee_id: int | None = Query(default=None),
+    db: Session = Depends(get_db),
+):
+    if period_id is None and period is None:
+        raise HTTPException(422, "必须提供工资期间")
+    try:
+        resolved_period_id = period_id
+        if resolved_period_id is None:
+            resolved_period_id = get_period_by_value(db, period).id  # type: ignore[arg-type]
+        return get_ledger(
+            db,
+            resolved_period_id,
+            subject_id=subject_id,
+            department=department,
+            employee_id=employee_id,
+        )
+    except (PayrollLedgerError, PayrollWorkbenchError) as exc:
         raise HTTPException(exc.status_code, exc.detail) from exc
 
 

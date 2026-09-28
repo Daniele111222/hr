@@ -274,10 +274,23 @@ def _fingerprint_payload(
 
 
 def _context(db: Session, period: PayrollPeriod) -> dict[str, Any]:
-    subjects = list(db.scalars(select(Subject).order_by(Subject.id)))
-    company_ids = sorted({subject.company_id for subject in subjects})
+    company_ids = sorted(
+        set(
+            db.scalars(
+                select(Subject.company_id)
+                .join(PayrollBatch, PayrollBatch.subject_id == Subject.id)
+                .where(
+                    PayrollBatch.payroll_period_id == period.id,
+                    PayrollBatch.batch_type == "normal",
+                )
+            )
+        )
+    )
     if len(company_ids) != 1:
         raise AttendanceIncentiveError(409, "当前系统只能为一个目标公司计算考勤激励")
+    subjects = list(
+        db.scalars(select(Subject).where(Subject.company_id == company_ids[0]).order_by(Subject.id))
+    )
     company_id = company_ids[0]
     previous = _previous_period(db, period)
     source_rows, pool, source_errors = (
@@ -350,6 +363,10 @@ def get_incentive(db: Session, period_id: int) -> dict[str, Any]:
         if latest
         else None
     )
+    stale = bool(result and result["stale"])
+    message_parts = context["source_errors"] + context["current_errors"]
+    if stale:
+        message_parts.append("试算已失效，请重新试算")
     return {
         "period_id": period.id,
         "period": _period_text(period),
@@ -358,19 +375,14 @@ def get_incentive(db: Session, period_id: int) -> dict[str, Any]:
         else None,
         "company_id": context["company_id"],
         "status": (
-            result["status"]
-            if result and not result["stale"]
-            else (
-                "stale"
-                if result
-                else (
-                    "blocked" if context["source_errors"] or context["current_errors"] else "ready"
-                )
-            )
+            "blocked"
+            if stale
+            else result["status"]
+            if result
+            else ("blocked" if context["source_errors"] or context["current_errors"] else "ready")
         ),
         "can_calculate": not context["source_errors"] and not context["current_errors"],
-        "message": "；".join(context["source_errors"] + context["current_errors"])
-        or (result["message"] if result else None),
+        "message": "；".join(message_parts) or (result["message"] if result else None),
         "source_rows": context["source_rows"],
         "current_rows": context["current_rows"],
         "pool_amount": str(context["pool"]),
