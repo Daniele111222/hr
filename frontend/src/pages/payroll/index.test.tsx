@@ -176,3 +176,29 @@ test("重复正常批次显示后端冲突", async () => {
 
   expect(await screen.findByText("该主体在此工资期间已有正常批次")).toBeInTheDocument();
 });
+
+test("可建立独立补发批次且必须填写原因", async () => {
+  const fetchMock = vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
+    if (String(input).includes("/organization/subjects")) return Response.json([batch.subject]);
+    if (String(input).endsWith("/payroll/periods/1/batches") && init?.method === "POST")
+      return Response.json({ ...batch, batch_type: "supplement", name: "补发差额" }, { status: 201 });
+    return Response.json({ period, periods: [period], batches: [batch] });
+  });
+  vi.stubGlobal("fetch", fetchMock);
+  const user = userEvent.setup();
+  renderPage();
+  await user.click(await screen.findByText("建立批次"));
+  await user.click(screen.getByRole("combobox", { name: "工资主体" }));
+  await user.click(await screen.findByText("主主体（MAIN）"));
+  await user.click(screen.getByRole("combobox", { name: "批次类型" }));
+  await user.click(await screen.findByText("独立补发"));
+  await user.click(screen.getByText("OK"));
+  expect(await screen.findByText("请填写补发原因")).toBeInTheDocument();
+  expect(fetchMock.mock.calls.some(([input, init]) => String(input).endsWith("/payroll/periods/1/batches") && init?.method === "POST")).toBe(false);
+  await user.type(screen.getByRole("textbox", { name: "补发原因" }), "补发差额");
+  await user.click(screen.getByText("OK"));
+  await waitFor(() => expect(fetchMock).toHaveBeenCalledWith(
+    "/api/payroll/periods/1/batches",
+    expect.objectContaining({ method: "POST", body: expect.stringContaining('"batch_type":"supplement"') }),
+  ));
+});

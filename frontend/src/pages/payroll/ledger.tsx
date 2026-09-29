@@ -81,10 +81,10 @@ export function PayrollLedgerPage() {
         .filter((value): value is string => typeof value === "string"),
     ),
   ).map((value) => ({ value, label: value }));
-  const employeeOptions = data.records.map((row) => ({
+  const employeeOptions = Array.from(new Map(data.records.map((row) => [row.employee_id, {
     value: row.employee_id,
     label: `${String(row.snapshot.name ?? "—")} · ${String(row.snapshot.employee_no ?? "—")}`,
-  }));
+  }])).values());
   return (
     <div className={styles.page}>
       <header className={styles.heading}>
@@ -149,7 +149,7 @@ export function PayrollLedgerPage() {
           </div>
           <div className={styles.metric}>
             <span>参与人数</span>
-            <strong>{data.record_count}</strong>
+            <strong>{data.employee_count}</strong>
           </div>
           <div className={styles.metric}>
             <span>应发金额合计</span>
@@ -166,7 +166,7 @@ export function PayrollLedgerPage() {
           <Table
             rowKey="id"
             size="small"
-            scroll={{ x: 900 }}
+            scroll={{ x: 1080 }}
             dataSource={data.records}
             columns={[
               {
@@ -179,6 +179,14 @@ export function PayrollLedgerPage() {
                 ),
               },
               { title: "主体", dataIndex: "subject_name" },
+              {
+                title: "发放来源",
+                render: (_: unknown, row) => row.batch_type === "supplement"
+                  ? <>独立补发 S{row.batch_no}<div>{row.batch_name}</div></>
+                  : row.correction_of_batch_id
+                    ? <>正常工资更正 N{row.batch_no}<div>替代批次 #{row.correction_of_batch_id}</div></>
+                    : <>正常工资 N{row.batch_no}</>,
+              },
               {
                 title: "部门",
                 render: (_: unknown, row) =>

@@ -2281,3 +2281,171 @@ def test_correction_switches_effective_version_without_rewriting_ledger(
     cancelled = cancel_correction(db_session, cancelled_correction["id"])
     assert cancelled["status"] == "cancelled"
     assert db_session.get(PayrollBatch, next_replacement_id).is_effective is True
+
+
+def test_independent_supplement_confirms_once_and_joins_effective_ledger(
+    api_client: TestClient, db_session: Session
+) -> None:
+    company, _, subject, period, employee = create_base_records(
+        db_session, "SUP12", month=9, year=2035
+    )
+    department = Department(company_id=company.id, code="SUP12-D", name="测试部门")
+    db_session.add(department)
+    db_session.flush()
+    relation = SubjectDepartment(
+        company_id=company.id,
+        subject_id=subject.id,
+        department_id=department.id,
+        code="SUP12-R",
+        name="测试部门",
+    )
+    normal = PayrollBatch(
+        subject_id=subject.id,
+        payroll_period_id=period.id,
+        batch_type="normal",
+        status="locked",
+    )
+    db_session.add_all([relation, normal])
+    db_session.flush()
+    db_session.add_all(
+        [
+            EmployeeAssignment(
+                employee_id=employee.id,
+                subject_id=subject.id,
+                subject_department_id=relation.id,
+                position_title="测试职位",
+                effective_from=date(2020, 1, 1),
+            ),
+            EmployeeSalary(
+                employee_id=employee.id,
+                fixed_salary=Decimal("800.00"),
+                performance_base=Decimal("200.00"),
+                effective_from=date(2020, 1, 1),
+            ),
+            PayrollRecord(
+                payroll_batch_id=normal.id,
+                payroll_period_id=period.id,
+                subject_id=subject.id,
+                employee_id=employee.id,
+                snapshot_id_number=employee.id_number,
+                snapshot_employee_no=employee.employee_no,
+                snapshot_employee_name=employee.name,
+                snapshot_department_name="测试部门",
+                snapshot_fixed_salary=Decimal("800.00"),
+                snapshot_performance_base=Decimal("200.00"),
+                gross_amount=Decimal("1000.00"),
+                deduction_amount=Decimal("100.00"),
+                net_amount=Decimal("900.00"),
+                employer_cost_amount=Decimal("1200.00"),
+                calculation_status="locked",
+            ),
+        ]
+    )
+    db_session.commit()
+    period_id, subject_id, employee_id = period.id, subject.id, employee.id
+    created = api_client.post(
+        f"/payroll/periods/{period_id}/batches",
+        json={"subject_id": subject_id, "batch_type": "supplement", "name": "补发差额"},
+    )
+    assert created.status_code == 201, created.text
+    batch_id = created.json()["id"]
+    assert created.json()["batch_no"] == 1
+    assert created.json()["payment_date"] is None
+    next_batch = api_client.post(
+        f"/payroll/periods/{period_id}/batches",
+        json={"subject_id": subject_id, "batch_type": "supplement", "name": "另一笔补发"},
+    )
+    assert next_batch.status_code == 201
+    assert next_batch.json()["batch_no"] == 2
+    inputs_url = f"/payroll/batches/{batch_id}/supplement-inputs"
+    duplicate = api_client.put(
+        inputs_url,
+        json=[{"employee_id": employee_id, "amount": "50.00"}] * 2,
+    )
+    assert duplicate.status_code == 422
+    assert (
+        api_client.put(
+            inputs_url, json=[{"employee_id": employee_id, "amount": "50.00"}]
+        ).status_code
+        == 200
+    )
+    first = api_client.post(f"/payroll/batches/{batch_id}/trial")
+    assert first.status_code == 200, first.text
+    assert api_client.post(f"/payroll/batches/{batch_id}/trial").json()["id"] == first.json()["id"]
+    assert api_client.get(f"/payroll/batches/{batch_id}/trial").json()["ready_for_confirmation"]
+    assert (
+        api_client.put(
+            inputs_url, json=[{"employee_id": employee_id, "amount": "60.00"}]
+        ).status_code
+        == 200
+    )
+    assert api_client.post(f"/payroll/batches/{batch_id}/confirm").status_code == 409
+    second = api_client.post(f"/payroll/batches/{batch_id}/trial")
+    assert second.status_code == 200
+    assert second.json()["id"] != first.json()["id"]
+    assert api_client.get(f"/payroll/batches/{batch_id}/trial").json()["ready_for_confirmation"]
+    assert api_client.post(f"/payroll/batches/{batch_id}/confirm").status_code == 200
+    assert api_client.post(f"/payroll/batches/{batch_id}/confirm").status_code == 200
+    assert api_client.post(f"/payroll/batches/{batch_id}/lock").status_code == 200
+    assert api_client.post(f"/payroll/batches/{batch_id}/lock").status_code == 200
+    employee.name = "更名后"
+    db_session.commit()
+    locked_trial = api_client.get(f"/payroll/batches/{batch_id}/trial").json()
+    assert locked_trial["stale"] is False
+    assert locked_trial["results"][0]["employee_name"] == "测试员工"
+    assert (
+        api_client.put(
+            inputs_url, json=[{"employee_id": employee_id, "amount": "70.00"}]
+        ).status_code
+        == 409
+    )
+    other = Employee(
+        company_id=company.id,
+        id_number="11010119900101124X",
+        employee_no="SUP12-E002",
+        name="独立补发员工",
+        employee_type="employee",
+        hire_date=date(2020, 1, 1),
+    )
+    db_session.add(other)
+    db_session.flush()
+    db_session.add_all(
+        [
+            EmployeeAssignment(
+                employee_id=other.id,
+                subject_id=subject_id,
+                subject_department_id=relation.id,
+                position_title="测试职位",
+                effective_from=date(2020, 1, 1),
+            ),
+            EmployeeSalary(
+                employee_id=other.id,
+                fixed_salary=Decimal("800.00"),
+                performance_base=Decimal("200.00"),
+                effective_from=date(2020, 1, 1),
+            ),
+        ]
+    )
+    db_session.commit()
+    second_id = next_batch.json()["id"]
+    assert (
+        api_client.put(
+            f"/payroll/batches/{second_id}/supplement-inputs",
+            json=[{"employee_id": other.id, "amount": "25.00"}],
+        ).status_code
+        == 200
+    )
+    assert api_client.post(f"/payroll/batches/{second_id}/trial").status_code == 200
+    assert api_client.get(f"/payroll/batches/{second_id}/trial").json()["ready_for_confirmation"]
+    assert api_client.post(f"/payroll/batches/{second_id}/confirm").status_code == 200
+    assert api_client.post(f"/payroll/batches/{second_id}/lock").status_code == 200
+    ledger = api_client.get(f"/payroll/ledger?period_id={period_id}")
+    assert ledger.status_code == 200, ledger.text
+    data = ledger.json()
+    assert data["record_count"] == 3
+    assert data["employee_count"] == 2
+    assert data["totals"]["untaxed_amount"] == "985.00"
+    supplement = next(row for row in data["records"] if row["payroll_batch_id"] == batch_id)
+    assert supplement["amounts"]["untaxed_amount"] == "60.00"
+    assert supplement["batch_name"] == "补发差额"
+    assert supplement["items"][0]["source_type"] == "supplement"

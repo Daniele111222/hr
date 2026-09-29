@@ -22,10 +22,13 @@ from paylite.api.schemas import (
     PayrollPreparationItemOut,
     PayrollScopeOut,
     PayrollSubjectOut,
+    PayrollSupplementInput,
+    PayrollSupplementStatusOut,
     PayrollTrialOut,
     PayrollWorkbenchOut,
 )
 from paylite.db.models import PayrollBatch, PayrollPeriod
+from paylite.services import payroll_supplement
 from paylite.services.attendance_incentive import (
     AttendanceIncentiveError,
     calculate_incentive,
@@ -88,8 +91,11 @@ def post_attendance_incentive(period_id: int, db: Session = Depends(get_db)):
 def get_batch_trial(batch_id: int, db: Session = Depends(get_db)):
     try:
         mark_latest_trial_viewed(db, batch_id)
+        batch = db.get(PayrollBatch, batch_id)
+        if batch and batch.batch_type == "supplement":
+            return payroll_supplement.get_trial(db, batch_id)
         return get_trial(db, batch_id)
-    except (TrialError, PayrollConfirmationError) as exc:
+    except (TrialError, PayrollConfirmationError, payroll_supplement.SupplementError) as exc:
         raise HTTPException(exc.status_code, exc.detail) from exc
 
 
@@ -119,26 +125,35 @@ def post_lock(period_id: int, db: Session = Depends(get_db)):
         raise HTTPException(exc.status_code, exc.detail) from exc
 
 
-@router.post("/batches/{batch_id}/confirm", response_model=PayrollConfirmationOut)
+@router.post(
+    "/batches/{batch_id}/confirm",
+    response_model=PayrollConfirmationOut | PayrollSupplementStatusOut,
+)
 def post_batch_confirmation(batch_id: int, db: Session = Depends(get_db)):
     batch = db.get(PayrollBatch, batch_id)
     if batch is None:
         raise HTTPException(404, "工资批次不存在")
     try:
+        if batch.batch_type == "supplement":
+            return payroll_supplement.confirm(db, batch_id)
         return confirm_period(db, batch.payroll_period_id)
-    except PayrollConfirmationError as exc:
+    except (PayrollConfirmationError, payroll_supplement.SupplementError) as exc:
         db.rollback()
         raise HTTPException(exc.status_code, exc.detail) from exc
 
 
-@router.post("/batches/{batch_id}/lock", response_model=PayrollConfirmationOut)
+@router.post(
+    "/batches/{batch_id}/lock", response_model=PayrollConfirmationOut | PayrollSupplementStatusOut
+)
 def post_batch_lock(batch_id: int, db: Session = Depends(get_db)):
     batch = db.get(PayrollBatch, batch_id)
     if batch is None:
         raise HTTPException(404, "工资批次不存在")
     try:
+        if batch.batch_type == "supplement":
+            return payroll_supplement.lock(db, batch_id)
         return lock_period(db, batch.payroll_period_id)
-    except PayrollConfirmationError as exc:
+    except (PayrollConfirmationError, payroll_supplement.SupplementError) as exc:
         db.rollback()
         raise HTTPException(exc.status_code, exc.detail) from exc
 
@@ -243,11 +258,35 @@ def get_batch(batch_id: int, db: Session = Depends(get_db)):
     return _batch_out(db, period, batch)
 
 
+@router.get("/batches/{batch_id}/supplement-inputs", response_model=list[PayrollSupplementInput])
+def get_supplement_inputs(batch_id: int, db: Session = Depends(get_db)):
+    try:
+        return payroll_supplement.list_inputs(db, batch_id)
+    except payroll_supplement.SupplementError as exc:
+        raise HTTPException(exc.status_code, exc.detail) from exc
+
+
+@router.put("/batches/{batch_id}/supplement-inputs", response_model=list[PayrollSupplementInput])
+def put_supplement_inputs(
+    batch_id: int, payload: list[PayrollSupplementInput], db: Session = Depends(get_db)
+):
+    try:
+        return payroll_supplement.replace_inputs(
+            db, batch_id, [row.model_dump() for row in payload]
+        )
+    except payroll_supplement.SupplementError as exc:
+        db.rollback()
+        raise HTTPException(exc.status_code, exc.detail) from exc
+
+
 @router.post("/batches/{batch_id}/trial", response_model=PayrollTrialOut)
 def post_batch_trial(batch_id: int, db: Session = Depends(get_db)):
     try:
+        batch = db.get(PayrollBatch, batch_id)
+        if batch and batch.batch_type == "supplement":
+            return payroll_supplement.run_trial(db, batch_id)
         return run_trial(db, batch_id)
-    except TrialError as exc:
+    except (TrialError, payroll_supplement.SupplementError) as exc:
         db.rollback()
         raise HTTPException(exc.status_code, exc.detail) from exc
 
@@ -289,18 +328,20 @@ def _preparation_out(data: DataPreparation) -> PayrollDataPreparationOut:
 
 
 def _scope_out(period: PayrollPeriod, scope: EmployeeScope) -> PayrollScopeOut:
+    criteria: dict[str, object] = {"period": f"{period.year:04d}-{period.month:02d}"}
+    if scope.source == "confirmed_trial_snapshot":
+        criteria["confirmed_snapshot"] = True
+    elif scope.source == "supplement_inputs":
+        criteria["source"] = "supplement_inputs"
+    else:
+        criteria.update(
+            hire_date_at_or_before_period_end=True,
+            termination_date_after_or_equal_period_start=True,
+            assignment_effective_during_period=True,
+        )
     return PayrollScopeOut(
         source=scope.source,
-        criteria=(
-            {"period": f"{period.year:04d}-{period.month:02d}", "confirmed_snapshot": True}
-            if scope.source == "confirmed_trial_snapshot"
-            else {
-                "period": f"{period.year:04d}-{period.month:02d}",
-                "hire_date_at_or_before_period_end": True,
-                "termination_date_after_or_equal_period_start": True,
-                "assignment_effective_during_period": True,
-            }
-        ),
+        criteria=criteria,
         employee_count=len(scope.employee_ids),
         employee_ids=scope.employee_ids,
         ambiguous_employee_ids=scope.ambiguous_employee_ids,
@@ -311,6 +352,9 @@ def _scope_out(period: PayrollPeriod, scope: EmployeeScope) -> PayrollScopeOut:
 def _batch_out(db: Session, period: PayrollPeriod, batch: PayrollBatch) -> PayrollBatchOut:
     subject = get_batch_subject(db, batch)
     scope, preparation = batch_scope_and_preparation(db, period, batch)
+    payment_date = (
+        batch.payment_date if batch.batch_type == "supplement" else period.actual_payment_date
+    )
     return PayrollBatchOut(
         id=batch.id,
         period_id=period.id,
@@ -322,8 +366,8 @@ def _batch_out(db: Session, period: PayrollPeriod, batch: PayrollBatch) -> Payro
         is_effective=batch.is_effective,
         scope=_scope_out(period, scope),
         data_preparation=_preparation_out(preparation),
-        payment_date=period.actual_payment_date,
-        payment_date_confirmed=period.actual_payment_date is not None,
+        payment_date=payment_date,
+        payment_date_confirmed=payment_date is not None,
     )
 
 
@@ -385,6 +429,7 @@ def post_batch(
             payload.subject_id,
             payload.batch_type,
             payload.name,
+            payload.payment_date,
         )
         period = get_period(db, period_id)
     except PayrollWorkbenchError as exc:

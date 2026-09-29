@@ -25,10 +25,11 @@ def test_period_create_schema_requires_yyyy_mm() -> None:
         PayrollPeriodCreate(period="2026/09")
 
 
-def test_batch_create_schema_only_exposes_normal_batch_for_issue_05() -> None:
+def test_batch_create_schema_exposes_normal_and_independent_supplement() -> None:
     PayrollBatchCreate(subject_id=1)
+    PayrollBatchCreate(subject_id=1, batch_type="supplement", name="补发原因")
     with pytest.raises(ValidationError):
-        PayrollBatchCreate(subject_id=1, batch_type="supplement")
+        PayrollBatchCreate(subject_id=1, batch_type="performance_supplement")
 
 
 def test_empty_scope_does_not_report_missing_preparation() -> None:

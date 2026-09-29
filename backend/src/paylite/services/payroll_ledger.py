@@ -7,6 +7,7 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from paylite.db.models import (
+    CorrectionBatch,
     PayrollBatch,
     PayrollCalculationDetail,
     PayrollItem,
@@ -39,7 +40,7 @@ def get_ledger(
     if period is None:
         raise PayrollLedgerError(404, "工资期间不存在")
     query = (
-        select(PayrollRecord, Subject.name)
+        select(PayrollRecord, Subject.name, PayrollBatch)
         .join(Subject, Subject.id == PayrollRecord.subject_id)
         .join(PayrollBatch, PayrollBatch.id == PayrollRecord.payroll_batch_id)
         .where(
@@ -60,7 +61,15 @@ def get_ledger(
     if employee_id is not None:
         query = query.where(PayrollRecord.employee_id == employee_id)
     rows = list(db.execute(query))
-    record_ids = [record.id for record, _ in rows]
+    record_ids = [record.id for record, _, _ in rows]
+    batch_ids = {batch.id for _, _, batch in rows}
+    correction_of = dict(
+        db.execute(
+            select(CorrectionBatch.replacement_batch_id, CorrectionBatch.original_batch_id).where(
+                CorrectionBatch.replacement_batch_id.in_(batch_ids or {-1})
+            )
+        ).all()
+    )
     items = list(
         db.scalars(
             select(PayrollItem)
@@ -104,7 +113,7 @@ def get_ledger(
         "employer_cost": Decimal("0"),
     }
     records: list[dict[str, Any]] = []
-    for record, subject_name in rows:
+    for record, subject_name, batch in rows:
         values = {
             "gross": record.gross_amount,
             "deduction": record.deduction_amount,
@@ -117,6 +126,13 @@ def get_ledger(
             {
                 "id": record.id,
                 "payroll_batch_id": record.payroll_batch_id,
+                "batch_type": batch.batch_type,
+                "batch_no": batch.batch_no,
+                "batch_name": batch.name,
+                "correction_of_batch_id": correction_of.get(batch.id),
+                "payment_date": batch.payment_date
+                if batch.batch_type == "supplement"
+                else period.actual_payment_date,
                 "subject_id": record.subject_id,
                 "subject_name": subject_name,
                 "employee_id": record.employee_id,
@@ -148,6 +164,7 @@ def get_ledger(
             "employee_id": employee_id,
         },
         "record_count": len(records),
+        "employee_count": len({record["employee_id"] for record in records}),
         "records": records,
         "totals": {key: _money(value) for key, value in totals.items()},
         "untaxed_tax_notice": "金额为未扣个税金额；系统未计算个税。",

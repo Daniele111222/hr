@@ -64,9 +64,11 @@ export function PayrollPage() {
   const [periodForm] = Form.useForm<{ period: string }>();
   const [batchForm] = Form.useForm<{
     subject_id: number;
-    batch_type: "normal";
+    batch_type: "normal" | "supplement";
     name?: string;
+    payment_date?: string;
   }>();
+  const creatingBatchType = Form.useWatch("batch_type", batchForm);
 
   const workbench = useQuery({
     queryKey: ["payroll", "workbench", selectedPeriod],
@@ -100,7 +102,7 @@ export function PayrollPage() {
     onError: (error) => message.error(error.message),
   });
   const batchMutation = useMutation({
-    mutationFn: (values: { subject_id: number; batch_type: "normal"; name?: string }) =>
+    mutationFn: (values: { subject_id: number; batch_type: "normal" | "supplement"; name?: string; payment_date?: string }) =>
       resources.createPayrollBatch(currentPeriod!.id, values),
     onSuccess: () => {
       message.success("工资批次已建立");
@@ -124,7 +126,7 @@ export function PayrollPage() {
         <div>
           <Typography.Title level={2}>工资期间与批次</Typography.Title>
           <Typography.Paragraph type="secondary">
-            工资期间按自然月管理；员工范围来自期间内有效任职关系，不以导入成功行数替代完整员工名册。
+            工资期间按自然月管理；正常工资员工范围来自有效任职关系，独立补发按批次录入员工金额。
           </Typography.Paragraph>
         </div>
         <Space>
@@ -173,15 +175,15 @@ export function PayrollPage() {
               dataSource={visibleBatches}
               pagination={false}
               columns={[
-                { title: "批次", render: (_, row) => <><Link className={styles.mono} to={`/payroll/batches/${row.id}`}>{row.subject.code}-N{row.batch_no}</Link><div className={styles.sub}>{batchTypeLabels[row.batch_type]}</div></> },
+                { title: "批次", render: (_, row) => <><Link className={styles.mono} to={`/payroll/batches/${row.id}`}>{row.subject.code}-{row.batch_type === "supplement" ? "S" : "N"}{row.batch_no}</Link><div className={styles.sub}>{batchTypeLabels[row.batch_type]}{row.name ? ` · ${row.name}` : ""}</div></> },
                 { title: "主体", render: (_, row) => <>{row.subject.name}<div className={styles.sub}>{row.subject.code}</div></> },
-                { title: "员工范围", render: (_, row) => <><strong>{row.scope.employee_count} 人</strong><div className={styles.sub}>{row.scope.source === "employee_assignment_for_period" ? "期间有效任职关系" : row.scope.source}</div>{row.scope.status === "blocked" ? <Tag color="error">存在归属歧义</Tag> : null}</> },
+                { title: "员工范围", render: (_, row) => <><strong>{row.scope.employee_count} 人</strong><div className={styles.sub}>{row.scope.source === "supplement_inputs" ? "本批补发员工" : row.scope.source === "employee_assignment_for_period" ? "期间有效任职关系" : "已确认试算快照"}</div>{row.scope.status === "blocked" ? <Tag color="error">存在归属歧义</Tag> : null}</> },
                 { title: "数据准备", render: (_, row) => <Space wrap>{preparationTag("考勤", row.data_preparation.attendance)}{preparationTag("绩效", row.data_preparation.performance)}{preparationTag("规则", row.data_preparation.city_rules)}</Space> },
                 { title: "状态", render: (_, row) => <Tag color={statusColor(row.status)}>{statusLabels[row.status]}</Tag> },
-                { title: "发放日期", render: (_, row) => row.payment_date ?? <span className={styles.muted}>未确认</span> },
+                { title: "发放日期", render: (_, row) => row.payment_date ?? <span className={styles.muted}>{row.batch_type === "supplement" ? "未填写" : "未确认"}</span> },
               ]}
             />
-          ) : <Empty description="本期间暂无批次，请建立主体正常工资批次" />}
+          ) : <Empty description="本期间暂无批次，请建立工资批次" />}
           <Alert className={styles.notice} type="info" showIcon message="实际发放日期尚未确认不影响本工作台查询或建批次；正式导出门槛将在后续导出任务中处理。" />
         </Card>
       ) : null}
@@ -200,10 +202,11 @@ export function PayrollPage() {
             <Select options={subjects.map((subject) => ({ value: subject.id, label: `${subject.name}（${subject.code}）` }))} placeholder="请选择主体" />
           </Form.Item>
           <Form.Item name="batch_type" label="批次类型" rules={[{ required: true }]}>
-            <Select options={[{ value: "normal", label: batchTypeLabels.normal }]} />
+            <Select options={[{ value: "normal", label: batchTypeLabels.normal }, { value: "supplement", label: batchTypeLabels.supplement }]} />
           </Form.Item>
-          <Form.Item name="name" label="批次备注"><Input maxLength={200} /></Form.Item>
-          <Typography.Paragraph type="secondary" className={styles.formHint}>正常批次批次号由系统固定为 1，同主体同期间不能重复建立。</Typography.Paragraph>
+          <Form.Item name="name" label={creatingBatchType === "supplement" ? "补发原因" : "批次备注"} rules={creatingBatchType === "supplement" ? [{ required: true, whitespace: true, message: "请填写补发原因" }] : []}><Input maxLength={200} /></Form.Item>
+          {creatingBatchType === "supplement" ? <Form.Item name="payment_date" label="实际发放日期（可选）" preserve={false}><Input type="date" /></Form.Item> : null}
+          <Typography.Paragraph type="secondary" className={styles.formHint}>{creatingBatchType === "supplement" ? "独立补发只录入员工补发金额，不重算社保、公积金或考勤激励。" : "正常批次批次号由系统固定为 1，同主体同期间不能重复建立。"}</Typography.Paragraph>
         </Form>
       </Modal>
     </div>

@@ -25,6 +25,7 @@ import {
   type PayrollTrialRow,
 } from "../../shared/api/resources";
 import styles from "./batch-detail.module.less";
+import { SupplementBatchDetail } from "./supplement-detail";
 
 const steps = ["数据准备", "普通试算", "考勤激励", "核对确认", "锁定", "导出"];
 const statusLabels = {
@@ -64,14 +65,16 @@ export function PayrollBatchDetailPage() {
   const confirmation = useQuery({
     queryKey: ["payroll", "confirmation", batch.data?.period_id],
     queryFn: () => resources.payrollConfirmation(batch.data!.period_id),
-    enabled: Boolean(batch.data?.period_id),
+    enabled: Boolean(batch.data?.period_id) && batch.data?.batch_type === "normal",
   });
   const corrections = useQuery({
     queryKey: ["payroll", "corrections", batch.data?.id],
     queryFn: () => resources.payrollCorrections(batch.data!.id),
     enabled:
-      batch.data?.is_effective === false ||
-      ["confirmed", "locked", "exported"].includes(batch.data?.status ?? ""),
+      batch.data?.batch_type === "normal" && (
+        batch.data?.is_effective === false ||
+        ["confirmed", "locked", "exported"].includes(batch.data?.status ?? "")
+      ),
   });
   const replacementCorrection = corrections.data?.find(
     (item) =>
@@ -234,6 +237,8 @@ export function PayrollBatchDetailPage() {
   if (!batch.data) return <Empty description="工资批次不存在" />;
 
   const detail = batch.data;
+  if (detail.batch_type === "supplement")
+    return <SupplementBatchDetail batch={detail} trial={trial.data ?? null} />;
   const pendingCorrection = corrections.data?.find(
     (item) => item.status === "requested",
   );

@@ -367,3 +367,49 @@ test("替代版本锁定后自动生效，无需单独应用", async () => {
     screen.queryByRole("button", { name: "使替代版本生效" }),
   ).not.toBeInTheDocument();
 });
+
+test("独立补发校验金额并在保存后重新试算", async () => {
+  const supplement = { ...batch, batch_type: "supplement", name: "补发差额", is_effective: true };
+  const supplementTrial = {
+    ...trial,
+    totals: { gross: "50.00", untaxed_amount: "50.00", employer_cost: "50.00" },
+    results: [{ employee_id: 1, employee_name: "张三", amounts: { untaxed_amount: "50.00" } }],
+    ready_for_confirmation: true,
+    confirmation_blockers: [],
+  };
+  let savedRows: { employee_id: number; amount: string }[] = [];
+  let latestTrial: typeof supplementTrial | null = null;
+  const fetchMock = vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
+    const path = String(input);
+    if (path.endsWith("/supplement-inputs")) {
+      if (init?.method === "PUT") savedRows = JSON.parse(String(init.body));
+      return Response.json(savedRows);
+    }
+    if (path.endsWith("/employees"))
+      return Response.json([{ id: 1, name: "张三", employee_no: "E01" }]);
+    if (path.endsWith("/trial")) {
+      if (init?.method === "POST") latestTrial = supplementTrial;
+      return Response.json(latestTrial);
+    }
+    return Response.json(supplement);
+  });
+  vi.stubGlobal("fetch", fetchMock);
+  const user = userEvent.setup();
+  renderPage();
+  await user.click(await screen.findByText("录入员工金额"));
+  await user.click(screen.getByRole("combobox", { name: "员工" }));
+  await user.click(await screen.findByText("张三 · E01"));
+  await user.type(screen.getByRole("textbox", { name: "补发金额（未扣个税）" }), "0");
+  await user.click(screen.getByText("OK"));
+  expect(await screen.findByText("补发金额须为大于零且最多两位小数的数字")).toBeInTheDocument();
+  expect(savedRows).toEqual([]);
+  await user.clear(screen.getByRole("textbox", { name: "补发金额（未扣个税）" }));
+  await user.type(screen.getByRole("textbox", { name: "补发金额（未扣个税）" }), "50.00");
+  await user.click(screen.getByText("OK"));
+  await waitFor(() => expect(savedRows).toEqual([{ employee_id: 1, amount: "50.00" }]));
+  await user.click(screen.getByRole("button", { name: "重新试算" }));
+  await waitFor(() => expect(fetchMock).toHaveBeenCalledWith(
+    "/api/payroll/batches/10/trial", expect.objectContaining({ method: "POST" }),
+  ));
+  expect(await screen.findByText("试算合计：", { exact: false })).toBeInTheDocument();
+});

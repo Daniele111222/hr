@@ -187,6 +187,7 @@ export type PayrollBatch = {
   payment_date: string | null;
   payment_date_confirmed: boolean;
 };
+export type PayrollSupplementInput = { employee_id: number; amount: string };
 export type PayrollWorkbench = {
   period: PayrollPeriod | null;
   periods: PayrollPeriod[];
@@ -283,9 +284,15 @@ export type PayrollLedger = {
   period: string;
   filters: Record<string, unknown>;
   record_count: number;
+  employee_count: number;
   records: {
     id: number;
     payroll_batch_id: number;
+    batch_type: "normal" | "supplement";
+    batch_no: number;
+    batch_name: string | null;
+    correction_of_batch_id: number | null;
+    payment_date: string | null;
     subject_id: number;
     subject_name: string;
     employee_id: number;
@@ -478,6 +485,14 @@ export const resources = {
     request<PayrollTrial | null>(`/payroll/batches/${batchId}/trial`),
   runPayrollTrial: (batchId: number) =>
     request<PayrollTrial>(`/payroll/batches/${batchId}/trial`, json("POST")),
+  payrollSupplementInputs: (batchId: number) =>
+    request<PayrollSupplementInput[]>(`/payroll/batches/${batchId}/supplement-inputs`),
+  savePayrollSupplementInputs: (batchId: number, rows: PayrollSupplementInput[]) =>
+    request<PayrollSupplementInput[]>(`/payroll/batches/${batchId}/supplement-inputs`, json("PUT", rows)),
+  confirmPayrollBatch: (batchId: number) =>
+    request<{ id: number; status: PayrollBatch["status"] }>(`/payroll/batches/${batchId}/confirm`, json("POST")),
+  lockPayrollBatch: (batchId: number) =>
+    request<{ id: number; status: PayrollBatch["status"] }>(`/payroll/batches/${batchId}/lock`, json("POST")),
   attendanceIncentive: (periodId: number) =>
     request<AttendanceIncentive>(
       `/payroll/periods/${periodId}/attendance-incentive`,
@@ -548,8 +563,9 @@ export const resources = {
     periodId: number,
     v: {
       subject_id: number;
-      batch_type?: "normal";
+      batch_type?: "normal" | "supplement";
       name?: string;
+      payment_date?: string;
     },
   ) =>
     request<PayrollBatch>(

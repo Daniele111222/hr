@@ -373,7 +373,14 @@ def create_batch(
     subject_id: int,
     batch_type: BatchType,
     name: str | None,
+    payment_date: date | None = None,
 ) -> PayrollBatch:
+    if batch_type not in {"normal", "supplement"}:
+        raise PayrollWorkbenchError(422, "当前只支持正常工资和独立补发批次")
+    if batch_type == "supplement" and not (name or "").strip():
+        raise PayrollWorkbenchError(422, "独立补发须填写原因")
+    if batch_type == "normal" and payment_date is not None:
+        raise PayrollWorkbenchError(422, "正常工资发放日期属于工资期间，不在批次中填写")
     try:
         with db.begin():
             period = get_period(db, period_id)
@@ -389,12 +396,23 @@ def create_batch(
                 )
                 if existing:
                     raise PayrollWorkbenchError(409, "该主体在此工资期间已有正常批次")
+            batch_no = (
+                db.scalar(
+                    select(func.max(PayrollBatch.batch_no)).where(
+                        PayrollBatch.payroll_period_id == period.id,
+                        PayrollBatch.subject_id == subject.id,
+                        PayrollBatch.batch_type == batch_type,
+                    )
+                )
+                or 0
+            ) + 1
             batch = PayrollBatch(
                 subject_id=subject.id,
                 payroll_period_id=period.id,
                 batch_type=batch_type,
-                batch_no=1,
-                name=name,
+                batch_no=batch_no,
+                name=name.strip() if name else None,
+                payment_date=payment_date if batch_type == "supplement" else None,
                 status="draft",
             )
             db.add(batch)
@@ -410,6 +428,16 @@ def create_batch(
 def batch_scope_and_preparation(
     db: Session, period: PayrollPeriod, batch: PayrollBatch
 ) -> tuple[EmployeeScope, DataPreparation]:
+    if batch.batch_type == "supplement":
+        scope = EmployeeScope(
+            employee_ids=[row["employee_id"] for row in batch.supplement_inputs],
+            ambiguous_employee_ids=[],
+            source="supplement_inputs",
+        )
+        item = PreparationItem("not_required", 0, 0, "独立补发不重算考勤、绩效及缴费")
+        return scope, DataPreparation(
+            item, item, item, "ready" if scope.employee_ids else "partial"
+        )
     source_trial_id = batch.confirmed_trial_id
     if source_trial_id is None:
         correction = db.scalar(

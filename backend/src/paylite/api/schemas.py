@@ -322,8 +322,9 @@ class PayrollPeriodOut(BaseModel):
 
 class PayrollBatchCreate(BaseModel):
     subject_id: int
-    batch_type: Literal["normal"] = "normal"
+    batch_type: Literal["normal", "supplement"] = "normal"
     name: str | None = Field(default=None, max_length=200)
+    payment_date: date | None = None
 
 
 class PayrollSubjectOut(BaseModel):
@@ -368,6 +369,16 @@ class PayrollBatchOut(BaseModel):
     data_preparation: PayrollDataPreparationOut
     payment_date: date | None
     payment_date_confirmed: bool
+
+
+class PayrollSupplementInput(BaseModel):
+    employee_id: int = Field(gt=0)
+    amount: Decimal = Field(gt=0, max_digits=18, decimal_places=2)
+
+
+class PayrollSupplementStatusOut(BaseModel):
+    id: int
+    status: Literal["confirmed", "locked", "exported"]
 
 
 class PayrollWorkbenchOut(BaseModel):
@@ -463,6 +474,11 @@ class PayrollCorrectionOut(BaseModel):
 class PayrollLedgerRecordOut(BaseModel):
     id: int
     payroll_batch_id: int
+    batch_type: Literal["normal", "supplement"]
+    batch_no: int
+    batch_name: str | None
+    correction_of_batch_id: int | None
+    payment_date: date | None
     subject_id: int
     subject_name: str
     employee_id: int
@@ -478,6 +494,7 @@ class PayrollLedgerOut(BaseModel):
     period: str
     filters: dict[str, Any]
     record_count: int
+    employee_count: int
     records: list[PayrollLedgerRecordOut]
     totals: dict[str, str]
     untaxed_tax_notice: str

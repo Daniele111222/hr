@@ -247,8 +247,12 @@ def _create_records(db: Session, batch: PayrollBatch, trial: PayrollTrialRun) ->
                     item_name=item["name"],
                     item_category=item["category"],
                     amount=_decimal(item["amount"]),
-                    source_type="trial",
-                    source_reference=str(trial.id),
+                    source_type="supplement" if batch.batch_type == "supplement" else "trial",
+                    source_reference=(
+                        f"{batch.id}:{batch.name}"
+                        if batch.batch_type == "supplement"
+                        else str(trial.id)
+                    ),
                     in_housing_fund_base=item["code"] == "fixed_salary",
                     sort_order=index,
                 )
@@ -266,7 +270,7 @@ def _create_records(db: Session, batch: PayrollBatch, trial: PayrollTrialRun) ->
                     formula_text=step["formula"],
                     inputs=step.get("inputs") or {},
                     amount=_decimal(step["amount"]),
-                    source_type="trial",
+                    source_type="supplement" if batch.batch_type == "supplement" else "trial",
                 )
             )
         db.flush()

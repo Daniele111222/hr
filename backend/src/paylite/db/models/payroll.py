@@ -113,6 +113,10 @@ class PayrollBatch(Base):
     status: Mapped[str] = mapped_column(String(20), nullable=False, server_default="draft")
     is_effective: Mapped[bool] = mapped_column(Boolean, nullable=False, server_default=text("true"))
     name: Mapped[str | None] = mapped_column(String(200))
+    payment_date: Mapped[date | None] = mapped_column(Date)
+    supplement_inputs: Mapped[list[dict[str, Any]]] = mapped_column(
+        JSONB, nullable=False, default=list, server_default=text("'[]'::jsonb")
+    )
     confirmed_trial_id: Mapped[int | None] = mapped_column(
         ForeignKey("payroll_trial_run.id", ondelete="RESTRICT")
     )
