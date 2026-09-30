@@ -1,6 +1,8 @@
 """Snapshot in a short transaction, render outside it, then recheck the version."""
 
+import json
 from datetime import UTC, datetime
+from decimal import Decimal
 from hashlib import sha256
 from pathlib import Path
 from typing import Any
@@ -18,6 +20,7 @@ from paylite.db.models import (
     PayrollTrialRun,
     Subject,
 )
+from paylite.excel import bank_export
 from paylite.excel.payroll_export import (
     TAX_NOTICE,
     TEMPLATE_NOTICE,
@@ -102,25 +105,111 @@ def _scope(db: Session, period_id: int, subject_id: int | None, *, lock: bool = 
     return ledger, versions, list(dict.fromkeys(blockers)), empty
 
 
-def preview_export(db: Session, period_id: int, subject_id: int | None) -> dict[str, Any]:
+def bank_record_blockers(ledger: dict[str, Any]) -> list[str]:
+    blockers = []
+    for row in ledger["records"]:
+        label = (
+            f"{row['subject_name']} 员工 #{row['employee_id']} / 批次 #{row['payroll_batch_id']}"
+        )
+        if not (row["snapshot"].get("bank_account") or "").strip():
+            blockers.append(f"{label} 缺少银行卡，整次代发导出已阻断")
+        if Decimal(row["amounts"]["untaxed_amount"]) < 0:
+            blockers.append(f"{label} 未扣个税金额为负，整次代发导出已阻断")
+    return blockers
+
+
+def prepare_bank_rows(ledger: dict[str, Any], subject_templates: dict[str, str] | None = None):
+    blockers = bank_record_blockers(ledger)
+    grouped = {}
+    for record in sorted(
+        ledger["records"], key=lambda r: (r["subject_id"], r["employee_id"], r["payroll_batch_id"])
+    ):
+        snapshot = record["snapshot"]
+        key = (record["subject_id"], record["employee_id"])
+        identity = {
+            "name": snapshot["name"],
+            "id_number": snapshot["id_number"],
+            "bank_account": snapshot.get("bank_account"),
+        }
+        if key not in grouped:
+            grouped[key] = {
+                "subject_id": record["subject_id"],
+                **identity,
+                "amount": Decimal(0),
+                "sources": [],
+            }
+        row = grouped[key]
+        if any(row[k] != v for k, v in identity.items()):
+            blockers.append(
+                f"{record['subject_name']} 员工 #{record['employee_id']} "
+                "的锁定账户或身份快照不一致，不能合并代发"
+            )
+        row["amount"] += Decimal(record["amounts"]["untaxed_amount"])
+        source = "独立补发" if record["batch_type"] == "supplement" else "正常工资"
+        source += f" #{record['payroll_batch_id']}（批次号 {record['batch_no']}）"
+        if record["batch_type"] == "supplement":
+            source += f"：{record['batch_name']}"
+        if record.get("correction_of_batch_id"):
+            source += f"；整批更正替代 #{record['correction_of_batch_id']}"
+        source += f"；发放日期 {record.get('payment_date') or '未填写'}"
+        row["sources"].append(source)
+        if (
+            subject_templates is not None
+            and subject_templates.get(str(record["subject_id"])) not in bank_export.TEMPLATE_SHEETS
+        ):
+            blockers.append(f"{record['subject_name']} 未选择有效代发模板")
+    names = {r["subject_id"]: r["subject_name"] for r in ledger["records"]}
+    rows = []
+    for row in grouped.values():
+        row["amount"] = f"{row['amount']:.2f}"
+        row["remark"] = (
+            f"{names[row['subject_id']]}；{ledger['period']}；未扣个税金额，需线下人工扣税核对后用于实际发薪；"
+            + "；".join(row.pop("sources"))
+        )
+        if len(row["remark"]) > 32767:
+            blockers.append(
+                f"主体 #{row['subject_id']} 的来源备注超过 Excel 单元格上限，不能截断导出"
+            )
+        rows.append(row)
+    return rows, list(dict.fromkeys(blockers))
+
+
+def _bank_fingerprint(rows):
+    return sha256(json.dumps(rows, ensure_ascii=False, sort_keys=True).encode()).hexdigest()
+
+
+def preview_export(
+    db: Session, period_id: int, subject_id: int | None, output_type: str = "payroll_sheet"
+) -> dict[str, Any]:
     ledger, versions, blockers, empty = _scope(db, period_id, subject_id)
+    is_bank = output_type == "bank_payment"
+    if is_bank:
+        _, bank_blockers = prepare_bank_rows(ledger)
+        blockers.extend(bank_blockers)
     return {
         "period": ledger["period"],
         "employee_count": ledger["employee_count"],
         "record_count": ledger["record_count"],
         "untaxed_amount": ledger["totals"]["untaxed_amount"],
-        "template_version": TEMPLATE_VERSION,
+        "template_version": bank_export.TEMPLATE_VERSION if is_bank else TEMPLATE_VERSION,
         "can_export": not blockers,
         "blockers": blockers,
         "skipped_subjects": empty,
         "versions": versions,
+        "subjects": [
+            {"id": id, "name": name}
+            for id, name in {r["subject_id"]: r["subject_name"] for r in ledger["records"]}.items()
+        ],
+        "template_sheets": list(bank_export.TEMPLATE_SHEETS) if is_bank else [],
     }
 
 
-def export_report(db: Session, export_id: int) -> dict[str, Any]:
+def export_report(
+    db: Session, export_id: int, output_type: str = "payroll_sheet"
+) -> dict[str, Any]:
     export = db.get(ExportBatch, export_id)
-    if export is None or export.output_type != "payroll_sheet":
-        raise PayrollExportError(404, "工资表导出记录不存在")
+    if export is None or export.output_type != output_type:
+        raise PayrollExportError(404, "导出记录不存在")
     warnings = list(
         db.scalars(
             select(ExportWarning)
@@ -149,16 +238,16 @@ def export_report(db: Session, export_id: int) -> dict[str, Any]:
     }
 
 
-def list_exports(db: Session, period_id: int) -> list[dict[str, Any]]:
+def list_exports(
+    db: Session, period_id: int, output_type: str = "payroll_sheet"
+) -> list[dict[str, Any]]:
     ids = db.scalars(
         select(ExportBatch.id)
-        .where(
-            ExportBatch.payroll_period_id == period_id, ExportBatch.output_type == "payroll_sheet"
-        )
+        .where(ExportBatch.payroll_period_id == period_id, ExportBatch.output_type == output_type)
         .order_by(ExportBatch.id.desc())
         .limit(100)
     ).all()
-    return [export_report(db, id) for id in ids]
+    return [export_report(db, id, output_type) for id in ids]
 
 
 def _warning(
@@ -177,26 +266,40 @@ def _warning(
 
 
 def create_export(
-    db: Session, period_id: int, subject_id: int | None, request_id: str
+    db: Session,
+    period_id: int,
+    subject_id: int | None,
+    request_id: str,
+    *,
+    output_type: str = "payroll_sheet",
+    subject_templates: dict[str, str] | None = None,
 ) -> dict[str, Any]:
     ledger, versions, blockers, empty = _scope(db, period_id, subject_id, lock=True)
+    is_bank = output_type == "bank_payment"
+    subject_templates = subject_templates or {}
+    bank_rows = []
+    if is_bank:
+        bank_rows, bank_blockers = prepare_bank_rows(ledger, subject_templates)
+        blockers.extend(bank_blockers)
     existing = db.scalar(
         select(ExportBatch).where(
             ExportBatch.payroll_period_id == period_id,
-            ExportBatch.output_type == "payroll_sheet",
+            ExportBatch.output_type == output_type,
             ExportBatch.parameters["request_id"].astext == request_id,
         )
     )
     if existing:
-        if existing.parameters["subject_id"] != subject_id:
+        if existing.parameters["subject_id"] != subject_id or (
+            is_bank and existing.parameters.get("subject_templates") != subject_templates
+        ):
             raise PayrollExportError(409, "重试编号对应的导出范围不同")
         export_id = existing.id
         db.commit()
-        return export_report(db, export_id)
+        return export_report(db, export_id, output_type)
     export = ExportBatch(
         payroll_period_id=period_id,
-        output_type="payroll_sheet",
-        template_version=TEMPLATE_VERSION,
+        output_type=output_type,
+        template_version=bank_export.TEMPLATE_VERSION if is_bank else TEMPLATE_VERSION,
         status="started",
         parameters={
             "request_id": request_id,
@@ -207,19 +310,33 @@ def create_export(
             "record_count": ledger["record_count"],
             "untaxed_amount": ledger["totals"]["untaxed_amount"],
             "skipped_subjects": empty,
+            **(
+                {
+                    "subject_templates": subject_templates,
+                    "payment_count": len(bank_rows),
+                    "bank_fingerprint": _bank_fingerprint(bank_rows),
+                }
+                if is_bank
+                else {}
+            ),
         },
     )
     db.add(export)
     db.flush()
     export_id = export.id
     _warning(db, export_id, "TAX_UNKNOWN", TAX_NOTICE, field_name="tax")
-    _warning(db, export_id, "TEMPLATE_ADAPTED", TEMPLATE_NOTICE)
+    _warning(
+        db,
+        export_id,
+        "TEMPLATE_ADAPTED",
+        bank_export.TEMPLATE_NOTICE if is_bank else TEMPLATE_NOTICE,
+    )
     for name in empty:
         _warning(db, export_id, "EMPTY_SUBJECT", f"{name}无工资批次，已跳过")
     for row in ledger["records"]:
         if row["amounts"]["untaxed_amount"] == "0.00":
             _warning(db, export_id, "ZERO_AMOUNT", "零工资记录保留", employee_id=row["employee_id"])
-        if not row["snapshot"].get("bank_account"):
+        if not is_bank and not row["snapshot"].get("bank_account"):
             _warning(
                 db,
                 export_id,
@@ -234,15 +351,25 @@ def create_export(
         for blocker in blockers:
             _warning(db, export_id, "EXPORT_BLOCKED", blocker, severity="error")
         db.commit()
-        return export_report(db, export_id)
+        return export_report(db, export_id, output_type)
     db.commit()
-    path = Path(get_settings().export_directory) / f"payroll-{export_id}.xlsx"
+    path = Path(get_settings().export_directory) / f"{output_type}-{export_id}.xlsx"
     temporary = path.with_suffix(".tmp")
     try:
-        content = render_payroll(ledger)
+        content = (
+            bank_export.render_bank(bank_rows, subject_templates)
+            if is_bank
+            else render_payroll(ledger)
+        )
         path.parent.mkdir(parents=True, exist_ok=True)
         temporary.write_bytes(content)
-        _, current_versions, current_blockers, _ = _scope(db, period_id, subject_id, lock=True)
+        current_ledger, current_versions, current_blockers, _ = _scope(
+            db, period_id, subject_id, lock=True
+        )
+        if is_bank:
+            current_rows, bank_blockers = prepare_bank_rows(current_ledger, subject_templates)
+            if bank_blockers or current_rows != bank_rows:
+                current_blockers.append("代发快照发生变化")
         if current_blockers or versions != current_versions:
             raise PayrollExportError(409, "文件生成期间工资版本发生变化，请重新生成")
         export = db.get(ExportBatch, export_id)
@@ -254,8 +381,11 @@ def create_export(
         db.commit()
     except Exception as exc:
         db.rollback()
-        temporary.unlink(missing_ok=True)
-        path.unlink(missing_ok=True)
+        for failed_path in (temporary, path):
+            try:
+                failed_path.unlink(missing_ok=True)
+            except OSError:
+                pass  # The failed report must survive an unavailable output directory.
         export = db.get(ExportBatch, export_id)
         export.status = "failed"
         export.output_path = None
@@ -270,15 +400,21 @@ def create_export(
             severity="error",
         )
         db.commit()
-    return export_report(db, export_id)
+    return export_report(db, export_id, output_type)
 
 
-def download_export(db: Session, export_id: int) -> tuple[bytes, str]:
-    report = export_report(db, export_id)
+def download_export(
+    db: Session, export_id: int, output_type: str = "payroll_sheet"
+) -> tuple[bytes, str]:
+    report = export_report(db, export_id, output_type)
     if report["status"] != "completed":
         raise PayrollExportError(409, "文件尚未成功生成，不能下载；中断或失败后请重新生成")
     params = report["parameters"]
-    _, versions, blockers, _ = _scope(db, report["period_id"], params["subject_id"], lock=True)
+    ledger, versions, blockers, _ = _scope(db, report["period_id"], params["subject_id"], lock=True)
+    if output_type == "bank_payment":
+        rows, bank_blockers = prepare_bank_rows(ledger, params["subject_templates"])
+        if bank_blockers or _bank_fingerprint(rows) != params["bank_fingerprint"]:
+            blockers.append("代发快照发生变化")
     if blockers or versions != params["versions"]:
         raise PayrollExportError(409, "工资有效版本已变化，旧导出报告保留；请重新生成文件")
     export = db.get(ExportBatch, export_id)
@@ -289,4 +425,5 @@ def download_export(db: Session, export_id: int) -> tuple[bytes, str]:
     if sha256(content).hexdigest() != params["file_sha256"]:
         raise PayrollExportError(409, "导出文件校验失败，请重新生成")
     db.commit()
-    return content, f"工资表-{params['period']}-{export_id}-未扣个税.xlsx"
+    label = "代发工资表" if output_type == "bank_payment" else "工资表"
+    return content, f"{label}-{params['period']}-{export_id}-未扣个税.xlsx"

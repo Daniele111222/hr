@@ -30,6 +30,8 @@ function setup(canExport = true, fail = false, completed = false) {
           can_export: canExport,
           blockers: canExport ? [] : ["批次尚未锁定"],
           skipped_subjects: [],
+          subjects: [{ id: 2, name: "测试主体" }],
+          template_sheets: ["导入模版（武汉）"],
         });
       if (url.endsWith("/file"))
         return Response.json({ detail: "有效版本已变化" }, { status: 409 });
@@ -103,4 +105,28 @@ test("报告抽屉内下载过期文件显示错误", async () => {
     within(drawer).getByRole("button", { name: "下载工资表" }),
   );
   expect(await within(drawer).findByText("有效版本已变化")).toBeInTheDocument();
+});
+
+test("代发模板切换后须先选择主体模板，生成请求保留映射", async () => {
+  const fetcher = setup();
+  await screen.findByText("所选范围已通过导出门槛");
+  await userEvent.click(screen.getByRole("button", { name: "代发工资表" }));
+  const mapping = await screen.findByRole("combobox", {
+    name: "测试主体的代发模板",
+  });
+  expect(screen.getByRole("button", { name: "生成导出文件" })).toBeDisabled();
+  await userEvent.click(mapping);
+  await userEvent.click(
+    (await screen.findAllByText("导入模版（武汉）")).at(-1)!,
+  );
+  await userEvent.click(screen.getByRole("button", { name: "生成导出文件" }));
+  expect(await screen.findByText("文件生成失败")).toBeInTheDocument();
+  const call = fetcher.mock.calls.find(
+    ([url, init]) =>
+      String(url).endsWith("/exports/bank") && init?.method === "POST",
+  );
+  expect(JSON.parse(String(call?.[1]?.body)).subject_templates).toEqual({
+    "2": "导入模版（武汉）",
+  });
+  expect(screen.getByRole("button", { name: "下载代发工资表" })).toBeDisabled();
 });

@@ -486,13 +486,27 @@ export const resources = {
   runPayrollTrial: (batchId: number) =>
     request<PayrollTrial>(`/payroll/batches/${batchId}/trial`, json("POST")),
   payrollSupplementInputs: (batchId: number) =>
-    request<PayrollSupplementInput[]>(`/payroll/batches/${batchId}/supplement-inputs`),
-  savePayrollSupplementInputs: (batchId: number, rows: PayrollSupplementInput[]) =>
-    request<PayrollSupplementInput[]>(`/payroll/batches/${batchId}/supplement-inputs`, json("PUT", rows)),
+    request<PayrollSupplementInput[]>(
+      `/payroll/batches/${batchId}/supplement-inputs`,
+    ),
+  savePayrollSupplementInputs: (
+    batchId: number,
+    rows: PayrollSupplementInput[],
+  ) =>
+    request<PayrollSupplementInput[]>(
+      `/payroll/batches/${batchId}/supplement-inputs`,
+      json("PUT", rows),
+    ),
   confirmPayrollBatch: (batchId: number) =>
-    request<{ id: number; status: PayrollBatch["status"] }>(`/payroll/batches/${batchId}/confirm`, json("POST")),
+    request<{ id: number; status: PayrollBatch["status"] }>(
+      `/payroll/batches/${batchId}/confirm`,
+      json("POST"),
+    ),
   lockPayrollBatch: (batchId: number) =>
-    request<{ id: number; status: PayrollBatch["status"] }>(`/payroll/batches/${batchId}/lock`, json("POST")),
+    request<{ id: number; status: PayrollBatch["status"] }>(
+      `/payroll/batches/${batchId}/lock`,
+      json("POST"),
+    ),
   attendanceIncentive: (periodId: number) =>
     request<AttendanceIncentive>(
       `/payroll/periods/${periodId}/attendance-incentive`,
@@ -574,7 +588,10 @@ export const resources = {
     ),
 };
 
+export type ExportKind = "payroll" | "bank";
 export type PayrollExportPreview = {
+  subjects: { id: number; name: string }[];
+  template_sheets: string[];
   period: string;
   employee_count: number;
   record_count: number;
@@ -613,24 +630,26 @@ export type PayrollExportReport = {
   }[];
 };
 export const payrollExports = {
-  preview: (period: number, subject?: number) =>
+  preview: (period: number, subject?: number, kind: ExportKind = "payroll") =>
     request<PayrollExportPreview>(
-      `/exports/payroll/preview?period_id=${period}${subject ? `&subject_id=${subject}` : ""}`,
+      `/exports/${kind}/preview?period_id=${period}${subject ? `&subject_id=${subject}` : ""}`,
     ),
-  history: (period: number) =>
-    request<PayrollExportReport[]>(`/exports/payroll?period_id=${period}`),
+  history: (period: number, kind: ExportKind = "payroll") =>
+    request<PayrollExportReport[]>(`/exports/${kind}?period_id=${period}`),
   create: (
     period_id: number,
     subject_id: number | undefined,
     request_id: string,
+    kind: ExportKind = "payroll",
+    subject_templates: Record<string, string> = {},
   ) =>
     request<PayrollExportReport>(
-      "/exports/payroll",
-      json("POST", { period_id, subject_id, request_id }),
+      `/exports/${kind}`,
+      json("POST", { period_id, subject_id, request_id, subject_templates }),
     ),
-  download: async (id?: number) => {
+  download: async (id?: number, kind: ExportKind = "payroll") => {
     const response = await fetch(
-      `${base}/exports/payroll/${id === undefined ? "template" : `${id}/file`}`,
+      `${base}/exports/${kind}/${id === undefined ? "template" : `${id}/file`}`,
     );
     if (!response.ok) {
       const body = await response.json().catch(() => ({}));
@@ -642,7 +661,9 @@ export const payrollExports = {
     const encoded = response.headers
       .get("Content-Disposition")
       ?.match(/filename\*=UTF-8''(.+)/)?.[1];
-    link.download = encoded ? decodeURIComponent(encoded) : "工资表模板.xlsx";
+    link.download = encoded
+      ? decodeURIComponent(encoded)
+      : `${kind === "bank" ? "代发工资表" : "工资表"}模板.xlsx`;
     link.click();
     setTimeout(() => URL.revokeObjectURL(url), 1000);
   },

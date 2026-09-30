@@ -17,11 +17,17 @@ import {
   payrollExports,
   resources,
   type PayrollExportReport,
+  type ExportKind,
 } from "../../shared/api/resources";
 import styles from "./index.module.less";
 
 export function ExportsPage() {
   const client = useQueryClient();
+  const [kind, setKind] = useState<ExportKind>("payroll");
+  const [subjectTemplates, setSubjectTemplates] = useState<
+    Record<string, string>
+  >({});
+  const label = kind === "bank" ? "代发工资表" : "工资表";
   const [selectedPeriod, setPeriod] = useState<number>();
   const [subject, setSubject] = useState<number>();
   const [report, setReport] = useState<PayrollExportReport>();
@@ -37,19 +43,25 @@ export function ExportsPage() {
   });
   const period = selectedPeriod ?? workbench.data?.period?.id;
   const preview = useQuery({
-    queryKey: ["exports", "preview", period, subject],
-    queryFn: () => payrollExports.preview(period!, subject),
+    queryKey: ["exports", "preview", kind, period, subject],
+    queryFn: () => payrollExports.preview(period!, subject, kind),
     enabled: !!period,
   });
   const history = useQuery({
-    queryKey: ["exports", "history", period],
-    queryFn: () => payrollExports.history(period!),
+    queryKey: ["exports", "history", kind, period],
+    queryFn: () => payrollExports.history(period!, kind),
     enabled: !!period,
   });
   const generate = useMutation({
     mutationFn: () => {
       requestId.current ??= crypto.randomUUID();
-      return payrollExports.create(period!, subject, requestId.current);
+      return payrollExports.create(
+        period!,
+        subject,
+        requestId.current,
+        kind,
+        subjectTemplates,
+      );
     },
     onSuccess: (result) => {
       requestId.current = undefined;
@@ -58,11 +70,13 @@ export function ExportsPage() {
     },
   });
   const download = useMutation({
-    mutationFn: (id?: number) => payrollExports.download(id),
+    mutationFn: (id?: number) => payrollExports.download(id, kind),
     onMutate: () => setDownloadError(undefined),
     onError: (error) => setDownloadError(error.message),
   });
   const data = preview.data;
+  const mappingMissing =
+    kind === "bank" && data?.subjects.some((s) => !subjectTemplates[s.id]);
   const error =
     workbench.error ?? subjects.error ?? preview.error ?? history.error;
   return (
@@ -70,7 +84,7 @@ export function ExportsPage() {
       <header>
         <Typography.Title level={2}>导出中心</Typography.Title>
         <p>
-          将已锁定的有效批次生成工资表。系统只输出「未扣个税金额」，个税由你在
+          将已锁定的有效批次生成工资表或代发工资表。系统只输出「未扣个税金额」，个税由你在
           Excel 中计算、核对，暂不回填系统。
         </p>
       </header>
@@ -120,7 +134,7 @@ export function ExportsPage() {
         {[
           ["导出期间", data?.period ?? "—"],
           ["导出人数", data?.employee_count ?? "—"],
-          ["可用模板", "1 套"],
+          ["可用模板", "2 套"],
           ["最近导出", history.data?.[0] ? `#${history.data[0].id}` : "—"],
         ].map(([title, value]) => (
           <div key={title}>
@@ -131,15 +145,37 @@ export function ExportsPage() {
       </section>
       <Card title="选择导出模板" size="small">
         <div className={styles.templates}>
-          <div className={styles.selected}>
-            <strong>工资表</strong>
-            <Tag color="blue">已选择</Tag>
-            <p>按员工与批次列出收入、扣缴和未扣个税金额，保留来源。</p>
-            <small>{data?.template_version ?? "工资表模板"}</small>
-          </div>
+          {(["payroll", "bank"] as const).map((value) => (
+            <button
+              key={value}
+              type="button"
+              aria-label={value === "bank" ? "代发工资表" : "工资表"}
+              aria-pressed={kind === value}
+              className={`${styles.template} ${kind === value ? styles.selected : ""}`}
+              disabled={generate.isPending || download.isPending}
+              onClick={() => {
+                setKind(value);
+                setReport(undefined);
+                setDownloadError(undefined);
+                requestId.current = undefined;
+                generate.reset();
+              }}
+            >
+              <strong>{value === "bank" ? "代发工资表" : "工资表"}</strong>
+              {kind === value && <Tag color="blue">已选择</Tag>}
+              <p>
+                {value === "bank"
+                  ? "按主体选择银行模板，查看账户问题并生成未扣个税文件。"
+                  : "按员工与批次列出收入、扣缴和未扣个税金额，保留来源。"}
+              </p>
+              {kind === value && (
+                <small>{data?.template_version ?? "正在读取模板版本"}</small>
+              )}
+            </button>
+          ))}
           <div className={styles.unavailable}>
-            <strong>代发工资表 / 人工成本表 / 个税辅助</strong>
-            <p>尚未实现，对应需求 14—16。</p>
+            <strong>人工成本表 / 个税辅助</strong>
+            <p>尚未实现，对应需求 15—16。</p>
           </div>
         </div>
       </Card>
@@ -184,8 +220,38 @@ export function ExportsPage() {
               />
             </label>
           </div>
+          {kind === "bank" && (
+            <div className={styles.fields}>
+              {data?.subjects.map((s) => (
+                <label key={s.id}>
+                  {s.name}的代发模板
+                  <Select
+                    aria-label={`${s.name}的代发模板`}
+                    placeholder="选择对应模板"
+                    disabled={generate.isPending}
+                    value={subjectTemplates[s.id]}
+                    options={data.template_sheets.map((name) => ({
+                      value: name,
+                      label: name,
+                    }))}
+                    onChange={(value) => {
+                      setSubjectTemplates((current) => ({
+                        ...current,
+                        [s.id]: value,
+                      }));
+                      requestId.current = undefined;
+                      generate.reset();
+                    }}
+                  />
+                </label>
+              ))}
+            </div>
+          )}
+          {mappingMissing && <p>请为范围内每个主体选择代发模板后生成。</p>}
           <p className={styles.note}>
-            保留原模板工作表结构，明细按主体和批次排列；每次生成均保存版本及导出报告。
+            {kind === "bank"
+              ? "保留原模板工作表结构，同一主体内按员工合并；每次生成均保存模板映射、版本及导出报告。"
+              : "保留原模板工作表结构，明细按主体和批次排列；每次生成均保存版本及导出报告。"}
           </p>
         </Card>
         <Card title="导出预览" size="small">
@@ -200,8 +266,19 @@ export function ExportsPage() {
         </Card>
       </div>
       <Card title="字段口径" size="small">
+        {kind === "bank" && (
+          <Alert
+            type="warning"
+            showIcon
+            title="缺银行卡或负金额阻断整次代发导出；零金额保留并提示"
+            description="户名取锁定员工姓名；开户行无锁定快照来源，留空待线下核对。主体模板映射随导出报告保存。"
+          />
+        )}
         <p>
-          金额来自锁定台账快照；更正仅计最新有效版本，独立补发单列来源且只计一次。身份证和银行卡按文本导出，零工资保留并提示。
+          {kind === "bank"
+            ? "同一主体内按员工合并有效正常工资与独立补发；备注保留批次、补发原因和发放日期，未填日期注明未填写。"
+            : "金额来自锁定台账快照；更正仅计最新有效版本，独立补发单列来源且只计一次。"}
+          身份证和银行卡按文本导出，零工资保留并提示。
         </p>
         <Alert
           showIcon
@@ -299,7 +376,9 @@ export function ExportsPage() {
         </Button>
         <Button
           type="primary"
-          disabled={!data?.can_export || !!error || preview.isFetching}
+          disabled={
+            !data?.can_export || !!error || preview.isFetching || mappingMissing
+          }
           loading={generate.isPending}
           onClick={() => generate.mutate()}
         >
@@ -351,7 +430,7 @@ export function ExportsPage() {
               disabled={report.status !== "completed"}
               onClick={() => download.mutate(report.id)}
             >
-              下载工资表
+              下载{label}
             </Button>
           </Space>
         )}

@@ -2452,7 +2452,7 @@ def test_independent_supplement_confirms_once_and_joins_effective_ledger(
 
 
 @pytest.fixture
-def export_case(db_session, monkeypatch, tmp_path):
+def export_case(db_session, monkeypatch, tmp_path, request):
     from paylite.config import get_settings
     from paylite.services.payroll_confirmation import _create_records
 
@@ -2510,6 +2510,9 @@ def export_case(db_session, monkeypatch, tmp_path):
             },
         ],
     }
+    case = getattr(request, "param", {})
+    result["snapshot"].update(case.get("snapshot", {}))
+    result["amounts"].update(case.get("amounts", {}))
     trial = PayrollTrialRun(
         payroll_batch_id=batch.id,
         input_fingerprint="a" * 64,
@@ -2696,3 +2699,115 @@ def test_payroll_export_correction_supplement_totals_and_short_transaction(
     book = load_workbook(BytesIO(downloaded.content))
     assert [book["工资表明细"][f"AX{n}"].value for n in (5, 6)] == [1000, 50]
     assert book["汇总"]["I3"].value == 1
+    bank = api_client.post(
+        "/exports/bank",
+        json={
+            "period_id": period,
+            "subject_id": subject,
+            "request_id": str(uuid4()),
+            "subject_templates": {str(subject): "导入模版（武汉）"},
+        },
+    ).json()
+    assert bank["status"] == "completed", bank
+    assert bank["parameters"]["payment_count"] == 1
+    book = load_workbook(BytesIO(api_client.get(f"/exports/bank/{bank['id']}/file").content))
+    sheet = book["导入模版（武汉）"]
+    assert sheet["F2"].value == 1050
+    assert sheet["F3"].value == "=SUM(F2:F2)"
+    assert "整批更正替代" in sheet["G2"].value
+    assert "独立补发" in sheet["G2"].value
+    assert "测试更正或补发" in sheet["G2"].value
+    assert "未填写" in sheet["G2"].value
+
+
+@pytest.mark.parametrize("export_case", [{"snapshot": {"bank_account": None}}, {}], indirect=True)
+def test_bank_export_mapping_gate_and_download(api_client, export_case):
+    from uuid import uuid4
+
+    period, subject, _, _, result = export_case
+    body = {
+        "period_id": period,
+        "subject_id": subject,
+        "request_id": str(uuid4()),
+        "subject_templates": {str(subject): "导入模版（武汉）"},
+    }
+    preview = api_client.get(
+        "/exports/bank/preview", params={"period_id": period, "subject_id": subject}
+    )
+    assert preview.status_code == 200, preview.text
+    response = api_client.post("/exports/bank", json=body)
+    assert response.status_code == 200, response.text
+    report = response.json()
+    if not result["snapshot"]["bank_account"]:
+        assert not preview.json()["can_export"]
+        assert report["status"] == "failed"
+        assert any("银行卡" in w["message"] for w in report["warnings"])
+        assert api_client.get(f"/exports/bank/{report['id']}/file").status_code == 409
+        return
+    assert report["status"] == "completed", report
+    assert api_client.post("/exports/bank", json=body).json()["id"] == report["id"]
+    assert api_client.get(f"/exports/payroll/{report['id']}/file").status_code == 404
+    content = api_client.get(f"/exports/bank/{report['id']}/file")
+    assert content.status_code == 200
+    book = load_workbook(BytesIO(content.content))
+    assert book["导入模版（武汉）"]["F2"].value == 900
+    assert book["导入模版（武汉）"]["C2"].value == "6222000000000000001"
+    assert "未扣个税" in book["导入模版（武汉）"]["G2"].value
+    assert (
+        api_client.get("/exports/bank", params={"period_id": period}).json()[0]["id"]
+        == report["id"]
+    )
+    body["subject_templates"] = {str(subject): "导入模版（北分）"}
+    assert api_client.post("/exports/bank", json=body).status_code == 409
+    body.update(request_id=str(uuid4()), subject_templates={})
+    missing = api_client.post("/exports/bank", json=body).json()
+    assert missing["status"] == "failed"
+    assert any("模板" in w["message"] for w in missing["warnings"])
+
+
+@pytest.mark.parametrize(
+    "export_case", [{"amounts": {"gross": "100.00", "untaxed_amount": "0.00"}}], indirect=True
+)
+def test_bank_zero_kept_and_failed_file_and_changed_version(
+    api_client, db_session, export_case, monkeypatch, tmp_path
+):
+    from uuid import uuid4
+
+    from paylite.config import get_settings
+
+    period, subject, batch_id, _, _ = export_case
+    body = {
+        "period_id": period,
+        "subject_id": subject,
+        "request_id": str(uuid4()),
+        "subject_templates": {str(subject): "导入模版（成都）"},
+    }
+    report = api_client.post("/exports/bank", json=body).json()
+    assert report["status"] == "completed", report
+    assert any(w["code"] == "ZERO_AMOUNT" for w in report["warnings"])
+    file_url = f"/exports/bank/{report['id']}/file"
+    book = load_workbook(BytesIO(api_client.get(file_url).content))
+    assert book["导入模版（成都）"]["E2"].value == 0
+    assert "导出测试" == book["导入模版（成都）"]["D2"].value
+    path = tmp_path / "not-a-directory"
+    path.write_text("file")
+    monkeypatch.setattr(get_settings(), "export_directory", path)
+    body["request_id"] = str(uuid4())
+    failed = api_client.post("/exports/bank", json=body).json()
+    assert failed["status"] == "failed", failed
+    assert api_client.get(f"/exports/bank/{failed['id']}/file").status_code == 409
+    db_session.add(
+        PayrollBatch(
+            subject_id=subject,
+            payroll_period_id=period,
+            batch_type="supplement",
+            batch_no=1,
+            status="draft",
+        )
+    )
+    db_session.commit()
+    assert api_client.get(file_url).status_code == 409
+    preview = api_client.get(
+        "/exports/bank/preview", params={"period_id": period, "subject_id": subject}
+    ).json()
+    assert not preview["can_export"]
