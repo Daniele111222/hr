@@ -7,6 +7,7 @@ BACKEND_ROOT = Path(__file__).resolve().parents[2]
 
 
 class Settings(BaseSettings):
+    export_directory: Path = BACKEND_ROOT / "data" / "exports"
     app_name: str = "PayLite Backend"
     database_url: str = "postgresql+psycopg://paylite:paylite_dev@127.0.0.1:5432/paylite"
 

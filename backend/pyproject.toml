@@ -61,3 +61,6 @@ name = "ORM models stay independent from configuration and sessions"
 type = "forbidden"
 source_modules = ["paylite.db.models"]
 forbidden_modules = ["paylite.config", "paylite.db.session"]
+
+[tool.setuptools.package-data]
+"paylite" = ["excel/templates/*.xlsx"]

@@ -1,0 +1,141 @@
+.page {
+    display: flex;
+    flex-direction: column;
+    gap: 14px;
+    min-width: 0;
+    header h2 {
+        margin: 0;
+        font-size: 20px;
+    }
+    p {
+        color: var(--color-muted);
+        font-size: 13px;
+        line-height: 1.6;
+    }
+    :global(.ant-card) {
+        min-width: 0;
+        border-color: var(--color-border);
+    }
+    :global(.ant-card-head) {
+        min-height: 44px;
+    }
+    :global(.ant-card-head-title) {
+        font-size: 14px;
+    }
+    :global(.ant-card-extra) {
+        font-size: 12px;
+        color: var(--color-muted);
+    }
+    dl {
+        display: grid;
+        grid-template-columns: 110px minmax(0, 1fr);
+        gap: 10px;
+        margin: 0;
+    }
+    dt {
+        color: var(--color-muted);
+    }
+    dd {
+        margin: 0;
+        overflow-wrap: anywhere;
+    }
+}
+.metrics {
+    display: grid;
+    grid-template-columns: repeat(4, minmax(0, 1fr));
+    gap: 12px;
+    > div {
+        padding: 14px 16px;
+        background: var(--color-surface);
+        border: 1px solid var(--color-border);
+        border-radius: 6px;
+    }
+    span {
+        font-size: 12px;
+        color: var(--color-muted);
+    }
+    strong {
+        display: block;
+        margin-top: 6px;
+        font-size: 24px;
+        font-family: var(--font-mono);
+    }
+}
+.templates,
+.fields {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 14px;
+}
+.selected,
+.unavailable {
+    border: 1px solid var(--color-border);
+    padding: 14px;
+    border-radius: 6px;
+}
+.selected {
+    border-color: var(--color-accent);
+    background: color-mix(in srgb, var(--color-accent) 6%, transparent);
+    strong {
+        margin-right: 10px;
+    }
+}
+.unavailable {
+    color: var(--color-muted);
+}
+.config {
+    display: grid;
+    grid-template-columns: minmax(0, 2fr) minmax(0, 1fr);
+    gap: 14px;
+}
+.fields label {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+    min-width: 0;
+}
+.fields :global(.ant-select) {
+    width: 100%;
+}
+.note {
+    margin-bottom: 0;
+}
+.actions {
+    position: sticky;
+    bottom: 0;
+    z-index: 5;
+    display: flex;
+    flex-wrap: wrap;
+    gap: 10px;
+    align-items: center;
+    padding: 12px 14px;
+    background: var(--color-surface);
+    border: 1px solid var(--color-border);
+    border-radius: 6px;
+    > span:first-child {
+        flex: 1;
+        color: var(--color-muted);
+        font-size: 12px;
+    }
+}
+@media (max-width: 1180px) {
+    .metrics {
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+    }
+    .config {
+        grid-template-columns: minmax(0, 1fr);
+    }
+}
+@media (max-width: 900px) {
+    .metrics,
+    .templates,
+    .fields {
+        grid-template-columns: minmax(0, 1fr);
+    }
+    .page :global(.ant-card-head) {
+        flex-wrap: wrap;
+    }
+    .actions > span:first-child {
+        flex-basis: 100%;
+    }
+}

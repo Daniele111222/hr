@@ -56,6 +56,12 @@ const PayrollLedgerPage = lazy(() =>
   })),
 );
 
+const ExportsPage = lazy(() =>
+  import("../pages/exports/index.tsx").then((module) => ({
+    default: module.ExportsPage,
+  })),
+);
+
 const placeholders = [
   {
     path: "employees",
@@ -88,6 +94,7 @@ export function AppRouter() {
           <Route path="organization" element={<OrganizationPage />} />
           <Route path="employees" element={<EmployeesPage />} />
           <Route path="imports" element={<ImportsPage />} />
+          <Route path="exports" element={<ExportsPage />} />
           <Route path="rules" element={<RulesPage />} />
           <Route path="payroll" element={<PayrollPage />} />
           <Route
@@ -101,7 +108,10 @@ export function AppRouter() {
           <Route path="payroll/ledger" element={<PayrollLedgerPage />} />
           {placeholders
             .filter(
-              (item) => item.path !== "employees" && item.path !== "payroll",
+              (item) =>
+                item.path !== "employees" &&
+                item.path !== "payroll" &&
+                item.path !== "exports",
             )
             .map((item) => (
               <Route

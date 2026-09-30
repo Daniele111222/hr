@@ -573,3 +573,77 @@ export const resources = {
       json("POST", v),
     ),
 };
+
+export type PayrollExportPreview = {
+  period: string;
+  employee_count: number;
+  record_count: number;
+  untaxed_amount: string;
+  template_version: string;
+  can_export: boolean;
+  blockers: string[];
+  skipped_subjects: string[];
+};
+export type PayrollExportReport = {
+  id: number;
+  period_id: number;
+  status: "started" | "completed" | "failed";
+  template_version: string;
+  created_at: string;
+  completed_at: string | null;
+  parameters: {
+    period: string;
+    subject_id: number | null;
+    employee_count: number;
+    record_count: number;
+    untaxed_amount: string;
+    versions: {
+      batch_id: number;
+      trial_id: number;
+      batch_no: number;
+      batch_type: string;
+    }[];
+  };
+  warnings: {
+    code: string;
+    severity: string;
+    message: string;
+    employee_id: number | null;
+    field_name: string | null;
+  }[];
+};
+export const payrollExports = {
+  preview: (period: number, subject?: number) =>
+    request<PayrollExportPreview>(
+      `/exports/payroll/preview?period_id=${period}${subject ? `&subject_id=${subject}` : ""}`,
+    ),
+  history: (period: number) =>
+    request<PayrollExportReport[]>(`/exports/payroll?period_id=${period}`),
+  create: (
+    period_id: number,
+    subject_id: number | undefined,
+    request_id: string,
+  ) =>
+    request<PayrollExportReport>(
+      "/exports/payroll",
+      json("POST", { period_id, subject_id, request_id }),
+    ),
+  download: async (id?: number) => {
+    const response = await fetch(
+      `${base}/exports/payroll/${id === undefined ? "template" : `${id}/file`}`,
+    );
+    if (!response.ok) {
+      const body = await response.json().catch(() => ({}));
+      throw new Error(body.detail ?? "下载失败");
+    }
+    const url = URL.createObjectURL(await response.blob());
+    const link = document.createElement("a");
+    link.href = url;
+    const encoded = response.headers
+      .get("Content-Disposition")
+      ?.match(/filename\*=UTF-8''(.+)/)?.[1];
+    link.download = encoded ? decodeURIComponent(encoded) : "工资表模板.xlsx";
+    link.click();
+    setTimeout(() => URL.revokeObjectURL(url), 1000);
+  },
+};

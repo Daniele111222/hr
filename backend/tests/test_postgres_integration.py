@@ -2449,3 +2449,250 @@ def test_independent_supplement_confirms_once_and_joins_effective_ledger(
     assert supplement["amounts"]["untaxed_amount"] == "60.00"
     assert supplement["batch_name"] == "补发差额"
     assert supplement["items"][0]["source_type"] == "supplement"
+
+
+@pytest.fixture
+def export_case(db_session, monkeypatch, tmp_path):
+    from paylite.config import get_settings
+    from paylite.services.payroll_confirmation import _create_records
+
+    monkeypatch.setattr(get_settings(), "export_directory", tmp_path)
+    year = max(
+        2040,
+        (
+            db_session.scalar(
+                select(PayrollPeriod.year).order_by(PayrollPeriod.year.desc()).limit(1)
+            )
+            or 2039
+        )
+        + 1,
+    )
+    _, _, subject, period, employee = create_base_records(
+        db_session, f"EXP{year}", month=10, year=year
+    )
+    batch = PayrollBatch(
+        subject_id=subject.id, payroll_period_id=period.id, batch_type="normal", status="trial"
+    )
+    db_session.add(batch)
+    db_session.flush()
+    result = {
+        "employee_id": employee.id,
+        "errors": [],
+        "snapshot": {
+            "id_number": "110101199001011234",
+            "employee_no": "E01",
+            "name": "导出测试",
+            "bank_account": "6222000000000000001",
+            "fixed_salary": "800.00",
+            "performance_base": "200.00",
+        },
+        "amounts": {
+            "gross": "1000.00",
+            "employee_social": "60.00",
+            "employee_housing": "40.00",
+            "untaxed_amount": "900.00",
+            "employer_cost": "1200.00",
+        },
+        "items": [
+            {"code": "fixed_salary", "name": "固定薪资", "category": "income", "amount": "800.00"},
+            {"code": "performance", "name": "绩效", "category": "income", "amount": "200.00"},
+            {
+                "code": "social_employee_pension",
+                "name": "个人养老",
+                "category": "deduction",
+                "amount": "60.00",
+            },
+            {
+                "code": "housing_employee",
+                "name": "个人公积金",
+                "category": "deduction",
+                "amount": "40.00",
+            },
+        ],
+    }
+    trial = PayrollTrialRun(
+        payroll_batch_id=batch.id,
+        input_fingerprint="a" * 64,
+        input_snapshot={},
+        includes_final_incentive=True,
+        results=[result],
+    )
+    db_session.add(trial)
+    db_session.flush()
+    _create_records(db_session, batch, trial)
+    db_session.flush()
+    record = db_session.scalar(
+        select(PayrollRecord).where(PayrollRecord.payroll_batch_id == batch.id)
+    )
+    record.calculation_status = "locked"
+    batch.confirmed_trial_id = trial.id
+    batch.confirmed_input_fingerprint = trial.input_fingerprint
+    batch.status = "locked"
+    db_session.commit()
+    return period.id, subject.id, batch.id, employee.id, result
+
+
+def test_payroll_export_api_file_retry_failure_and_version_change(
+    api_client, db_session, export_case, monkeypatch
+):
+    from uuid import uuid4
+
+    from paylite.services import payroll_export
+
+    period, subject, batch_id, employee, result = export_case
+    body = {"period_id": period, "subject_id": subject, "request_id": str(uuid4())}
+    preview = api_client.get(
+        "/exports/payroll/preview", params={"period_id": period, "subject_id": subject}
+    )
+    assert preview.json()["can_export"], preview.text
+    created = api_client.post("/exports/payroll", json=body)
+    assert created.status_code == 200, created.text
+    report = created.json()
+    assert report["status"] == "completed", report
+    assert api_client.post("/exports/payroll", json=body).json()["id"] == report["id"]
+    file_url = f"/exports/payroll/{report['id']}/file"
+    downloaded = api_client.get(file_url)
+    assert downloaded.status_code == 200
+    book = load_workbook(BytesIO(downloaded.content))
+    assert book["工资表明细"]["AX5"].value == 900
+    assert book["工资表明细"]["BN5"].value == "6222000000000000001"
+    assert book["工资表明细"]["AU5"].value is None
+    assert api_client.get(f"/exports/payroll/{report['id']}").json()["warnings"]
+
+    original_renderer = payroll_export.render_payroll
+
+    def failing_renderer(ledger):
+        raise OSError("synthetic failure")
+
+    monkeypatch.setattr(payroll_export, "render_payroll", failing_renderer)
+    body["request_id"] = str(uuid4())
+    failed = api_client.post("/exports/payroll", json=body).json()
+    assert failed["status"] == "failed"
+    assert api_client.get(f"/exports/payroll/{failed['id']}/file").status_code == 409
+
+    def changed_renderer(ledger):
+        with Session(db_session.bind) as db:
+            db.add(
+                PayrollBatch(
+                    subject_id=subject,
+                    payroll_period_id=period,
+                    batch_type="supplement",
+                    batch_no=1,
+                    status="draft",
+                )
+            )
+            db.commit()
+        return original_renderer(ledger)
+
+    monkeypatch.setattr(payroll_export, "render_payroll", changed_renderer)
+    body["request_id"] = str(uuid4())
+    changed = api_client.post("/exports/payroll", json=body).json()
+    assert changed["status"] == "failed"
+    assert any("版本发生变化" in warning["message"] for warning in changed["warnings"])
+    assert api_client.get(file_url).status_code == 409
+
+
+@pytest.mark.parametrize("state", ["trial", "confirmed", "missing_incentive", "empty"])
+def test_payroll_export_rejects_unstable_scope(api_client, db_session, export_case, state):
+    from uuid import uuid4
+
+    period, subject, batch_id, _, _ = export_case
+    batch = db_session.get(PayrollBatch, batch_id)
+    if state in {"trial", "confirmed"}:
+        batch.status = state
+    elif state == "missing_incentive":
+        db_session.get(PayrollTrialRun, batch.confirmed_trial_id).includes_final_incentive = False
+    else:
+        batch.is_effective = False
+    db_session.commit()
+    response = api_client.post(
+        "/exports/payroll",
+        json={"period_id": period, "subject_id": subject, "request_id": str(uuid4())},
+    )
+    assert response.status_code == 200, response.text
+    assert response.json()["status"] == "failed"
+    assert api_client.get(f"/exports/payroll/{response.json()['id']}/file").status_code == 409
+
+
+def test_payroll_export_correction_supplement_totals_and_short_transaction(
+    api_client, db_session, export_case, monkeypatch
+):
+    from copy import deepcopy
+    from uuid import uuid4
+
+    from paylite.services import payroll_export
+    from paylite.services.payroll_confirmation import _create_records
+
+    period, subject, original_id, employee, result = export_case
+    original = db_session.get(PayrollBatch, original_id)
+    original.is_effective = False
+    db_session.flush()
+    for batch_type, gross, net in [
+        ("normal", "1100.00", "1000.00"),
+        ("supplement", "50.00", "50.00"),
+    ]:
+        batch = PayrollBatch(
+            subject_id=subject,
+            payroll_period_id=period,
+            batch_type=batch_type,
+            batch_no=2,
+            status="trial",
+            name="测试更正或补发",
+        )
+        db_session.add(batch)
+        db_session.flush()
+        updated = deepcopy(result)
+        updated["amounts"].update(gross=gross, untaxed_amount=net, employer_cost=gross)
+        if batch_type == "supplement":
+            updated["amounts"].update(employee_social="0.00", employee_housing="0.00")
+            updated["items"] = [
+                {"code": "supplement", "name": "补发", "category": "income", "amount": "50.00"}
+            ]
+        run = PayrollTrialRun(
+            payroll_batch_id=batch.id,
+            input_fingerprint="b" * 64,
+            input_snapshot={},
+            includes_final_incentive=batch_type == "normal",
+            results=[updated],
+        )
+        db_session.add(run)
+        db_session.flush()
+        _create_records(db_session, batch, run)
+        db_session.flush()
+        record = db_session.scalar(
+            select(PayrollRecord).where(PayrollRecord.payroll_batch_id == batch.id)
+        )
+        record.calculation_status = "locked"
+        batch.status = "locked"
+        batch.confirmed_trial_id = run.id
+        batch.confirmed_input_fingerprint = run.input_fingerprint
+        if batch_type == "normal":
+            db_session.add(
+                CorrectionBatch(
+                    original_batch_id=original_id,
+                    replacement_batch_id=batch.id,
+                    reason="测试更正",
+                    status="applied",
+                )
+            )
+    db_session.commit()
+    renderer = payroll_export.render_payroll
+    with Session(db_session.bind) as export_session:
+
+        def checked_renderer(ledger):
+            assert not export_session.in_transaction(), (
+                "Excel rendering must not hold DB transaction"
+            )
+            return renderer(ledger)
+
+        monkeypatch.setattr(payroll_export, "render_payroll", checked_renderer)
+        report = payroll_export.create_export(export_session, period, subject, str(uuid4()))
+    assert report["status"] == "completed", report
+    assert report["parameters"]["untaxed_amount"] == "1050.00"
+    assert report["parameters"]["record_count"] == 2
+    assert report["parameters"]["employee_count"] == 1
+    assert original_id not in {v["batch_id"] for v in report["parameters"]["versions"]}
+    downloaded = api_client.get(f"/exports/payroll/{report['id']}/file")
+    book = load_workbook(BytesIO(downloaded.content))
+    assert [book["工资表明细"][f"AX{n}"].value for n in (5, 6)] == [1000, 50]
+    assert book["汇总"]["I3"].value == 1

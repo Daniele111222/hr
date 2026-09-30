@@ -14,7 +14,7 @@
     <main class="content">
 
       <section data-od-id="ex-lead">
-        <p class="page-lead">导出中心把已锁定批次的结果生成 Excel 文件。系统只输出「未扣个税金额」，个税相关字段留空，由你在 Excel 中计算后回填。</p>
+        <p class="page-lead">导出中心把已锁定批次的结果生成 Excel 文件。系统只输出「未扣个税金额」，个税相关字段留空，由你在 Excel 中计算、核对，暂不回填系统。</p>
       </section>
 
       <section data-od-id="ex-gate">
@@ -167,16 +167,17 @@
     var code = entityOf(), p = periodOf();
     return Q.computeAll(p).filter(function (c) { return !code || c.emp.entity === code; });
   }
-  /* 只有试算成功的员工才进入导出文件，与台账口径一致 */
+  /* 任一员工失败则整批不可导出，不允许跳过错误员工。 */
   function exportableList() {
-    return selectedList().filter(function (c) { return c.ok; });
+    var rows = selectedList();
+    return rows.every(function (c) { return c.ok; }) ? rows : [];
   }
 
   /* ── 锁定门控 ─────────────────────────────────────────── */
   function renderGate() {
     var s = Q.state();
     var el = document.getElementById('gate');
-    if (s.locked) {
+    if (s.locked && exportableList().length) {
       el.innerHTML = '<div class="callout is-ok"><span data-icon="check"></span><div>' +
         '<div class="callout-title">本期批次已锁定，可以导出</div>' +
         '<div>' + esc(P) + ' 全部主体（3）已确认并锁定，导出的金额与台账一致。如需调整，请在批次核算详情发起整批更正。</div>' +
@@ -223,7 +224,7 @@
       '<dt>范围</dt><dd>' + (entityOf() ? esc(Q.ent(entityOf()).name) : '全部主体（3）') + '</dd>' +
       '<dt>期间</dt><dd class="mono">' + esc(periodOf()) + '</dd>' +
       '<dt>导出记录数</dt><dd><span class="mono strong">' + sum.count + '</span> 人' +
-        (skipped > 0 ? ' <span class="meta">（另有 ' + skipped + ' 人试算未成功，不进入导出文件）</span>' : '') + '</dd>' +
+        (skipped > 0 ? ' <span class="meta">（另有 ' + skipped + ' 人所在范围未通过整批校验，暂不可导出）</span>' : '') + '</dd>' +
       '<dt>应发金额合计</dt><dd class="mono">' + Q.money(sum.gross) + ' 元</dd>' +
       '<dt>未扣个税金额合计</dt><dd class="mono strong">' + Q.money(sum.net) + ' 元</dd>' +
       '<dt>公司成本合计</dt><dd class="mono">' + Q.money(sum.cost) + ' 元</dd>';
@@ -303,7 +304,7 @@
   function renderActions() {
     var s = Q.state(), locked = !!s.locked, exported = !!s.exported;
     var btn = document.getElementById('btn-generate');
-    btn.disabled = !locked;
+    btn.disabled = !locked || !exportableList().length;
     btn.textContent = exported ? '重新生成导出文件' : '生成导出文件';
     document.getElementById('act-reason').innerHTML = !locked
       ? '批次锁定后即可生成导出文件。'
@@ -327,7 +328,7 @@
   document.getElementById('scope-period').addEventListener('change', rerender);
 
   document.getElementById('btn-generate').addEventListener('click', function () {
-    if (!Q.state().locked) { Q.toast('请先在批次核算详情确认并锁定本期批次', 'warn'); return; }
+    if (!Q.state().locked || !exportableList().length) { Q.toast('请先在批次核算详情确认并锁定本期批次', 'warn'); return; }
     Q.setState({ exported: true });
     rerender();
     var n = Q.summarize(exportableList()).count;

@@ -20,7 +20,10 @@ services:
     build:
       context: ./backend
     environment:
+      PAYLITE_EXPORT_DIRECTORY: /app/data/exports
       PAYLITE_DATABASE_URL: postgresql+psycopg://paylite:paylite_dev@postgres:5432/paylite
+    volumes:
+      - paylite-exports:/app/data/exports
     ports:
       - "127.0.0.1:31000:8000"
     depends_on:
@@ -29,3 +32,4 @@ services:
 
 volumes:
   paylite-postgres:
+  paylite-exports:
