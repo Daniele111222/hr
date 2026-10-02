@@ -150,3 +150,33 @@ test("人工成本表无需银行模板映射，显示费用口径和生成失�
   ).toBe(true);
   expect(screen.getByRole("button", { name: "下载人工成本表" })).toBeDisabled();
 });
+
+test("申报辅助模板提示税务留空，通过 tax 接口生成且失败文件不可下载", async () => {
+  const fetcher = setup();
+  await screen.findByText("所选范围已通过导出门槛");
+  await userEvent.click(screen.getByRole("button", { name: "申报辅助模板" }));
+  expect(
+    await screen.findByText("仅为申报辅助，未完成税务申报"),
+  ).toBeInTheDocument();
+  expect(screen.getByText(/所得期间、证件类型、免税收入/)).toBeInTheDocument();
+  expect(screen.getByRole("button", { name: "生成导出文件" })).toBeEnabled();
+  await userEvent.click(screen.getByRole("button", { name: "生成导出文件" }));
+  expect(await screen.findByText("文件生成失败")).toBeInTheDocument();
+  expect(
+    fetcher.mock.calls.some(
+      ([url, init]) =>
+        String(url).endsWith("/exports/tax") && init?.method === "POST",
+    ),
+  ).toBe(true);
+  expect(
+    screen.getByRole("button", { name: "下载申报辅助模板" }),
+  ).toBeDisabled();
+});
+
+test("申报辅助未锁定范围同样禁止生成", async () => {
+  setup(false);
+  await screen.findByText("批次尚未锁定");
+  await userEvent.click(screen.getByRole("button", { name: "申报辅助模板" }));
+  await screen.findByText("仅为申报辅助，未完成税务申报");
+  expect(screen.getByRole("button", { name: "生成导出文件" })).toBeDisabled();
+});

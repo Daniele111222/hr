@@ -2736,6 +2736,21 @@ def test_payroll_export_correction_supplement_totals_and_short_transaction(
     assert "整批更正替代" in book["工资明细"]["BG5"].value
     assert "独立补发" in book["工资明细"]["BG6"].value
 
+    tax = api_client.post(
+        "/exports/tax",
+        json={"period_id": period, "subject_id": subject, "request_id": str(uuid4())},
+    ).json()
+    assert tax["status"] == "completed", tax
+    assert tax["parameters"]["untaxed_amount"] == "1050.00"
+    assert tax["parameters"]["record_count"] == 2
+    assert original_id not in {v["batch_id"] for v in tax["parameters"]["versions"]}
+    book = load_workbook(BytesIO(api_client.get(f"/exports/tax/{tax['id']}/file").content))
+    assert [book["Sheet1"][f"G{n}"].value for n in (2, 3)] == [1100, 50]
+    assert "整批更正替代" in book["Sheet1"]["AG2"].value
+    assert "独立补发" in book["Sheet1"]["AG3"].value
+    assert book["Sheet1"]["I3"].value is None
+    assert book["Sheet1"]["AF2"].value is None
+
 
 @pytest.mark.parametrize(
     "export_case",
@@ -2913,3 +2928,84 @@ def test_bank_zero_kept_and_failed_file_and_changed_version(
         "/exports/bank/preview", params={"period_id": period, "subject_id": subject}
     ).json()
     assert not preview["can_export"]
+
+
+@pytest.mark.parametrize(
+    "export_case",
+    [
+        {},
+        {
+            "extra_items": [
+                {
+                    "code": "social_employee_local_pension",
+                    "name": "自定义险种",
+                    "category": "deduction",
+                    "amount": "1.00",
+                }
+            ]
+        },
+    ],
+    indirect=True,
+)
+def test_tax_export_api_sources_missing_fields_retry_and_stale_file(
+    api_client, db_session, export_case, monkeypatch, tmp_path
+):
+    from urllib.parse import unquote
+    from uuid import uuid4
+
+    from paylite.excel.tax_export import BLANK_FIELDS
+
+    period, subject, _, _, result = export_case
+    body = {"period_id": period, "subject_id": subject, "request_id": str(uuid4())}
+    preview = api_client.get("/exports/tax/preview", params={"period_id": period}).json()
+    assert preview["can_export"] and preview["template_version"].startswith("tax-v1-")
+    report = api_client.post("/exports/tax", json=body).json()
+    assert report["status"] == "completed", report
+    assert report["parameters"]["untaxed_amount"] == "900.00"
+    assert api_client.post("/exports/tax", json=body).json()["id"] == report["id"]
+    assert api_client.get(f"/exports/tax/{report['id']}").json() == report
+    assert (
+        api_client.get("/exports/tax", params={"period_id": period}).json()[0]["id"] == report["id"]
+    )
+    assert api_client.get(f"/exports/payroll/{report['id']}/file").status_code == 404
+    fields = {w["field_name"] for w in report["warnings"] if w["code"] == "TAX_FIELD_MISSING"}
+    assert fields == set(BLANK_FIELDS.values())
+    assert any("未完成税务申报" in w["message"] for w in report["warnings"])
+    unmapped = any(i["code"] == "social_employee_local_pension" for i in result["items"])
+    assert any(w["code"] == "SOCIAL_ITEM_UNMAPPED" for w in report["warnings"]) == unmapped
+    file_url = f"/exports/tax/{report['id']}/file"
+    response = api_client.get(file_url)
+    assert response.status_code == 200
+    sheet = load_workbook(BytesIO(response.content))["Sheet1"]
+    assert [sheet[f"{c}2"].value for c in ("G", "I", "L")] == [1000, 60, 40]
+    assert sheet["D2"].value == "110101199001011234"
+    assert sheet["D2"].data_type == "s"
+    for c in BLANK_FIELDS:
+        assert sheet[f"{c}2"].value is None
+    assert sheet["J2"].value is None and sheet["K2"].value is None
+    assert "未扣个税金额 900.00" in sheet["AG2"].value
+    assert "申报辅助模板" in unquote(response.headers["content-disposition"])
+    template = load_workbook(BytesIO(api_client.get("/exports/tax/template").content))
+    assert template.sheetnames == ["Sheet1"] and template.active.max_row == 1
+
+    path = tmp_path / "blocked-tax-directory"
+    path.write_text("blocked")
+    monkeypatch.setattr(get_settings(), "export_directory", path)
+    body["request_id"] = str(uuid4())
+    failed = api_client.post("/exports/tax", json=body).json()
+    assert failed["status"] == "failed"
+    assert api_client.get(f"/exports/tax/{failed['id']}/file").status_code == 409
+    db_session.add(
+        PayrollBatch(
+            subject_id=subject, payroll_period_id=period, batch_type="supplement", status="draft"
+        )
+    )
+    db_session.commit()
+    assert not api_client.get("/exports/tax/preview", params={"period_id": period}).json()[
+        "can_export"
+    ]
+    assert api_client.get(file_url).status_code == 409
+    body["request_id"] = str(uuid4())
+    blocked = api_client.post("/exports/tax", json=body).json()
+    assert blocked["status"] == "failed"
+    assert api_client.get(f"/exports/tax/{blocked['id']}/file").status_code == 409

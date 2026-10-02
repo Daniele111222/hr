@@ -85,8 +85,9 @@ export function ExportsPage() {
       <header>
         <Typography.Title level={2}>导出中心</Typography.Title>
         <p>
-          将已锁定的有效批次生成工资表、代发工资表或人工成本表。系统只输出「未扣个税金额」，个税由你在
-          Excel 中计算、核对，暂不回填系统。
+          将已锁定的有效批次生成四类
+          Excel，包括申报辅助模板。系统只输出「未扣个税金额」，个税由你在 Excel
+          中计算、核对，暂不回填系统。
         </p>
       </header>
       {error && (
@@ -135,7 +136,7 @@ export function ExportsPage() {
         {[
           ["导出期间", data?.period ?? "—"],
           ["导出人数", data?.employee_count ?? "—"],
-          ["可用模板", "3 套"],
+          ["可用模板", "4 套"],
           ["最近导出", history.data?.[0] ? `#${history.data[0].id}` : "—"],
         ].map(([title, value]) => (
           <div key={title}>
@@ -146,7 +147,7 @@ export function ExportsPage() {
       </section>
       <Card title="选择导出模板" size="small">
         <div className={styles.templates}>
-          {(["payroll", "bank", "labor-cost"] as const).map((value) => (
+          {(["payroll", "bank", "labor-cost", "tax"] as const).map((value) => (
             <button
               key={value}
               type="button"
@@ -172,6 +173,7 @@ export function ExportsPage() {
                     bank: "按主体选择银行模板，查看账户问题并生成未扣个税文件。",
                     "labor-cost":
                       "按员工与主体核对个人扣款、公司缴费及人工成本，项目工时留空。",
+                    tax: "保留 33 列申报辅助结构，未知税务字段留空并逐项报告，供线下补充核对。",
                   }[value]
                 }
               </p>
@@ -180,10 +182,6 @@ export function ExportsPage() {
               )}
             </button>
           ))}
-          <div className={styles.unavailable}>
-            <strong>个税辅助</strong>
-            <p>尚未实现，对应需求 16。</p>
-          </div>
         </div>
       </Card>
       <div className={styles.config}>
@@ -279,6 +277,14 @@ export function ExportsPage() {
         </Card>
       </div>
       <Card title="字段口径" size="small">
+        {kind === "tax" && (
+          <Alert
+            type="warning"
+            showIcon
+            title="仅为申报辅助，未完成税务申报"
+            description="本期收入取锁定应发金额，个人社保分项与公积金只填有明确来源的项目；未扣个税金额在备注标识。所得期间、证件类型、免税收入、累计扣除及已缴税额等无来源字段留空，报告逐项提示；请线下补充核对，不回填系统。"
+          />
+        )}
         {kind === "labor-cost" && (
           <Alert
             type="info"

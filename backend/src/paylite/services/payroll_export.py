@@ -20,7 +20,7 @@ from paylite.db.models import (
     PayrollTrialRun,
     Subject,
 )
-from paylite.excel import bank_export, labor_cost_export
+from paylite.excel import bank_export, labor_cost_export, tax_export
 from paylite.excel.payroll_export import (
     TAX_NOTICE,
     TEMPLATE_NOTICE,
@@ -33,6 +33,7 @@ TEMPLATES = {
     "payroll_sheet": (TEMPLATE_VERSION, TEMPLATE_NOTICE),
     "bank_payment": (bank_export.TEMPLATE_VERSION, bank_export.TEMPLATE_NOTICE),
     "labor_cost": (labor_cost_export.TEMPLATE_VERSION, labor_cost_export.TEMPLATE_NOTICE),
+    "tax_assistance": (tax_export.TEMPLATE_VERSION, tax_export.TEMPLATE_NOTICE),
 }
 
 
@@ -341,7 +342,48 @@ def create_export(
     )
     for name in empty:
         _warning(db, export_id, "EMPTY_SUBJECT", f"{name}无工资批次，已跳过")
+    if output_type == "tax_assistance":
+        for column, label in tax_export.BLANK_FIELDS.items():
+            _warning(
+                db,
+                export_id,
+                "TAX_FIELD_MISSING",
+                f"{column} 列「{label}」无明确来源，留空待线下补充核对，未知值不视为零。",
+                field_name=label,
+            )
     for row in ledger["records"]:
+        if output_type == "tax_assistance":
+            codes = {item["code"] for item in row["items"]}
+            for column, code in tax_export.SOCIAL_COLUMNS.items():
+                if code not in codes:
+                    _warning(
+                        db,
+                        export_id,
+                        "DEDUCTION_SOURCE_MISSING",
+                        f"{column} 列个人缴费项目 {code} 无锁定来源，留空，不猜测险种或补发扣款。",
+                        employee_id=row["employee_id"],
+                        field_name=code,
+                    )
+            if not row["snapshot"].get("employee_no"):
+                _warning(
+                    db,
+                    export_id,
+                    "EMPLOYEE_NO_MISSING",
+                    "A 列工号无锁定来源，留空待线下补充。",
+                    employee_id=row["employee_id"],
+                    field_name="employee_no",
+                )
+            unmapped = codes - set(tax_export.SOCIAL_COLUMNS.values())
+            unmapped = sorted(code for code in unmapped if code.startswith("social_employee_"))
+            if unmapped:
+                _warning(
+                    db,
+                    export_id,
+                    "SOCIAL_ITEM_UNMAPPED",
+                    "个人险种代码无法映射申报模板分项：" + "、".join(unmapped) + "；不猜测归属。",
+                    employee_id=row["employee_id"],
+                    field_name="social_items",
+                )
         if output_type == "labor_cost":
             unmapped = [
                 item["code"]
@@ -386,6 +428,8 @@ def create_export(
             content = bank_export.render_bank(bank_rows, subject_templates)
         elif output_type == "labor_cost":
             content = labor_cost_export.render_labor_cost(ledger)
+        elif output_type == "tax_assistance":
+            content = tax_export.render_tax(ledger)
         else:
             content = render_payroll(ledger)
         path.parent.mkdir(parents=True, exist_ok=True)
@@ -452,7 +496,10 @@ def download_export(
     if sha256(content).hexdigest() != params["file_sha256"]:
         raise PayrollExportError(409, "导出文件校验失败，请重新生成")
     db.commit()
-    label = {"bank_payment": "代发工资表", "labor_cost": "人工成本表", "payroll_sheet": "工资表"}[
-        output_type
-    ]
+    label = {
+        "bank_payment": "代发工资表",
+        "labor_cost": "人工成本表",
+        "payroll_sheet": "工资表",
+        "tax_assistance": "申报辅助模板",
+    }[output_type]
     return content, f"{label}-{params['period']}-{export_id}-未扣个税.xlsx"

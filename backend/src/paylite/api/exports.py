@@ -8,13 +8,18 @@ from pydantic import BaseModel, Field
 from sqlalchemy.orm import Session
 
 from paylite.api.deps import get_db
-from paylite.excel import bank_export, labor_cost_export
+from paylite.excel import bank_export, labor_cost_export, tax_export
 from paylite.excel.payroll_export import TEMPLATE_PATH
 from paylite.services import payroll_export
 
 router = APIRouter(prefix="/exports", tags=["exports"])
-ExportKind = Literal["payroll", "bank", "labor-cost"]
-OUTPUT_TYPES = {"payroll": "payroll_sheet", "bank": "bank_payment", "labor-cost": "labor_cost"}
+ExportKind = Literal["payroll", "bank", "labor-cost", "tax"]
+OUTPUT_TYPES = {
+    "payroll": "payroll_sheet",
+    "bank": "bank_payment",
+    "labor-cost": "labor_cost",
+    "tax": "tax_assistance",
+}
 MIME = "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
 
 
@@ -56,6 +61,7 @@ def template(kind: ExportKind):
             "payroll": TEMPLATE_PATH,
             "bank": bank_export.TEMPLATE_PATH,
             "labor-cost": labor_cost_export.TEMPLATE_PATH,
+            "tax": tax_export.TEMPLATE_PATH,
         }[kind].read_bytes(),
         media_type=MIME,
         headers={"Content-Disposition": f'attachment; filename="{kind}-template.xlsx"'},

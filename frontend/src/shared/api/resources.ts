@@ -592,6 +592,7 @@ export const exportLabels = {
   payroll: "工资表",
   bank: "代发工资表",
   "labor-cost": "人工成本表",
+  tax: "申报辅助模板",
 };
 export type ExportKind = keyof typeof exportLabels;
 export type PayrollExportPreview = {
