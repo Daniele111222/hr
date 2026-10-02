@@ -15,6 +15,7 @@ import {
 import { useRef, useState } from "react";
 import {
   payrollExports,
+  exportLabels,
   resources,
   type PayrollExportReport,
   type ExportKind,
@@ -27,7 +28,7 @@ export function ExportsPage() {
   const [subjectTemplates, setSubjectTemplates] = useState<
     Record<string, string>
   >({});
-  const label = kind === "bank" ? "代发工资表" : "工资表";
+  const label = exportLabels[kind];
   const [selectedPeriod, setPeriod] = useState<number>();
   const [subject, setSubject] = useState<number>();
   const [report, setReport] = useState<PayrollExportReport>();
@@ -84,7 +85,7 @@ export function ExportsPage() {
       <header>
         <Typography.Title level={2}>导出中心</Typography.Title>
         <p>
-          将已锁定的有效批次生成工资表或代发工资表。系统只输出「未扣个税金额」，个税由你在
+          将已锁定的有效批次生成工资表、代发工资表或人工成本表。系统只输出「未扣个税金额」，个税由你在
           Excel 中计算、核对，暂不回填系统。
         </p>
       </header>
@@ -134,7 +135,7 @@ export function ExportsPage() {
         {[
           ["导出期间", data?.period ?? "—"],
           ["导出人数", data?.employee_count ?? "—"],
-          ["可用模板", "2 套"],
+          ["可用模板", "3 套"],
           ["最近导出", history.data?.[0] ? `#${history.data[0].id}` : "—"],
         ].map(([title, value]) => (
           <div key={title}>
@@ -145,11 +146,11 @@ export function ExportsPage() {
       </section>
       <Card title="选择导出模板" size="small">
         <div className={styles.templates}>
-          {(["payroll", "bank"] as const).map((value) => (
+          {(["payroll", "bank", "labor-cost"] as const).map((value) => (
             <button
               key={value}
               type="button"
-              aria-label={value === "bank" ? "代发工资表" : "工资表"}
+              aria-label={exportLabels[value]}
               aria-pressed={kind === value}
               className={`${styles.template} ${kind === value ? styles.selected : ""}`}
               disabled={generate.isPending || download.isPending}
@@ -161,12 +162,18 @@ export function ExportsPage() {
                 generate.reset();
               }}
             >
-              <strong>{value === "bank" ? "代发工资表" : "工资表"}</strong>
+              <strong>{exportLabels[value]}</strong>
               {kind === value && <Tag color="blue">已选择</Tag>}
               <p>
-                {value === "bank"
-                  ? "按主体选择银行模板，查看账户问题并生成未扣个税文件。"
-                  : "按员工与批次列出收入、扣缴和未扣个税金额，保留来源。"}
+                {
+                  {
+                    payroll:
+                      "按员工与批次列出收入、扣缴和未扣个税金额，保留来源。",
+                    bank: "按主体选择银行模板，查看账户问题并生成未扣个税文件。",
+                    "labor-cost":
+                      "按员工与主体核对个人扣款、公司缴费及人工成本，项目工时留空。",
+                  }[value]
+                }
               </p>
               {kind === value && (
                 <small>{data?.template_version ?? "正在读取模板版本"}</small>
@@ -174,8 +181,8 @@ export function ExportsPage() {
             </button>
           ))}
           <div className={styles.unavailable}>
-            <strong>人工成本表 / 个税辅助</strong>
-            <p>尚未实现，对应需求 15—16。</p>
+            <strong>个税辅助</strong>
+            <p>尚未实现，对应需求 16。</p>
           </div>
         </div>
       </Card>
@@ -260,12 +267,26 @@ export function ExportsPage() {
             <dd>{data?.record_count ?? "—"}</dd>
             <dt>未扣个税金额</dt>
             <dd>{data?.untaxed_amount ?? "—"}</dd>
+            {kind === "labor-cost" && (
+              <>
+                <dt>公司成本</dt>
+                <dd>{data?.employer_cost ?? "—"}</dd>
+              </>
+            )}
             <dt>无工资主体</dt>
             <dd>{data?.skipped_subjects.join("、") || "无"}</dd>
           </dl>
         </Card>
       </div>
       <Card title="字段口径" size="small">
+        {kind === "labor-cost" && (
+          <Alert
+            type="info"
+            showIcon
+            title="个人社保、公积金计入个人扣款；公司部分只计入公司成本"
+            description="公司成本取锁定台账，不从工资重复扣除公司缴费。主体按 ID 顺序填充模板页，页内显示真实主体；汇总按主体，明细保留锁定部门名称，部门层级及项目工时无来源留空。"
+          />
+        )}
         {kind === "bank" && (
           <Alert
             type="warning"
@@ -408,6 +429,11 @@ export function ExportsPage() {
             <Typography.Text>
               未扣个税金额：{report.parameters.untaxed_amount}
             </Typography.Text>
+            {kind === "labor-cost" && (
+              <Typography.Text>
+                公司成本：{report.parameters.employer_cost ?? "—"}
+              </Typography.Text>
+            )}
             {report.warnings.map((w, i) => (
               <Alert
                 key={i}

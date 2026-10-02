@@ -26,6 +26,7 @@ function setup(canExport = true, fail = false, completed = false) {
           employee_count: 1,
           record_count: 1,
           untaxed_amount: "900.00",
+          employer_cost: "1200.00",
           template_version: "v1",
           can_export: canExport,
           blockers: canExport ? [] : ["批次尚未锁定"],
@@ -45,6 +46,7 @@ function setup(canExport = true, fail = false, completed = false) {
             period: "2026-09",
             employee_count: 1,
             untaxed_amount: "900.00",
+            employer_cost: "1200.00",
             versions: [],
           },
           warnings: [
@@ -129,4 +131,22 @@ test("代发模板切换后须先选择主体模板，生成请求保留映射",
     "2": "导入模版（武汉）",
   });
   expect(screen.getByRole("button", { name: "下载代发工资表" })).toBeDisabled();
+});
+
+test("人工成本表无需银行模板映射，显示费用口径和生成失败报告", async () => {
+  const fetcher = setup();
+  await screen.findByText("所选范围已通过导出门槛");
+  await userEvent.click(screen.getByRole("button", { name: "人工成本表" }));
+  expect(await screen.findByText("1200.00")).toBeInTheDocument();
+  expect(screen.getByText(/公司部分只计入公司成本/)).toBeInTheDocument();
+  expect(screen.getByRole("button", { name: "生成导出文件" })).toBeEnabled();
+  await userEvent.click(screen.getByRole("button", { name: "生成导出文件" }));
+  expect(await screen.findByText("文件生成失败")).toBeInTheDocument();
+  expect(
+    fetcher.mock.calls.some(
+      ([url, init]) =>
+        String(url).endsWith("/exports/labor-cost") && init?.method === "POST",
+    ),
+  ).toBe(true);
+  expect(screen.getByRole("button", { name: "下载人工成本表" })).toBeDisabled();
 });

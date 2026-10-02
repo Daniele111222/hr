@@ -588,7 +588,12 @@ export const resources = {
     ),
 };
 
-export type ExportKind = "payroll" | "bank";
+export const exportLabels = {
+  payroll: "工资表",
+  bank: "代发工资表",
+  "labor-cost": "人工成本表",
+};
+export type ExportKind = keyof typeof exportLabels;
 export type PayrollExportPreview = {
   subjects: { id: number; name: string }[];
   template_sheets: string[];
@@ -596,6 +601,7 @@ export type PayrollExportPreview = {
   employee_count: number;
   record_count: number;
   untaxed_amount: string;
+  employer_cost: string;
   template_version: string;
   can_export: boolean;
   blockers: string[];
@@ -614,6 +620,7 @@ export type PayrollExportReport = {
     employee_count: number;
     record_count: number;
     untaxed_amount: string;
+    employer_cost?: string;
     versions: {
       batch_id: number;
       trial_id: number;
@@ -663,7 +670,7 @@ export const payrollExports = {
       ?.match(/filename\*=UTF-8''(.+)/)?.[1];
     link.download = encoded
       ? decodeURIComponent(encoded)
-      : `${kind === "bank" ? "代发工资表" : "工资表"}模板.xlsx`;
+      : `${exportLabels[kind]}模板.xlsx`;
     link.click();
     setTimeout(() => URL.revokeObjectURL(url), 1000);
   },

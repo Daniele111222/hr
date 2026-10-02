@@ -2513,6 +2513,7 @@ def export_case(db_session, monkeypatch, tmp_path, request):
     case = getattr(request, "param", {})
     result["snapshot"].update(case.get("snapshot", {}))
     result["amounts"].update(case.get("amounts", {}))
+    result["items"].extend(case.get("extra_items", []))
     trial = PayrollTrialRun(
         payroll_batch_id=batch.id,
         input_fingerprint="a" * 64,
@@ -2718,6 +2719,107 @@ def test_payroll_export_correction_supplement_totals_and_short_transaction(
     assert "独立补发" in sheet["G2"].value
     assert "测试更正或补发" in sheet["G2"].value
     assert "未填写" in sheet["G2"].value
+
+    labor = api_client.post(
+        "/exports/labor-cost",
+        json={"period_id": period, "subject_id": subject, "request_id": str(uuid4())},
+    ).json()
+    assert labor["status"] == "completed", labor
+    assert labor["parameters"]["untaxed_amount"] == "1050.00"
+    assert labor["parameters"]["employer_cost"] == "1150.00"
+    assert original_id not in {v["batch_id"] for v in labor["parameters"]["versions"]}
+    book = load_workbook(BytesIO(api_client.get(f"/exports/labor-cost/{labor['id']}/file").content))
+    assert [book["工资明细"][f"AX{n}"].value for n in (5, 6)] == [1000, 50]
+    assert [book["工资明细"][f"BF{n}"].value for n in (5, 6)] == [1100, 50]
+    assert book.worksheets[0]["D6"].value == 1
+    assert book.worksheets[0]["N6"].value == "=SUM('工资明细'!AX5:AX6)"
+    assert "整批更正替代" in book["工资明细"]["BG5"].value
+    assert "独立补发" in book["工资明细"]["BG6"].value
+
+
+@pytest.mark.parametrize(
+    "export_case",
+    [
+        {
+            "extra_items": [
+                {
+                    "code": f"social_company_{code}",
+                    "name": "公司养老",
+                    "category": "employer_cost",
+                    "amount": "160.00",
+                },
+                {
+                    "code": "housing_company",
+                    "name": "公司公积金",
+                    "category": "employer_cost",
+                    "amount": "40.00",
+                },
+            ]
+        }
+        for code in ("pension", "local_pension")
+    ],
+    indirect=True,
+)
+def test_labor_cost_export_api_report_retry_failure_and_stale_version(
+    api_client, db_session, export_case, monkeypatch, tmp_path
+):
+    from uuid import uuid4
+
+    from paylite.config import get_settings
+
+    period, subject, _, _, result = export_case
+    body = {"period_id": period, "subject_id": subject, "request_id": str(uuid4())}
+    preview = api_client.get("/exports/labor-cost/preview", params={"period_id": period}).json()
+    assert preview["can_export"], preview
+    assert preview["employer_cost"] == "1200.00"
+    report = api_client.post("/exports/labor-cost", json=body).json()
+    assert report["status"] == "completed", report
+    assert report["template_version"].startswith("labor-cost-v1-")
+    assert api_client.post("/exports/labor-cost", json=body).json()["id"] == report["id"]
+    assert api_client.get(f"/exports/labor-cost/{report['id']}").json() == report
+    assert any("项目工时" in w["message"] for w in report["warnings"])
+    unmapped = any(item["code"] == "social_company_local_pension" for item in result["items"])
+    assert any(w["code"] == "SOCIAL_ITEM_UNMAPPED" for w in report["warnings"]) == unmapped
+    assert api_client.get(f"/exports/bank/{report['id']}/file").status_code == 404
+    assert (
+        api_client.get("/exports/labor-cost", params={"period_id": period}).json()[0]["id"]
+        == report["id"]
+    )
+    file_url = f"/exports/labor-cost/{report['id']}/file"
+    response = api_client.get(file_url)
+    assert response.status_code == 200
+    book = load_workbook(BytesIO(response.content))
+    assert [
+        book["工资明细"][f"{c}5"].value for c in ("AO", "AS", "AT", "AX", "BD", "BE", "BF")
+    ] == [1000, 60, 40, 900, 160, 40, 1200]
+    assert book["工资明细"]["AU5"].value is None
+    assert book["工资明细"]["AY5"].value == (None if unmapped else 160)
+    assert book["工资明细"]["AY4"].value == '=IF(COUNT(AY5:AY5)=0,"",SUM(AY5:AY5))'
+    template = load_workbook(BytesIO(api_client.get("/exports/labor-cost/template").content))
+    assert template["工资明细"]["C5"].value is None
+
+    path = tmp_path / "not-a-directory"
+    path.write_text("blocked")
+    monkeypatch.setattr(get_settings(), "export_directory", path)
+    body["request_id"] = str(uuid4())
+    failed = api_client.post("/exports/labor-cost", json=body).json()
+    assert failed["status"] == "failed"
+    assert api_client.get(f"/exports/labor-cost/{failed['id']}/file").status_code == 409
+
+    db_session.add(
+        PayrollBatch(
+            subject_id=subject,
+            payroll_period_id=period,
+            batch_type="supplement",
+            batch_no=1,
+            status="draft",
+        )
+    )
+    db_session.commit()
+    assert api_client.get(file_url).status_code == 409
+    assert not api_client.get("/exports/labor-cost/preview", params={"period_id": period}).json()[
+        "can_export"
+    ]
 
 
 @pytest.mark.parametrize("export_case", [{"snapshot": {"bank_account": None}}, {}], indirect=True)

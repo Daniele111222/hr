@@ -20,7 +20,7 @@ from paylite.db.models import (
     PayrollTrialRun,
     Subject,
 )
-from paylite.excel import bank_export
+from paylite.excel import bank_export, labor_cost_export
 from paylite.excel.payroll_export import (
     TAX_NOTICE,
     TEMPLATE_NOTICE,
@@ -28,6 +28,12 @@ from paylite.excel.payroll_export import (
     render_payroll,
 )
 from paylite.services.payroll_ledger import get_ledger
+
+TEMPLATES = {
+    "payroll_sheet": (TEMPLATE_VERSION, TEMPLATE_NOTICE),
+    "bank_payment": (bank_export.TEMPLATE_VERSION, bank_export.TEMPLATE_NOTICE),
+    "labor_cost": (labor_cost_export.TEMPLATE_VERSION, labor_cost_export.TEMPLATE_NOTICE),
+}
 
 
 class PayrollExportError(Exception):
@@ -191,7 +197,8 @@ def preview_export(
         "employee_count": ledger["employee_count"],
         "record_count": ledger["record_count"],
         "untaxed_amount": ledger["totals"]["untaxed_amount"],
-        "template_version": bank_export.TEMPLATE_VERSION if is_bank else TEMPLATE_VERSION,
+        "employer_cost": ledger["totals"]["employer_cost"],
+        "template_version": TEMPLATES[output_type][0],
         "can_export": not blockers,
         "blockers": blockers,
         "skipped_subjects": empty,
@@ -299,7 +306,7 @@ def create_export(
     export = ExportBatch(
         payroll_period_id=period_id,
         output_type=output_type,
-        template_version=bank_export.TEMPLATE_VERSION if is_bank else TEMPLATE_VERSION,
+        template_version=TEMPLATES[output_type][0],
         status="started",
         parameters={
             "request_id": request_id,
@@ -309,6 +316,7 @@ def create_export(
             "employee_count": ledger["employee_count"],
             "record_count": ledger["record_count"],
             "untaxed_amount": ledger["totals"]["untaxed_amount"],
+            "employer_cost": ledger["totals"]["employer_cost"],
             "skipped_subjects": empty,
             **(
                 {
@@ -329,14 +337,32 @@ def create_export(
         db,
         export_id,
         "TEMPLATE_ADAPTED",
-        bank_export.TEMPLATE_NOTICE if is_bank else TEMPLATE_NOTICE,
+        TEMPLATES[output_type][1],
     )
     for name in empty:
         _warning(db, export_id, "EMPTY_SUBJECT", f"{name}无工资批次，已跳过")
     for row in ledger["records"]:
+        if output_type == "labor_cost":
+            unmapped = [
+                item["code"]
+                for item in row["items"]
+                if item["code"].startswith(("social_employee_", "social_company_"))
+                and item["code"] not in labor_cost_export.SOCIAL_COLUMNS.values()
+            ]
+            if unmapped:
+                _warning(
+                    db,
+                    export_id,
+                    "SOCIAL_ITEM_UNMAPPED",
+                    "险种代码无法映射模板分项："
+                    + "、".join(unmapped)
+                    + "；金额已计入个人/公司社保合计，不猜测险种归属。",
+                    employee_id=row["employee_id"],
+                    field_name="social_items",
+                )
         if row["amounts"]["untaxed_amount"] == "0.00":
             _warning(db, export_id, "ZERO_AMOUNT", "零工资记录保留", employee_id=row["employee_id"])
-        if not is_bank and not row["snapshot"].get("bank_account"):
+        if output_type == "payroll_sheet" and not row["snapshot"].get("bank_account"):
             _warning(
                 db,
                 export_id,
@@ -356,11 +382,12 @@ def create_export(
     path = Path(get_settings().export_directory) / f"{output_type}-{export_id}.xlsx"
     temporary = path.with_suffix(".tmp")
     try:
-        content = (
-            bank_export.render_bank(bank_rows, subject_templates)
-            if is_bank
-            else render_payroll(ledger)
-        )
+        if is_bank:
+            content = bank_export.render_bank(bank_rows, subject_templates)
+        elif output_type == "labor_cost":
+            content = labor_cost_export.render_labor_cost(ledger)
+        else:
+            content = render_payroll(ledger)
         path.parent.mkdir(parents=True, exist_ok=True)
         temporary.write_bytes(content)
         current_ledger, current_versions, current_blockers, _ = _scope(
@@ -425,5 +452,7 @@ def download_export(
     if sha256(content).hexdigest() != params["file_sha256"]:
         raise PayrollExportError(409, "导出文件校验失败，请重新生成")
     db.commit()
-    label = "代发工资表" if output_type == "bank_payment" else "工资表"
+    label = {"bank_payment": "代发工资表", "labor_cost": "人工成本表", "payroll_sheet": "工资表"}[
+        output_type
+    ]
     return content, f"{label}-{params['period']}-{export_id}-未扣个税.xlsx"
