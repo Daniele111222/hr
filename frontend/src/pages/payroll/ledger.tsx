@@ -1,3 +1,4 @@
+import { money } from "../../shared/money";
 import { ArrowLeftOutlined } from "@ant-design/icons";
 import { useQuery } from "@tanstack/react-query";
 import {
@@ -11,28 +12,34 @@ import {
   Tag,
   Typography,
 } from "antd";
-import { useMemo, useState } from "react";
+import { useMemo } from "react";
 import { Link, useSearchParams } from "react-router-dom";
 import { resources } from "../../shared/api/resources";
 import styles from "./ledger.module.less";
 
-const money = (value?: string) => {
-  if (value === undefined) return "—";
-  const [whole, fraction = ""] = value.split(".");
-  return `¥${whole.replace(/\B(?=(\d{3})+(?!\d))/g, ",")}.${fraction.padEnd(2, "0")}`;
-};
-
 export function PayrollLedgerPage() {
   const [params, setParams] = useSearchParams();
-  const [filters, setFilters] = useState<{
-    subject_id?: number;
-    department?: string;
-    employee_id?: number;
-  }>({});
+  const filters = {
+    subject_id: params.has("subject_id")
+      ? Number(params.get("subject_id"))
+      : undefined,
+    department: params.get("department") ?? undefined,
+    employee_id: params.has("employee_id")
+      ? Number(params.get("employee_id"))
+      : undefined,
+  };
+  const setFilter = (key: string, value: string | number | undefined) =>
+    setParams((current) => {
+      const next = new URLSearchParams(current);
+      if (value === undefined) next.delete(key);
+      else next.set(key, String(value));
+      return next;
+    });
   const requestedPeriod = Number(params.get("period_id"));
   const workbench = useQuery({
-    queryKey: ["payroll", "workbench"],
-    queryFn: () => resources.payrollWorkbench(),
+    queryKey: ["payroll", "workbench", params.get("period") ?? undefined],
+    queryFn: () =>
+      resources.payrollWorkbench(params.get("period") ?? undefined),
   });
   const periodId =
     Number.isInteger(requestedPeriod) && requestedPeriod > 0
@@ -41,6 +48,11 @@ export function PayrollLedgerPage() {
   const ledger = useQuery({
     queryKey: ["payroll", "ledger", periodId, filters],
     queryFn: () => resources.payrollLedger(periodId!, filters),
+    enabled: Boolean(periodId),
+  });
+  const allRecords = useQuery({
+    queryKey: ["payroll", "ledger", periodId, {}],
+    queryFn: () => resources.payrollLedger(periodId!),
     enabled: Boolean(periodId),
   });
   const periodOptions = useMemo(
@@ -66,9 +78,10 @@ export function PayrollLedgerPage() {
   if (!ledger.data) return <Empty description="尚无可查询的工资台账" />;
 
   const data = ledger.data;
+  const optionRecords = allRecords.data?.records ?? data.records;
   const subjectOptions = Array.from(
     new Map(
-      data.records.map((row) => [
+      optionRecords.map((row) => [
         row.subject_id,
         { value: row.subject_id, label: row.subject_name },
       ]),
@@ -76,15 +89,22 @@ export function PayrollLedgerPage() {
   );
   const departmentOptions = Array.from(
     new Set(
-      data.records
+      optionRecords
         .map((row) => row.snapshot.department_name)
         .filter((value): value is string => typeof value === "string"),
     ),
   ).map((value) => ({ value, label: value }));
-  const employeeOptions = Array.from(new Map(data.records.map((row) => [row.employee_id, {
-    value: row.employee_id,
-    label: `${String(row.snapshot.name ?? "—")} · ${String(row.snapshot.employee_no ?? "—")}`,
-  }])).values());
+  const employeeOptions = Array.from(
+    new Map(
+      optionRecords.map((row) => [
+        row.employee_id,
+        {
+          value: row.employee_id,
+          label: `${String(row.snapshot.name ?? "—")} · ${String(row.snapshot.employee_no ?? "—")}`,
+        },
+      ]),
+    ).values(),
+  );
   return (
     <div className={styles.page}>
       <header className={styles.heading}>
@@ -110,7 +130,6 @@ export function PayrollLedgerPage() {
             placeholder="选择工资期间"
             onChange={(value) => {
               setParams({ period_id: String(value) });
-              setFilters({});
             }}
           />
           <Select
@@ -118,18 +137,14 @@ export function PayrollLedgerPage() {
             placeholder="按主体"
             options={subjectOptions}
             value={filters.subject_id}
-            onChange={(value) =>
-              setFilters((current) => ({ ...current, subject_id: value }))
-            }
+            onChange={(value) => setFilter("subject_id", value)}
           />
           <Select
             allowClear
             placeholder="按部门"
             options={departmentOptions}
             value={filters.department}
-            onChange={(value) =>
-              setFilters((current) => ({ ...current, department: value }))
-            }
+            onChange={(value) => setFilter("department", value)}
           />
           <Select
             allowClear
@@ -137,9 +152,7 @@ export function PayrollLedgerPage() {
             placeholder="按员工"
             options={employeeOptions}
             value={filters.employee_id}
-            onChange={(value) =>
-              setFilters((current) => ({ ...current, employee_id: value }))
-            }
+            onChange={(value) => setFilter("employee_id", value)}
           />
         </Space>
         <div className={styles.metrics}>
@@ -173,7 +186,9 @@ export function PayrollLedgerPage() {
                 title: "员工",
                 render: (_: unknown, row) => (
                   <>
-                    <strong>{String(row.snapshot.name ?? "—")}</strong>
+                    <Link to={`/payroll/ledger/records/${row.id}`}>
+                      {String(row.snapshot.name ?? "—")}
+                    </Link>
                     <div>{String(row.snapshot.employee_no ?? "—")}</div>
                   </>
                 ),
@@ -181,11 +196,20 @@ export function PayrollLedgerPage() {
               { title: "主体", dataIndex: "subject_name" },
               {
                 title: "发放来源",
-                render: (_: unknown, row) => row.batch_type === "supplement"
-                  ? <>独立补发 S{row.batch_no}<div>{row.batch_name}</div></>
-                  : row.correction_of_batch_id
-                    ? <>正常工资更正 N{row.batch_no}<div>替代批次 #{row.correction_of_batch_id}</div></>
-                    : <>正常工资 N{row.batch_no}</>,
+                render: (_: unknown, row) =>
+                  row.batch_type === "supplement" ? (
+                    <>
+                      独立补发 S{row.batch_no}
+                      <div>{row.batch_name}</div>
+                    </>
+                  ) : row.correction_of_batch_id ? (
+                    <>
+                      正常工资更正 N{row.batch_no}
+                      <div>替代批次 #{row.correction_of_batch_id}</div>
+                    </>
+                  ) : (
+                    <>正常工资 N{row.batch_no}</>
+                  ),
               },
               {
                 title: "部门",

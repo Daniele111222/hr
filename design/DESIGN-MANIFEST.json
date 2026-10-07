@@ -94,7 +94,7 @@
     {
       "file": "ledger-employee.html",
       "role": "screen",
-      "implementationNote": "Preserve visual hierarchy, responsive behavior, and interactive states from this screen."
+      "implementationNote": "Production route /payroll/ledger/records/:recordId reads formal snapshots and historical replacement versions. Prototype calculations are demonstration data, not production recomputation. Preserve visual hierarchy and responsive behavior."
     },
     {
       "file": "ledger.html",

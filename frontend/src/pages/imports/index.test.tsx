@@ -1,3 +1,4 @@
+import { MemoryRouter } from "react-router-dom";
 import { App as AntdApp } from "antd";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { cleanup, render, screen } from "@testing-library/react";
@@ -18,7 +19,9 @@ function renderPage() {
   return render(
     <AntdApp>
       <QueryClientProvider client={client}>
-        <ImportsPage />
+        <MemoryRouter>
+          <ImportsPage />
+        </MemoryRouter>
       </QueryClientProvider>
     </AntdApp>,
   );

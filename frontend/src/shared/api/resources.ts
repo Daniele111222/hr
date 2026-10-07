@@ -1,3 +1,5 @@
+import type { components } from "./schema.d.ts";
+
 const base = import.meta.env.VITE_API_BASE_URL ?? "/api";
 
 async function request<T>(path: string, init?: RequestInit): Promise<T> {
@@ -7,338 +9,53 @@ async function request<T>(path: string, init?: RequestInit): Promise<T> {
   });
   if (!response.ok) {
     const body = await response.json().catch(() => ({}));
-    throw new Error(body.detail ?? "请求失败");
+    throw new Error(
+      typeof body.detail === "string"
+        ? body.detail
+        : "请求参数或筛选条件无效，请检查后重试",
+    );
   }
   return response.status === 204 ? (undefined as T) : response.json();
 }
 
-export type Company = { id: number; code: string; name: string };
-export type City = { id: number; code: string; name: string };
-export type SocialSecurityItemRule = {
-  id: number;
-  item_code: string;
-  item_name: string;
-  company_rate: string;
-  employee_rate: string;
-};
-export type CityRule = {
-  id: number;
-  city_id: number;
-  city_name: string;
-  effective_from: string;
-  effective_to: string | null;
-  version: string;
-  source: string | null;
-  fixed_base: string | null;
-  social_items: SocialSecurityItemRule[];
-  housing_company_rate: string | null;
-  housing_employee_rate: string | null;
-  housing_base_source: string | null;
-};
-export type AttendanceRule = {
-  id: number;
-  effective_from: string;
-  effective_to: string | null;
-  standard_hours: string;
-  missed_punch_amount: string;
-  exempt_level_number: number;
-  makeup_punch_exempt: boolean;
-  version: string;
-  source: string | null;
-};
-export type Subject = {
-  id: number;
-  company_id: number;
-  code: string;
-  name: string;
-};
-export type Department = {
-  id: number;
-  company_id: number;
-  code: string;
-  name: string;
-  parent_id: number | null;
-};
-export type SubjectDepartment = {
-  id: number;
-  company_id: number;
-  subject_id: number;
-  department_id: number;
-  code: string;
-  name: string;
-};
-export type Employee = {
-  id: number;
-  company_id: number;
-  id_number: string;
-  employee_no: string;
-  name: string;
-  employee_type: string;
-  level_code?: string | null;
-  level_number?: number | null;
-  formal_status: boolean;
-  probation_status: string;
-  probation_date: string | null;
-  hire_date: string;
-  termination_date: string | null;
-  active: boolean;
-  salary: {
-    fixed_salary: string;
-    performance_base: string;
-    effective_from: string;
-  } | null;
-  assignment: {
-    subject_id: number;
-    subject_department_id: number;
-    position_title: string;
-    level_code?: string | null;
-    level_number?: number | null;
-  } | null;
-  base: { city_id: number } | null;
-  bank_account: {
-    account_number: string;
-    bank_name?: string | null;
-    branch_name?: string | null;
-  } | null;
-};
+export type Company = components["schemas"]["CompanyOut"];
+export type City = components["schemas"]["CityOut"];
+export type SocialSecurityItemRule =
+  components["schemas"]["SocialSecurityItemRuleOut"];
+export type CityRule = components["schemas"]["CityRuleOut"];
+export type AttendanceRule = components["schemas"]["AttendanceRuleOut"];
+export type Subject = components["schemas"]["SubjectOut"];
+export type Department = components["schemas"]["DepartmentOut"];
+export type SubjectDepartment = components["schemas"]["SubjectDepartmentOut"];
+export type Employee = components["schemas"]["EmployeeOut"];
 
-export type ImportRow = {
-  id: number;
-  sheet_name: string;
-  source_row_number: number;
-  validation_status: "invalid" | "imported" | "corrected" | "valid";
-  raw_data: Record<string, string>;
-  correction_values: Record<string, string> | null;
-  normalized_data: Record<string, unknown> | null;
-  errors:
-    { code: string; field: string; column: string; message: string }[] | null;
-  correction_history: Record<string, unknown>[];
-};
+export type ImportRow = components["schemas"]["ImportRowOut"];
 
-export type EmployeeImportBatch = {
-  id: number;
-  company_id: number;
-  import_type: "employee_master";
-  original_filename: string;
-  file_sha256: string;
-  template_version: string;
-  field_mapping: Record<string, number>;
-  status: "uploaded" | "partially_imported" | "imported" | "rejected";
-  total_rows: number;
-  success_rows: number;
-  error_rows: number;
-  rows: ImportRow[] | null;
-};
+export type EmployeeImportBatch = components["schemas"]["ImportBatchOut"];
 
-export type AttendanceImportBatch = Omit<EmployeeImportBatch, "import_type"> & {
-  import_type: "attendance";
-  payroll_period_id: number;
-  payroll_batch_id: number;
-  subject_name: string;
-};
-export type PerformanceImportBatch = Omit<
-  AttendanceImportBatch,
-  "import_type"
-> & {
-  import_type: "performance";
-};
+export type AttendanceImportBatch =
+  components["schemas"]["MonthlyImportBatchOut"];
+export type PerformanceImportBatch = AttendanceImportBatch;
 
-export type PayrollPeriod = {
-  id: number;
-  year: number;
-  month: number;
-  period: string;
-  period_start: string;
-  period_end: string;
-  payment_date: string | null;
-  payment_date_confirmed: boolean;
-  batch_count: number;
-  normal_batch_count: number;
-};
-export type PayrollPreparationItem = {
-  status: "ready" | "partial" | "missing" | "blocked" | "not_required";
-  prepared_count: number;
-  missing_count: number;
-  message: string | null;
-};
-export type PayrollBatch = {
-  id: number;
-  period_id: number;
-  subject: Subject;
-  batch_type: "normal" | "supplement" | "performance_supplement" | "other";
-  batch_no: number;
-  name: string | null;
-  status: "draft" | "trial" | "confirmed" | "locked" | "exported" | "cancelled";
-  is_effective: boolean;
-  scope: {
-    source: string;
-    criteria: Record<string, unknown>;
-    employee_count: number;
-    employee_ids: number[];
-    ambiguous_employee_ids: number[];
-    status: "ready" | "blocked" | "empty";
-  };
-  data_preparation: {
-    attendance: PayrollPreparationItem;
-    performance: PayrollPreparationItem;
-    city_rules: PayrollPreparationItem;
-    overall_status: "ready" | "partial" | "blocked";
-  };
-  payment_date: string | null;
-  payment_date_confirmed: boolean;
-};
-export type PayrollSupplementInput = { employee_id: number; amount: string };
-export type PayrollWorkbench = {
-  period: PayrollPeriod | null;
-  periods: PayrollPeriod[];
-  batches: PayrollBatch[];
-};
-export type PayrollTrialRow = {
-  employee_id: number;
-  employee_name: string;
-  snapshot: {
-    employee_no: string;
-    department_name: string | null;
-    position_title: string | null;
-    level_number: number | null;
-    last_effective_subject_id: number | null;
-  };
-  errors: { code: string; message: string }[];
-  warnings: string[];
-  amounts: Record<string, string> | null;
-  items: { code: string; name: string; category: string; amount: string }[];
-  steps: {
-    code: string;
-    formula: string;
-    inputs: Record<string, string>;
-    amount: string;
-  }[];
-};
-export type PayrollTrial = {
-  id: number;
-  payroll_batch_id: number;
-  input_fingerprint: string;
-  created_at: string;
-  stale: boolean;
-  success_count: number;
-  error_count: number;
-  total_count: number;
-  totals: Record<string, string>;
-  results: PayrollTrialRow[];
-  includes_final_incentive: boolean;
-  ready_for_confirmation: boolean;
-  confirmation_blockers: string[];
-};
-export type PayrollConfirmation = {
-  period_id: number;
-  period: string;
-  subject_count: number;
-  batch_count: number;
-  batches: {
-    id: number;
-    subject_id: number;
-    status: PayrollBatch["status"];
-    confirmed_trial_id: number | null;
-    confirmed_at: string | null;
-    locked_at: string | null;
-  }[];
-  confirmed: boolean;
-  locked: boolean;
-  can_confirm: boolean;
-  can_lock: boolean;
-  blockers: string[];
-};
-export type PayrollCorrection = {
-  id: number;
-  original_batch_id: number;
-  replacement_batch_id: number;
-  reason: string;
-  input_history: {
-    employee_id: number;
-    source_note: string;
-    created_at: string;
-  }[];
-  status: "requested" | "applied" | "cancelled";
-  created_at: string;
-  original_status: PayrollBatch["status"];
-  replacement_status: PayrollBatch["status"];
-  replacement_is_effective: boolean;
-};
-export type PayrollCorrectionInput = {
-  employee_id: number;
-  employee_name: string;
-  attendance: {
-    expected_work_days: string;
-    late_minutes: number;
-    early_leave_minutes: number;
-    paid_leave_days: string;
-    unpaid_leave_days: string;
-    missed_punch_count: number;
-    corrected_punch_count: number;
-  } | null;
-  performance_coefficient: string | null;
-  source_note: string | null;
-};
-export type PayrollLedger = {
-  period_id: number;
-  period: string;
-  filters: Record<string, unknown>;
-  record_count: number;
-  employee_count: number;
-  records: {
-    id: number;
-    payroll_batch_id: number;
-    batch_type: "normal" | "supplement";
-    batch_no: number;
-    batch_name: string | null;
-    correction_of_batch_id: number | null;
-    payment_date: string | null;
-    subject_id: number;
-    subject_name: string;
-    employee_id: number;
-    snapshot: Record<string, unknown>;
-    amounts: Record<string, string>;
-    items: Record<string, unknown>[];
-    steps: Record<string, unknown>[];
-    calculation_status: "confirmed" | "locked";
-  }[];
-  totals: Record<string, string>;
-  untaxed_tax_notice: string;
-};
-export type AttendanceIncentiveRun = {
-  id: number;
-  company_id: number;
-  payroll_period_id: number;
-  source_period_id: number;
-  status: "calculated" | "empty" | "stale";
-  input_fingerprint: string;
-  pool_amount: string;
-  allocated_amount: string;
-  average_amount: string;
-  remainder_amount: string;
-  source_snapshot: Record<string, unknown>[];
-  candidate_snapshot: Record<string, unknown>[];
-  allocations: Record<string, unknown>[];
-  message: string | null;
-  created_at: string;
-  stale: boolean;
-  ready: boolean;
-};
-export type AttendanceIncentive = {
-  period_id: number;
-  period: string;
-  source_period: string | null;
-  company_id: number;
-  status: "blocked" | "ready" | "calculated" | "empty" | "stale";
-  can_calculate: boolean;
-  message: string | null;
-  source_rows: Record<string, unknown>[];
-  current_rows: Record<string, unknown>[];
-  pool_amount: string;
-  candidate_snapshot: Record<string, unknown>[];
-  run: AttendanceIncentiveRun | null;
-  input_fingerprint: string;
-};
+export type PayrollPeriod = components["schemas"]["PayrollPeriodOut"];
+export type PayrollPreparationItem =
+  components["schemas"]["PayrollPreparationItemOut"];
+export type PayrollBatch = components["schemas"]["PayrollBatchOut"];
+export type PayrollSupplementInput =
+  components["schemas"]["PayrollSupplementInput-Output"];
+export type PayrollWorkbench = components["schemas"]["PayrollWorkbenchOut"];
+export type PayrollTrialRow = components["schemas"]["PayrollTrialRowOut"];
+export type PayrollTrial = components["schemas"]["PayrollTrialOut"];
+export type PayrollConfirmation =
+  components["schemas"]["PayrollConfirmationOut"];
+export type PayrollCorrection = components["schemas"]["PayrollCorrectionOut"];
+export type PayrollCorrectionInput =
+  components["schemas"]["PayrollCorrectionInputOut"];
+export type PayrollLedger = components["schemas"]["PayrollLedgerOut"];
+export type AttendanceIncentiveRun =
+  components["schemas"]["AttendanceIncentiveRunOut"];
+export type AttendanceIncentive =
+  components["schemas"]["AttendanceIncentiveOut"];
 
 const json = (method: string, body?: unknown): RequestInit => ({
   method,
@@ -351,7 +68,11 @@ const upload = async <T>(path: string, form: FormData): Promise<T> => {
   });
   if (!response.ok) {
     const body = await response.json().catch(() => ({}));
-    throw new Error(body.detail ?? "请求失败");
+    throw new Error(
+      typeof body.detail === "string"
+        ? body.detail
+        : "请求参数或筛选条件无效，请检查后重试",
+    );
   }
   return response.json();
 };
@@ -479,6 +200,10 @@ export const resources = {
     request<PayrollWorkbench>(
       `/payroll/workbench${period ? `?period=${encodeURIComponent(period)}` : ""}`,
     ),
+  payrollLedgerDetail: (recordId: number) =>
+    request<components["schemas"]["PayrollLedgerDetailOut"]>(
+      `/payroll/ledger/records/${recordId}`,
+    ),
   payrollBatch: (batchId: number) =>
     request<PayrollBatch>(`/payroll/batches/${batchId}`),
   payrollTrial: (batchId: number) =>
@@ -498,15 +223,13 @@ export const resources = {
       json("PUT", rows),
     ),
   confirmPayrollBatch: (batchId: number) =>
-    request<{ id: number; status: PayrollBatch["status"] }>(
-      `/payroll/batches/${batchId}/confirm`,
-      json("POST"),
-    ),
+    request<
+      PayrollConfirmation | components["schemas"]["PayrollSupplementStatusOut"]
+    >(`/payroll/batches/${batchId}/confirm`, json("POST")),
   lockPayrollBatch: (batchId: number) =>
-    request<{ id: number; status: PayrollBatch["status"] }>(
-      `/payroll/batches/${batchId}/lock`,
-      json("POST"),
-    ),
+    request<
+      PayrollConfirmation | components["schemas"]["PayrollSupplementStatusOut"]
+    >(`/payroll/batches/${batchId}/lock`, json("POST")),
   attendanceIncentive: (periodId: number) =>
     request<AttendanceIncentive>(
       `/payroll/periods/${periodId}/attendance-incentive`,
@@ -546,12 +269,7 @@ export const resources = {
     ),
   updatePayrollCorrectionInputs: (
     correctionId: number,
-    payload: {
-      employee_id: number;
-      source_note: string;
-      attendance?: Record<string, string>;
-      performance_coefficient?: string;
-    },
+    payload: components["schemas"]["PayrollCorrectionInputPatch"],
   ) =>
     request<PayrollCorrectionInput[]>(
       `/payroll/corrections/${correctionId}/inputs`,
@@ -571,16 +289,11 @@ export const resources = {
     });
     return request<PayrollLedger>(`/payroll/ledger?${query}`);
   },
-  createPayrollPeriod: (v: { period: string }) =>
+  createPayrollPeriod: (v: components["schemas"]["PayrollPeriodCreate"]) =>
     request<PayrollPeriod>("/payroll/periods", json("POST", v)),
   createPayrollBatch: (
     periodId: number,
-    v: {
-      subject_id: number;
-      batch_type?: "normal" | "supplement";
-      name?: string;
-      payment_date?: string;
-    },
+    v: components["schemas"]["PayrollBatchCreate"],
   ) =>
     request<PayrollBatch>(
       `/payroll/periods/${periodId}/batches`,
@@ -595,48 +308,8 @@ export const exportLabels = {
   tax: "申报辅助模板",
 };
 export type ExportKind = keyof typeof exportLabels;
-export type PayrollExportPreview = {
-  subjects: { id: number; name: string }[];
-  template_sheets: string[];
-  period: string;
-  employee_count: number;
-  record_count: number;
-  untaxed_amount: string;
-  employer_cost: string;
-  template_version: string;
-  can_export: boolean;
-  blockers: string[];
-  skipped_subjects: string[];
-};
-export type PayrollExportReport = {
-  id: number;
-  period_id: number;
-  status: "started" | "completed" | "failed";
-  template_version: string;
-  created_at: string;
-  completed_at: string | null;
-  parameters: {
-    period: string;
-    subject_id: number | null;
-    employee_count: number;
-    record_count: number;
-    untaxed_amount: string;
-    employer_cost?: string;
-    versions: {
-      batch_id: number;
-      trial_id: number;
-      batch_no: number;
-      batch_type: string;
-    }[];
-  };
-  warnings: {
-    code: string;
-    severity: string;
-    message: string;
-    employee_id: number | null;
-    field_name: string | null;
-  }[];
-};
+export type PayrollExportPreview = components["schemas"]["ExportPreviewOut"];
+export type PayrollExportReport = components["schemas"]["ExportReport"];
 export const payrollExports = {
   preview: (period: number, subject?: number, kind: ExportKind = "payroll") =>
     request<PayrollExportPreview>(
@@ -661,7 +334,11 @@ export const payrollExports = {
     );
     if (!response.ok) {
       const body = await response.json().catch(() => ({}));
-      throw new Error(body.detail ?? "下载失败");
+      throw new Error(
+        typeof body.detail === "string"
+          ? body.detail
+          : "下载失败，请检查后重试",
+      );
     }
     const url = URL.createObjectURL(await response.blob());
     const link = document.createElement("a");

@@ -21,10 +21,2289 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/organization/company": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Get Company */
+        get: operations["get_company_organization_company_get"];
+        put?: never;
+        /** Create Company */
+        post: operations["create_company_organization_company_post"];
+        /** Delete Company */
+        delete: operations["delete_company_organization_company_delete"];
+        options?: never;
+        head?: never;
+        /** Update Company */
+        patch: operations["update_company_organization_company_patch"];
+        trace?: never;
+    };
+    "/organization/cities": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** List Cities */
+        get: operations["list_cities_organization_cities_get"];
+        put?: never;
+        /** Create City */
+        post: operations["create_city_organization_cities_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/organization/cities/{city_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        /** Delete City */
+        delete: operations["delete_city_organization_cities__city_id__delete"];
+        options?: never;
+        head?: never;
+        /** Update City */
+        patch: operations["update_city_organization_cities__city_id__patch"];
+        trace?: never;
+    };
+    "/organization/subjects": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** List Subjects */
+        get: operations["list_subjects_organization_subjects_get"];
+        put?: never;
+        /** Create Subject */
+        post: operations["create_subject_organization_subjects_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/organization/subjects/{subject_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        /** Delete Subject */
+        delete: operations["delete_subject_organization_subjects__subject_id__delete"];
+        options?: never;
+        head?: never;
+        /** Update Subject */
+        patch: operations["update_subject_organization_subjects__subject_id__patch"];
+        trace?: never;
+    };
+    "/organization/departments": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** List Departments */
+        get: operations["list_departments_organization_departments_get"];
+        put?: never;
+        /** Create Department */
+        post: operations["create_department_organization_departments_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/organization/departments/{department_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        /** Delete Department */
+        delete: operations["delete_department_organization_departments__department_id__delete"];
+        options?: never;
+        head?: never;
+        /** Update Department */
+        patch: operations["update_department_organization_departments__department_id__patch"];
+        trace?: never;
+    };
+    "/organization/subject-departments": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** List Subject Departments */
+        get: operations["list_subject_departments_organization_subject_departments_get"];
+        put?: never;
+        /** Create Subject Department */
+        post: operations["create_subject_department_organization_subject_departments_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/organization/subject-departments/{row_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        /** Delete Subject Department */
+        delete: operations["delete_subject_department_organization_subject_departments__row_id__delete"];
+        options?: never;
+        head?: never;
+        /** Update Subject Department */
+        patch: operations["update_subject_department_organization_subject_departments__row_id__patch"];
+        trace?: never;
+    };
+    "/rules/city-rules": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** List City Rules */
+        get: operations["list_city_rules_rules_city_rules_get"];
+        put?: never;
+        /** Create City Rule */
+        post: operations["create_city_rule_rules_city_rules_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/rules/attendance": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** List Attendance Rules */
+        get: operations["list_attendance_rules_rules_attendance_get"];
+        put?: never;
+        /** Create Attendance Rule */
+        post: operations["create_attendance_rule_rules_attendance_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/employees": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** List Employees */
+        get: operations["list_employees_employees_get"];
+        put?: never;
+        /** Create Employee */
+        post: operations["create_employee_employees_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/employees/{employee_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Get Employee */
+        get: operations["get_employee_employees__employee_id__get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        /** Update Employee */
+        patch: operations["update_employee_employees__employee_id__patch"];
+        trace?: never;
+    };
+    "/imports/performance-template": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Download Performance Template */
+        get: operations["download_performance_template_imports_performance_template_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/imports/performance": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** List Performance Imports */
+        get: operations["list_performance_imports_imports_performance_get"];
+        put?: never;
+        /** Upload Performance */
+        post: operations["upload_performance_imports_performance_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/imports/performance/{batch_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Get Performance Import */
+        get: operations["get_performance_import_imports_performance__batch_id__get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/imports/performance/{batch_id}/file": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Download Performance File */
+        get: operations["download_performance_file_imports_performance__batch_id__file_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/imports/performance/{batch_id}/rows/{row_id}/correct": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Correct Performance Row */
+        post: operations["correct_performance_row_imports_performance__batch_id__rows__row_id__correct_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/imports/attendance-template": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Download Attendance Template */
+        get: operations["download_attendance_template_imports_attendance_template_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/imports/attendance": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** List Attendance Imports */
+        get: operations["list_attendance_imports_imports_attendance_get"];
+        put?: never;
+        /** Upload Attendance */
+        post: operations["upload_attendance_imports_attendance_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/imports/attendance/{batch_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Get Attendance Import */
+        get: operations["get_attendance_import_imports_attendance__batch_id__get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/imports/attendance/{batch_id}/file": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Download Attendance File */
+        get: operations["download_attendance_file_imports_attendance__batch_id__file_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/imports/attendance/{batch_id}/rows/{row_id}/correct": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Correct Attendance Row */
+        post: operations["correct_attendance_row_imports_attendance__batch_id__rows__row_id__correct_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/imports/employee-template": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Download Employee Template */
+        get: operations["download_employee_template_imports_employee_template_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/imports/employee-master": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Upload Employee Master */
+        post: operations["upload_employee_master_imports_employee_master_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/imports": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** List Employee Imports */
+        get: operations["list_employee_imports_imports_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/imports/{batch_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Get Employee Import */
+        get: operations["get_employee_import_imports__batch_id__get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/imports/{batch_id}/file": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Download Original File */
+        get: operations["download_original_file_imports__batch_id__file_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/imports/{batch_id}/rows/{row_id}/correct": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Correct Employee Import Row */
+        post: operations["correct_employee_import_row_imports__batch_id__rows__row_id__correct_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/payroll/ledger/records/{record_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Get Ledger Record */
+        get: operations["get_ledger_record_payroll_ledger_records__record_id__get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/payroll/periods/{period_id}/attendance-incentive": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Get Attendance Incentive */
+        get: operations["get_attendance_incentive_payroll_periods__period_id__attendance_incentive_get"];
+        put?: never;
+        /** Post Attendance Incentive */
+        post: operations["post_attendance_incentive_payroll_periods__period_id__attendance_incentive_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/payroll/batches/{batch_id}/trial": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Get Batch Trial */
+        get: operations["get_batch_trial_payroll_batches__batch_id__trial_get"];
+        put?: never;
+        /** Post Batch Trial */
+        post: operations["post_batch_trial_payroll_batches__batch_id__trial_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/payroll/periods/{period_id}/confirmation": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Get Confirmation */
+        get: operations["get_confirmation_payroll_periods__period_id__confirmation_get"];
+        put?: never;
+        /** Post Confirmation */
+        post: operations["post_confirmation_payroll_periods__period_id__confirmation_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/payroll/periods/{period_id}/lock": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Post Lock */
+        post: operations["post_lock_payroll_periods__period_id__lock_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/payroll/batches/{batch_id}/confirm": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Post Batch Confirmation */
+        post: operations["post_batch_confirmation_payroll_batches__batch_id__confirm_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/payroll/batches/{batch_id}/lock": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Post Batch Lock */
+        post: operations["post_batch_lock_payroll_batches__batch_id__lock_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/payroll/batches/{batch_id}/corrections": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Get Batch Corrections */
+        get: operations["get_batch_corrections_payroll_batches__batch_id__corrections_get"];
+        put?: never;
+        /** Post Batch Correction */
+        post: operations["post_batch_correction_payroll_batches__batch_id__corrections_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/payroll/corrections/{correction_id}/inputs": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Get Correction Input Rows */
+        get: operations["get_correction_input_rows_payroll_corrections__correction_id__inputs_get"];
+        /** Put Correction Input Row */
+        put: operations["put_correction_input_row_payroll_corrections__correction_id__inputs_put"];
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/payroll/corrections/{correction_id}/cancel": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Post Correction Cancel */
+        post: operations["post_correction_cancel_payroll_corrections__correction_id__cancel_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/payroll/ledger": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Get Payroll Ledger */
+        get: operations["get_payroll_ledger_payroll_ledger_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/payroll/batches/{batch_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Get Batch */
+        get: operations["get_batch_payroll_batches__batch_id__get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/payroll/batches/{batch_id}/supplement-inputs": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Get Supplement Inputs */
+        get: operations["get_supplement_inputs_payroll_batches__batch_id__supplement_inputs_get"];
+        /** Put Supplement Inputs */
+        put: operations["put_supplement_inputs_payroll_batches__batch_id__supplement_inputs_put"];
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/payroll/periods": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Get Periods */
+        get: operations["get_periods_payroll_periods_get"];
+        put?: never;
+        /** Post Period */
+        post: operations["post_period_payroll_periods_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/payroll/periods/{period_id}/batches": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Get Period Batches */
+        get: operations["get_period_batches_payroll_periods__period_id__batches_get"];
+        put?: never;
+        /** Post Batch */
+        post: operations["post_batch_payroll_periods__period_id__batches_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/payroll/workbench": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Get Workbench */
+        get: operations["get_workbench_payroll_workbench_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/exports/{kind}/preview": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Preview */
+        get: operations["preview_exports__kind__preview_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/exports/{kind}/template": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Template */
+        get: operations["template_exports__kind__template_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/exports/{kind}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** History */
+        get: operations["history_exports__kind__get"];
+        put?: never;
+        /** Create */
+        post: operations["create_exports__kind__post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/exports/{kind}/{export_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Report */
+        get: operations["report_exports__kind___export_id__get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/exports/{kind}/{export_id}/file": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Download */
+        get: operations["download_exports__kind___export_id__file_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
 }
 export type webhooks = Record<string, never>;
 export interface components {
-    schemas: never;
+    schemas: {
+        /** AssignmentIn */
+        AssignmentIn: {
+            /** Subject Id */
+            subject_id: number;
+            /** Subject Department Id */
+            subject_department_id: number;
+            /** Position Title */
+            position_title: string;
+            /** Level Code */
+            level_code?: string | null;
+            /** Level Number */
+            level_number?: number | null;
+            /**
+             * Effective From
+             * Format: date
+             */
+            effective_from: string;
+            /** Effective To */
+            effective_to?: string | null;
+        };
+        /** AttendanceIncentiveOut */
+        AttendanceIncentiveOut: {
+            /** Period Id */
+            period_id: number;
+            /** Period */
+            period: string;
+            /** Source Period */
+            source_period: string | null;
+            /** Company Id */
+            company_id: number;
+            /**
+             * Status
+             * @enum {string}
+             */
+            status: "blocked" | "ready" | "calculated" | "empty" | "stale";
+            /** Can Calculate */
+            can_calculate: boolean;
+            /** Message */
+            message: string | null;
+            /** Source Rows */
+            source_rows: {
+                [key: string]: unknown;
+            }[];
+            /** Current Rows */
+            current_rows: {
+                [key: string]: unknown;
+            }[];
+            /** Pool Amount */
+            pool_amount: string;
+            /** Candidate Snapshot */
+            candidate_snapshot: {
+                [key: string]: unknown;
+            }[];
+            run: components["schemas"]["AttendanceIncentiveRunOut"] | null;
+            /** Input Fingerprint */
+            input_fingerprint: string;
+        };
+        /** AttendanceIncentiveRunOut */
+        AttendanceIncentiveRunOut: {
+            /** Id */
+            id: number;
+            /** Company Id */
+            company_id: number;
+            /** Payroll Period Id */
+            payroll_period_id: number;
+            /** Source Period Id */
+            source_period_id: number;
+            /**
+             * Status
+             * @enum {string}
+             */
+            status: "calculated" | "empty" | "stale";
+            /** Input Fingerprint */
+            input_fingerprint: string;
+            /** Pool Amount */
+            pool_amount: string;
+            /** Allocated Amount */
+            allocated_amount: string;
+            /** Average Amount */
+            average_amount: string;
+            /** Remainder Amount */
+            remainder_amount: string;
+            /** Source Snapshot */
+            source_snapshot: {
+                [key: string]: unknown;
+            }[];
+            /** Candidate Snapshot */
+            candidate_snapshot: {
+                [key: string]: unknown;
+            }[];
+            /** Allocations */
+            allocations: {
+                [key: string]: unknown;
+            }[];
+            /** Message */
+            message: string | null;
+            /**
+             * Created At
+             * Format: date-time
+             */
+            created_at: string;
+            /** Stale */
+            stale: boolean;
+            /** Ready */
+            ready: boolean;
+        };
+        /** AttendanceRuleIn */
+        AttendanceRuleIn: {
+            /**
+             * Effective From
+             * Format: date
+             */
+            effective_from: string;
+            /** Effective To */
+            effective_to?: string | null;
+            /**
+             * Standard Hours
+             * @default 8
+             */
+            standard_hours: number | string;
+            /**
+             * Missed Punch Amount
+             * @default 30
+             */
+            missed_punch_amount: number | string;
+            /**
+             * Exempt Level Number
+             * @default 7
+             */
+            exempt_level_number: number;
+            /**
+             * Makeup Punch Exempt
+             * @default true
+             */
+            makeup_punch_exempt: boolean;
+            /** Version */
+            version: string;
+            /** Source */
+            source?: string | null;
+        };
+        /** AttendanceRuleOut */
+        AttendanceRuleOut: {
+            /**
+             * Effective From
+             * Format: date
+             */
+            effective_from: string;
+            /** Effective To */
+            effective_to?: string | null;
+            /**
+             * Standard Hours
+             * @default 8
+             */
+            standard_hours: string;
+            /**
+             * Missed Punch Amount
+             * @default 30
+             */
+            missed_punch_amount: string;
+            /**
+             * Exempt Level Number
+             * @default 7
+             */
+            exempt_level_number: number;
+            /**
+             * Makeup Punch Exempt
+             * @default true
+             */
+            makeup_punch_exempt: boolean;
+            /** Version */
+            version: string;
+            /** Source */
+            source?: string | null;
+            /** Id */
+            id: number;
+        };
+        /** BankIn */
+        BankIn: {
+            /** Account Number */
+            account_number: string;
+            /** Account Name */
+            account_name: string;
+            /** Bank Name */
+            bank_name?: string | null;
+            /** Branch Name */
+            branch_name?: string | null;
+            /**
+             * Is Primary
+             * @default true
+             */
+            is_primary: boolean;
+            /**
+             * Effective From
+             * Format: date
+             */
+            effective_from: string;
+            /** Effective To */
+            effective_to?: string | null;
+        };
+        /** BaseIn */
+        BaseIn: {
+            /** City Id */
+            city_id: number;
+            /**
+             * Effective From
+             * Format: date
+             */
+            effective_from: string;
+            /** Effective To */
+            effective_to?: string | null;
+        };
+        /** Body_upload_attendance_imports_attendance_post */
+        Body_upload_attendance_imports_attendance_post: {
+            /** File */
+            file: string;
+        };
+        /** Body_upload_employee_master_imports_employee_master_post */
+        Body_upload_employee_master_imports_employee_master_post: {
+            /** File */
+            file: string;
+        };
+        /** Body_upload_performance_imports_performance_post */
+        Body_upload_performance_imports_performance_post: {
+            /** File */
+            file: string;
+        };
+        /** CityIn */
+        CityIn: {
+            /** Code */
+            code: string;
+            /** Name */
+            name: string;
+        };
+        /** CityOut */
+        CityOut: {
+            /** Code */
+            code: string;
+            /** Name */
+            name: string;
+            /** Id */
+            id: number;
+        };
+        /** CityPatch */
+        CityPatch: {
+            /** Code */
+            code?: string | null;
+            /** Name */
+            name?: string | null;
+        };
+        /** CityRuleIn */
+        CityRuleIn: {
+            /** City Id */
+            city_id: number;
+            /**
+             * Effective From
+             * Format: date
+             */
+            effective_from: string;
+            /** Effective To */
+            effective_to?: string | null;
+            /** Version */
+            version: string;
+            /** Source */
+            source?: string | null;
+            /** Fixed Base */
+            fixed_base: number | string;
+            /** Social Items */
+            social_items: components["schemas"]["SocialSecurityItemRuleIn"][];
+            /**
+             * Housing Company Rate
+             * @default 0.05
+             */
+            housing_company_rate: number | string;
+            /**
+             * Housing Employee Rate
+             * @default 0.05
+             */
+            housing_employee_rate: number | string;
+        };
+        /** CityRuleOut */
+        CityRuleOut: {
+            /** Id */
+            id: number;
+            /** City Id */
+            city_id: number;
+            /** City Name */
+            city_name: string;
+            /**
+             * Effective From
+             * Format: date
+             */
+            effective_from: string;
+            /** Effective To */
+            effective_to: string | null;
+            /** Version */
+            version: string;
+            /** Source */
+            source: string | null;
+            /** Fixed Base */
+            fixed_base: string | null;
+            /** Social Items */
+            social_items: components["schemas"]["SocialSecurityItemRuleOut"][];
+            /** Housing Company Rate */
+            housing_company_rate: string | null;
+            /** Housing Employee Rate */
+            housing_employee_rate: string | null;
+            /** Housing Base Source */
+            housing_base_source: string | null;
+        };
+        /** CompanyIn */
+        CompanyIn: {
+            /** Code */
+            code: string;
+            /** Name */
+            name: string;
+        };
+        /** CompanyOut */
+        CompanyOut: {
+            /** Code */
+            code: string;
+            /** Name */
+            name: string;
+            /** Id */
+            id: number;
+        };
+        /** CompanyPatch */
+        CompanyPatch: {
+            /** Code */
+            code?: string | null;
+            /** Name */
+            name?: string | null;
+        };
+        /** DepartmentIn */
+        DepartmentIn: {
+            /** Company Id */
+            company_id: number;
+            /** Code */
+            code: string;
+            /** Name */
+            name: string;
+            /** Parent Id */
+            parent_id?: number | null;
+        };
+        /** DepartmentOut */
+        DepartmentOut: {
+            /** Company Id */
+            company_id: number;
+            /** Code */
+            code: string;
+            /** Name */
+            name: string;
+            /** Parent Id */
+            parent_id?: number | null;
+            /** Id */
+            id: number;
+        };
+        /** DepartmentPatch */
+        DepartmentPatch: {
+            /** Code */
+            code?: string | null;
+            /** Name */
+            name?: string | null;
+            /** Parent Id */
+            parent_id?: number | null;
+        };
+        /** EmployeeIn */
+        EmployeeIn: {
+            /** Company Id */
+            company_id: number;
+            /** Id Number */
+            id_number: string;
+            /** Employee No */
+            employee_no: string;
+            /** Name */
+            name: string;
+            /** Employee Type */
+            employee_type: string;
+            /** Level Code */
+            level_code?: string | null;
+            /** Level Number */
+            level_number?: number | null;
+            /**
+             * Formal Status
+             * @default false
+             */
+            formal_status: boolean;
+            /**
+             * Probation Status
+             * @default not_applicable
+             * @enum {string}
+             */
+            probation_status: "not_applicable" | "in_probation" | "confirmed";
+            /** Probation Date */
+            probation_date?: string | null;
+            /**
+             * Hire Date
+             * Format: date
+             */
+            hire_date: string;
+            /** Termination Date */
+            termination_date?: string | null;
+            /**
+             * Active
+             * @default true
+             */
+            active: boolean;
+            assignment: components["schemas"]["AssignmentIn"];
+            salary: components["schemas"]["SalaryIn-Input"];
+            base: components["schemas"]["BaseIn"];
+            bank_account: components["schemas"]["BankIn"];
+        };
+        /** EmployeeOut */
+        EmployeeOut: {
+            /** Id */
+            id: number;
+            /** Company Id */
+            company_id: number;
+            /** Id Number */
+            id_number: string;
+            /** Employee No */
+            employee_no: string;
+            /** Name */
+            name: string;
+            /** Employee Type */
+            employee_type: string;
+            /** Level Code */
+            level_code: string | null;
+            /** Level Number */
+            level_number: number | null;
+            /** Formal Status */
+            formal_status: boolean;
+            /** Probation Status */
+            probation_status: string;
+            /** Probation Date */
+            probation_date: string | null;
+            /**
+             * Hire Date
+             * Format: date
+             */
+            hire_date: string;
+            /** Termination Date */
+            termination_date: string | null;
+            /** Active */
+            active: boolean;
+            assignment?: components["schemas"]["AssignmentIn"] | null;
+            salary?: components["schemas"]["SalaryIn-Output"] | null;
+            base?: components["schemas"]["BaseIn"] | null;
+            bank_account?: components["schemas"]["BankIn"] | null;
+        };
+        /** EmployeePatch */
+        EmployeePatch: {
+            /** Name */
+            name?: string | null;
+            /** Employee Type */
+            employee_type?: string | null;
+            /** Level Code */
+            level_code?: string | null;
+            /** Level Number */
+            level_number?: number | null;
+            /** Formal Status */
+            formal_status?: boolean | null;
+            /** Probation Status */
+            probation_status?: ("not_applicable" | "in_probation" | "confirmed") | null;
+            /** Probation Date */
+            probation_date?: string | null;
+            /** Termination Date */
+            termination_date?: string | null;
+            /** Active */
+            active?: boolean | null;
+            assignment?: components["schemas"]["AssignmentIn"] | null;
+            salary?: components["schemas"]["SalaryIn-Input"] | null;
+            base?: components["schemas"]["BaseIn"] | null;
+            bank_account?: components["schemas"]["BankIn"] | null;
+        };
+        /** ExportCreate */
+        ExportCreate: {
+            /** Period Id */
+            period_id: number;
+            /** Subject Id */
+            subject_id?: number | null;
+            /**
+             * Request Id
+             * Format: uuid
+             */
+            request_id: string;
+            /** Subject Templates */
+            subject_templates?: {
+                [key: string]: string;
+            };
+        };
+        /** ExportParametersOut */
+        ExportParametersOut: {
+            /** Period */
+            period: string;
+            /** Subject Id */
+            subject_id: number | null;
+            /** Employee Count */
+            employee_count: number;
+            /** Record Count */
+            record_count: number;
+            /** Untaxed Amount */
+            untaxed_amount: string;
+            /** Employer Cost */
+            employer_cost: string;
+            /** Versions */
+            versions: components["schemas"]["ExportVersionOut"][];
+        } & {
+            [key: string]: unknown;
+        };
+        /** ExportPreviewOut */
+        ExportPreviewOut: {
+            /** Subjects */
+            subjects: components["schemas"]["ExportSubjectOut"][];
+            /** Template Sheets */
+            template_sheets: string[];
+            /** Period */
+            period: string;
+            /** Employee Count */
+            employee_count: number;
+            /** Record Count */
+            record_count: number;
+            /** Untaxed Amount */
+            untaxed_amount: string;
+            /** Employer Cost */
+            employer_cost: string;
+            /** Template Version */
+            template_version: string;
+            /** Can Export */
+            can_export: boolean;
+            /** Blockers */
+            blockers: string[];
+            /** Skipped Subjects */
+            skipped_subjects: string[];
+            /** Versions */
+            versions: components["schemas"]["ExportVersionOut"][];
+        };
+        /** ExportReport */
+        ExportReport: {
+            /** Id */
+            id: number;
+            /** Period Id */
+            period_id: number;
+            /**
+             * Status
+             * @enum {string}
+             */
+            status: "started" | "completed" | "failed";
+            /** Template Version */
+            template_version: string;
+            parameters: components["schemas"]["ExportParametersOut"];
+            /**
+             * Created At
+             * Format: date-time
+             */
+            created_at: string;
+            /** Completed At */
+            completed_at: string | null;
+            /** Warnings */
+            warnings: components["schemas"]["ExportWarningOut"][];
+        };
+        /** ExportSubjectOut */
+        ExportSubjectOut: {
+            /** Id */
+            id: number;
+            /** Name */
+            name: string;
+        };
+        /** ExportVersionOut */
+        ExportVersionOut: {
+            /** Batch Id */
+            batch_id: number;
+            /** Trial Id */
+            trial_id: number;
+            /** Batch No */
+            batch_no: number;
+            /** Batch Type */
+            batch_type: string;
+            /** Input Fingerprint */
+            input_fingerprint: string | null;
+            /** Record Ids */
+            record_ids: number[];
+        };
+        /** ExportWarningOut */
+        ExportWarningOut: {
+            /** Code */
+            code: string;
+            /** Severity */
+            severity: string;
+            /** Message */
+            message: string;
+            /** Employee Id */
+            employee_id: number | null;
+            /** Field Name */
+            field_name: string | null;
+        };
+        /** HTTPValidationError */
+        HTTPValidationError: {
+            /** Detail */
+            detail?: components["schemas"]["ValidationError"][];
+        };
+        /** ImportBatchOut */
+        ImportBatchOut: {
+            /** Id */
+            id: number;
+            /** Company Id */
+            company_id: number;
+            /** Import Type */
+            import_type: string;
+            /** Original Filename */
+            original_filename: string;
+            /** File Sha256 */
+            file_sha256: string;
+            /** Template Version */
+            template_version: string;
+            /** Field Mapping */
+            field_mapping: {
+                [key: string]: string;
+            };
+            /** Status */
+            status: string;
+            /**
+             * Uploaded At
+             * Format: date-time
+             */
+            uploaded_at: string;
+            /** Total Rows */
+            total_rows: number;
+            /** Success Rows */
+            success_rows: number;
+            /** Error Rows */
+            error_rows: number;
+            /** Rows */
+            rows: components["schemas"]["ImportRowOut"][] | null;
+        };
+        /** ImportIssueOut */
+        ImportIssueOut: {
+            /** Code */
+            code: string;
+            /** Field */
+            field: string;
+            /** Message */
+            message: string;
+            /** Column */
+            column?: string | null;
+        };
+        /** ImportRowOut */
+        ImportRowOut: {
+            /** Id */
+            id: number;
+            /** Sheet Name */
+            sheet_name: string;
+            /** Source Row Number */
+            source_row_number: number;
+            /** Validation Status */
+            validation_status: string;
+            /** Raw Data */
+            raw_data: {
+                [key: string]: string;
+            };
+            /** Correction Values */
+            correction_values: {
+                [key: string]: string;
+            } | null;
+            /** Normalized Data */
+            normalized_data: {
+                [key: string]: unknown;
+            } | null;
+            /** Errors */
+            errors: components["schemas"]["ImportIssueOut"][] | null;
+            /** Correction History */
+            correction_history: {
+                [key: string]: unknown;
+            }[];
+        };
+        /** MonthlyImportBatchOut */
+        MonthlyImportBatchOut: {
+            /** Id */
+            id: number;
+            /** Company Id */
+            company_id: number;
+            /** Import Type */
+            import_type: string;
+            /** Original Filename */
+            original_filename: string;
+            /** File Sha256 */
+            file_sha256: string;
+            /** Template Version */
+            template_version: string;
+            /** Field Mapping */
+            field_mapping: {
+                [key: string]: string;
+            };
+            /** Status */
+            status: string;
+            /**
+             * Uploaded At
+             * Format: date-time
+             */
+            uploaded_at: string;
+            /** Total Rows */
+            total_rows: number;
+            /** Success Rows */
+            success_rows: number;
+            /** Error Rows */
+            error_rows: number;
+            /** Rows */
+            rows: components["schemas"]["ImportRowOut"][] | null;
+            /** Payroll Period Id */
+            payroll_period_id: number;
+            /** Payroll Batch Id */
+            payroll_batch_id: number;
+            /** Subject Name */
+            subject_name: string;
+        };
+        /** PayrollBatchCreate */
+        PayrollBatchCreate: {
+            /** Subject Id */
+            subject_id: number;
+            /**
+             * Batch Type
+             * @default normal
+             * @enum {string}
+             */
+            batch_type: "normal" | "supplement";
+            /** Name */
+            name?: string | null;
+            /** Payment Date */
+            payment_date?: string | null;
+        };
+        /** PayrollBatchOut */
+        PayrollBatchOut: {
+            /** Id */
+            id: number;
+            /** Period Id */
+            period_id: number;
+            subject: components["schemas"]["PayrollSubjectOut"];
+            /**
+             * Batch Type
+             * @enum {string}
+             */
+            batch_type: "normal" | "supplement" | "performance_supplement" | "other";
+            /** Batch No */
+            batch_no: number;
+            /** Name */
+            name: string | null;
+            /**
+             * Status
+             * @enum {string}
+             */
+            status: "draft" | "trial" | "confirmed" | "locked" | "exported" | "cancelled";
+            /** Is Effective */
+            is_effective: boolean;
+            scope: components["schemas"]["PayrollScopeOut"];
+            data_preparation: components["schemas"]["PayrollDataPreparationOut"];
+            /** Payment Date */
+            payment_date: string | null;
+            /** Payment Date Confirmed */
+            payment_date_confirmed: boolean;
+            trial_summary?: components["schemas"]["PayrollTrialSummaryOut"] | null;
+        };
+        /** PayrollCalculationStepOut */
+        PayrollCalculationStepOut: {
+            /** Code */
+            code: string;
+            /** Formula */
+            formula: string;
+            /** Inputs */
+            inputs: {
+                [key: string]: unknown;
+            };
+            /** Amount */
+            amount: string | null;
+        };
+        /** PayrollConfirmationBatchOut */
+        PayrollConfirmationBatchOut: {
+            /** Id */
+            id: number;
+            /** Subject Id */
+            subject_id: number;
+            /**
+             * Status
+             * @enum {string}
+             */
+            status: "draft" | "trial" | "confirmed" | "locked" | "exported" | "cancelled";
+            /** Confirmed Trial Id */
+            confirmed_trial_id: number | null;
+            /** Confirmed At */
+            confirmed_at: string | null;
+            /** Locked At */
+            locked_at: string | null;
+        };
+        /** PayrollConfirmationOut */
+        PayrollConfirmationOut: {
+            /** Period Id */
+            period_id: number;
+            /** Period */
+            period: string;
+            /** Subject Count */
+            subject_count: number;
+            /** Batch Count */
+            batch_count: number;
+            /** Batches */
+            batches: components["schemas"]["PayrollConfirmationBatchOut"][];
+            /** Confirmed */
+            confirmed: boolean;
+            /** Locked */
+            locked: boolean;
+            /** Can Confirm */
+            can_confirm: boolean;
+            /** Can Lock */
+            can_lock: boolean;
+            /** Blockers */
+            blockers: string[];
+        };
+        /** PayrollCorrectionAttendancePatch */
+        PayrollCorrectionAttendancePatch: {
+            /** Expected Work Days */
+            expected_work_days?: number | string | null;
+            /** Late Minutes */
+            late_minutes?: number | null;
+            /** Early Leave Minutes */
+            early_leave_minutes?: number | null;
+            /** Paid Leave Days */
+            paid_leave_days?: number | string | null;
+            /** Unpaid Leave Days */
+            unpaid_leave_days?: number | string | null;
+            /** Missed Punch Count */
+            missed_punch_count?: number | null;
+            /** Corrected Punch Count */
+            corrected_punch_count?: number | null;
+        };
+        /** PayrollCorrectionCreate */
+        PayrollCorrectionCreate: {
+            /** Reason */
+            reason: string;
+        };
+        /** PayrollCorrectionHistoryOut */
+        PayrollCorrectionHistoryOut: {
+            /** Employee Id */
+            employee_id: number;
+            /** Source Note */
+            source_note: string;
+            /**
+             * Created At
+             * Format: date-time
+             */
+            created_at: string;
+            /** Attendance */
+            attendance?: {
+                [key: string]: unknown;
+            };
+            /** Performance Coefficient */
+            performance_coefficient?: string | null;
+        };
+        /** PayrollCorrectionInputOut */
+        PayrollCorrectionInputOut: {
+            /** Employee Id */
+            employee_id: number;
+            /** Employee Name */
+            employee_name: string;
+            /** Attendance */
+            attendance: {
+                [key: string]: unknown;
+            } | null;
+            /** Performance Coefficient */
+            performance_coefficient: string | null;
+            /** Source Note */
+            source_note: string | null;
+        };
+        /** PayrollCorrectionInputPatch */
+        PayrollCorrectionInputPatch: {
+            /** Employee Id */
+            employee_id: number;
+            /** Source Note */
+            source_note: string;
+            attendance?: components["schemas"]["PayrollCorrectionAttendancePatch"] | null;
+            /** Performance Coefficient */
+            performance_coefficient?: number | string | null;
+        };
+        /** PayrollCorrectionOut */
+        PayrollCorrectionOut: {
+            /** Id */
+            id: number;
+            /** Original Batch Id */
+            original_batch_id: number;
+            /** Replacement Batch Id */
+            replacement_batch_id: number;
+            /** Reason */
+            reason: string;
+            /** Input History */
+            input_history: components["schemas"]["PayrollCorrectionHistoryOut"][];
+            /**
+             * Status
+             * @enum {string}
+             */
+            status: "requested" | "applied" | "cancelled";
+            /**
+             * Created At
+             * Format: date-time
+             */
+            created_at: string;
+            /**
+             * Original Status
+             * @enum {string}
+             */
+            original_status: "draft" | "trial" | "confirmed" | "locked" | "exported" | "cancelled";
+            /**
+             * Replacement Status
+             * @enum {string}
+             */
+            replacement_status: "draft" | "trial" | "confirmed" | "locked" | "exported" | "cancelled";
+            /** Replacement Is Effective */
+            replacement_is_effective: boolean;
+        };
+        /** PayrollDataPreparationOut */
+        PayrollDataPreparationOut: {
+            attendance: components["schemas"]["PayrollPreparationItemOut"];
+            performance: components["schemas"]["PayrollPreparationItemOut"];
+            city_rules: components["schemas"]["PayrollPreparationItemOut"];
+            /**
+             * Overall Status
+             * @enum {string}
+             */
+            overall_status: "ready" | "partial" | "blocked";
+        };
+        /** PayrollItemOut */
+        PayrollItemOut: {
+            /** Code */
+            code: string;
+            /** Name */
+            name: string;
+            /** Category */
+            category: string;
+            /** Amount */
+            amount: string;
+            /** Source Type */
+            source_type?: string | null;
+            /** Source Reference */
+            source_reference?: string | null;
+        };
+        /** PayrollLedgerDetailOut */
+        PayrollLedgerDetailOut: {
+            /** Period Id */
+            period_id: number;
+            /** Period */
+            period: string;
+            record: components["schemas"]["PayrollLedgerRecordOut"];
+            /** Attendance */
+            attendance: {
+                [key: string]: unknown;
+            } | null;
+            /** History */
+            history: components["schemas"]["PayrollLedgerHistoryOut"][];
+            /** Untaxed Tax Notice */
+            untaxed_tax_notice: string;
+        };
+        /** PayrollLedgerHistoryOut */
+        PayrollLedgerHistoryOut: {
+            /** Id */
+            id: number;
+            /** Period */
+            period: string;
+            /** Subject Name */
+            subject_name: string;
+            /**
+             * Batch Type
+             * @enum {string}
+             */
+            batch_type: "normal" | "supplement";
+            /** Batch No */
+            batch_no: number;
+            /** Gross */
+            gross: string;
+            /** Untaxed Amount */
+            untaxed_amount: string;
+            /**
+             * Calculation Status
+             * @enum {string}
+             */
+            calculation_status: "confirmed" | "locked";
+            /** Is Effective */
+            is_effective: boolean;
+        };
+        /** PayrollLedgerOut */
+        PayrollLedgerOut: {
+            /** Period Id */
+            period_id: number;
+            /** Period */
+            period: string;
+            /** Filters */
+            filters: {
+                [key: string]: unknown;
+            };
+            /** Record Count */
+            record_count: number;
+            /** Employee Count */
+            employee_count: number;
+            /** Records */
+            records: components["schemas"]["PayrollLedgerRecordOut"][];
+            /** Totals */
+            totals: {
+                [key: string]: string;
+            };
+            /** Untaxed Tax Notice */
+            untaxed_tax_notice: string;
+        };
+        /** PayrollLedgerRecordOut */
+        PayrollLedgerRecordOut: {
+            /** Id */
+            id: number;
+            /** Payroll Batch Id */
+            payroll_batch_id: number;
+            /**
+             * Batch Type
+             * @enum {string}
+             */
+            batch_type: "normal" | "supplement";
+            /** Batch No */
+            batch_no: number;
+            /** Batch Name */
+            batch_name: string | null;
+            /** Correction Of Batch Id */
+            correction_of_batch_id: number | null;
+            /** Payment Date */
+            payment_date: string | null;
+            /** Subject Id */
+            subject_id: number;
+            /** Subject Name */
+            subject_name: string;
+            /** Employee Id */
+            employee_id: number;
+            snapshot: components["schemas"]["PayrollSnapshotOut"];
+            /** Amounts */
+            amounts: {
+                [key: string]: string;
+            };
+            /** Items */
+            items: components["schemas"]["PayrollItemOut"][];
+            /** Steps */
+            steps: components["schemas"]["PayrollCalculationStepOut"][];
+            /**
+             * Calculation Status
+             * @enum {string}
+             */
+            calculation_status: "confirmed" | "locked";
+            /** Is Effective */
+            is_effective: boolean;
+        };
+        /** PayrollPeriodCreate */
+        PayrollPeriodCreate: {
+            /** Period */
+            period: string;
+        };
+        /** PayrollPeriodOut */
+        PayrollPeriodOut: {
+            /** Id */
+            id: number;
+            /** Year */
+            year: number;
+            /** Month */
+            month: number;
+            /** Period */
+            period: string;
+            /**
+             * Period Start
+             * Format: date
+             */
+            period_start: string;
+            /**
+             * Period End
+             * Format: date
+             */
+            period_end: string;
+            /** Payment Date */
+            payment_date: string | null;
+            /** Payment Date Confirmed */
+            payment_date_confirmed: boolean;
+            /**
+             * Batch Count
+             * @default 0
+             */
+            batch_count: number;
+            /**
+             * Normal Batch Count
+             * @default 0
+             */
+            normal_batch_count: number;
+        };
+        /** PayrollPreparationItemOut */
+        PayrollPreparationItemOut: {
+            /**
+             * Status
+             * @enum {string}
+             */
+            status: "ready" | "partial" | "missing" | "blocked" | "not_required";
+            /** Prepared Count */
+            prepared_count: number;
+            /** Missing Count */
+            missing_count: number;
+            /** Message */
+            message?: string | null;
+        };
+        /** PayrollScopeOut */
+        PayrollScopeOut: {
+            /** Source */
+            source: string;
+            /** Criteria */
+            criteria: {
+                [key: string]: unknown;
+            };
+            /** Employee Count */
+            employee_count: number;
+            /** Employee Ids */
+            employee_ids: number[];
+            /** Ambiguous Employee Ids */
+            ambiguous_employee_ids: number[];
+            /**
+             * Status
+             * @enum {string}
+             */
+            status: "ready" | "blocked" | "empty";
+        };
+        /** PayrollSnapshotOut */
+        PayrollSnapshotOut: {
+            /** Employee No */
+            employee_no?: string | null;
+            /** Name */
+            name?: string | null;
+            /** Id Number */
+            id_number?: string | null;
+            /** Department Name */
+            department_name?: string | null;
+            /** Position Title */
+            position_title?: string | null;
+            /** Level Code */
+            level_code?: string | null;
+            /** Level Number */
+            level_number?: number | null;
+            /** Fixed Salary */
+            fixed_salary?: string | null;
+            /** Performance Base */
+            performance_base?: string | null;
+            /** Base City Name */
+            base_city_name?: string | null;
+            /** Bank Account */
+            bank_account?: string | null;
+            /** Last Effective Subject Id */
+            last_effective_subject_id?: number | null;
+        } & {
+            [key: string]: unknown;
+        };
+        /** PayrollSubjectOut */
+        PayrollSubjectOut: {
+            /** Id */
+            id: number;
+            /** Code */
+            code: string;
+            /** Name */
+            name: string;
+        };
+        /** PayrollSupplementInput */
+        "PayrollSupplementInput-Input": {
+            /** Employee Id */
+            employee_id: number;
+            /** Amount */
+            amount: number | string;
+        };
+        /** PayrollSupplementInput */
+        "PayrollSupplementInput-Output": {
+            /** Employee Id */
+            employee_id: number;
+            /** Amount */
+            amount: string;
+        };
+        /** PayrollSupplementStatusOut */
+        PayrollSupplementStatusOut: {
+            /** Id */
+            id: number;
+            /**
+             * Status
+             * @enum {string}
+             */
+            status: "confirmed" | "locked" | "exported";
+        };
+        /** PayrollTrialIssueOut */
+        PayrollTrialIssueOut: {
+            /** Code */
+            code: string;
+            /** Message */
+            message: string;
+        };
+        /** PayrollTrialOut */
+        PayrollTrialOut: {
+            /** Id */
+            id: number;
+            /** Payroll Batch Id */
+            payroll_batch_id: number;
+            /** Input Fingerprint */
+            input_fingerprint: string;
+            /**
+             * Created At
+             * Format: date-time
+             */
+            created_at: string;
+            /** Stale */
+            stale: boolean;
+            /** Success Count */
+            success_count: number;
+            /** Error Count */
+            error_count: number;
+            /** Total Count */
+            total_count: number;
+            /** Totals */
+            totals: {
+                [key: string]: string;
+            };
+            /** Results */
+            results: components["schemas"]["PayrollTrialRowOut"][];
+            /** Includes Final Incentive */
+            includes_final_incentive: boolean;
+            /** Ready For Confirmation */
+            ready_for_confirmation: boolean;
+            /** Confirmation Blockers */
+            confirmation_blockers: string[];
+        };
+        /** PayrollTrialRowOut */
+        PayrollTrialRowOut: {
+            /** Employee Id */
+            employee_id: number;
+            /** Employee Name */
+            employee_name?: string | null;
+            snapshot: components["schemas"]["PayrollSnapshotOut"];
+            /** Errors */
+            errors: components["schemas"]["PayrollTrialIssueOut"][];
+            /** Warnings */
+            warnings: string[];
+            /** Amounts */
+            amounts: {
+                [key: string]: string;
+            } | null;
+            /** Items */
+            items: components["schemas"]["PayrollItemOut"][];
+            /** Steps */
+            steps: components["schemas"]["PayrollCalculationStepOut"][];
+        };
+        /** PayrollTrialSummaryOut */
+        PayrollTrialSummaryOut: {
+            /** Stale */
+            stale: boolean;
+            /** Success Count */
+            success_count: number;
+            /** Error Count */
+            error_count: number;
+            /** Total Count */
+            total_count: number;
+            /** Ready For Confirmation */
+            ready_for_confirmation: boolean;
+            /** Confirmation Blockers */
+            confirmation_blockers: string[];
+        };
+        /** PayrollWorkbenchOut */
+        PayrollWorkbenchOut: {
+            period: components["schemas"]["PayrollPeriodOut"] | null;
+            /** Periods */
+            periods: components["schemas"]["PayrollPeriodOut"][];
+            /** Batches */
+            batches: components["schemas"]["PayrollBatchOut"][];
+        };
+        /** RowCorrection */
+        RowCorrection: {
+            /** Values */
+            values: {
+                [key: string]: string;
+            };
+        };
+        /** SalaryIn */
+        "SalaryIn-Input": {
+            /** Fixed Salary */
+            fixed_salary: number | string;
+            /** Performance Base */
+            performance_base: number | string;
+            /**
+             * Effective From
+             * Format: date
+             */
+            effective_from: string;
+            /** Effective To */
+            effective_to?: string | null;
+        };
+        /** SalaryIn */
+        "SalaryIn-Output": {
+            /** Fixed Salary */
+            fixed_salary: string;
+            /** Performance Base */
+            performance_base: string;
+            /**
+             * Effective From
+             * Format: date
+             */
+            effective_from: string;
+            /** Effective To */
+            effective_to?: string | null;
+        };
+        /** SocialSecurityItemRuleIn */
+        SocialSecurityItemRuleIn: {
+            /** Item Code */
+            item_code: string;
+            /** Item Name */
+            item_name: string;
+            /** Company Rate */
+            company_rate: number | string;
+            /** Employee Rate */
+            employee_rate: number | string;
+        };
+        /** SocialSecurityItemRuleOut */
+        SocialSecurityItemRuleOut: {
+            /** Item Code */
+            item_code: string;
+            /** Item Name */
+            item_name: string;
+            /** Company Rate */
+            company_rate: string;
+            /** Employee Rate */
+            employee_rate: string;
+            /** Id */
+            id: number;
+        };
+        /** SubjectDepartmentIn */
+        SubjectDepartmentIn: {
+            /** Company Id */
+            company_id: number;
+            /** Subject Id */
+            subject_id: number;
+            /** Department Id */
+            department_id: number;
+            /** Code */
+            code: string;
+            /** Name */
+            name: string;
+        };
+        /** SubjectDepartmentOut */
+        SubjectDepartmentOut: {
+            /** Company Id */
+            company_id: number;
+            /** Subject Id */
+            subject_id: number;
+            /** Department Id */
+            department_id: number;
+            /** Code */
+            code: string;
+            /** Name */
+            name: string;
+            /** Id */
+            id: number;
+        };
+        /** SubjectDepartmentPatch */
+        SubjectDepartmentPatch: {
+            /** Code */
+            code?: string | null;
+            /** Name */
+            name?: string | null;
+        };
+        /** SubjectIn */
+        SubjectIn: {
+            /** Company Id */
+            company_id: number;
+            /** Code */
+            code: string;
+            /** Name */
+            name: string;
+        };
+        /** SubjectOut */
+        SubjectOut: {
+            /** Company Id */
+            company_id: number;
+            /** Code */
+            code: string;
+            /** Name */
+            name: string;
+            /** Id */
+            id: number;
+        };
+        /** SubjectPatch */
+        SubjectPatch: {
+            /** Code */
+            code?: string | null;
+            /** Name */
+            name?: string | null;
+        };
+        /** ValidationError */
+        ValidationError: {
+            /** Location */
+            loc: (string | number)[];
+            /** Message */
+            msg: string;
+            /** Error Type */
+            type: string;
+            /** Input */
+            input?: unknown;
+            /** Context */
+            ctx?: Record<string, never>;
+        };
+    };
     responses: never;
     parameters: never;
     requestBodies: never;
@@ -51,6 +2330,2325 @@ export interface operations {
                     "application/json": {
                         [key: string]: string;
                     };
+                };
+            };
+        };
+    };
+    get_company_organization_company_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CompanyOut"] | null;
+                };
+            };
+        };
+    };
+    create_company_organization_company_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["CompanyIn"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CompanyOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    delete_company_organization_company_delete: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    update_company_organization_company_patch: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["CompanyPatch"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CompanyOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    list_cities_organization_cities_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CityOut"][];
+                };
+            };
+        };
+    };
+    create_city_organization_cities_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["CityIn"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CityOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    delete_city_organization_cities__city_id__delete: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                city_id: number;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    update_city_organization_cities__city_id__patch: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                city_id: number;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["CityPatch"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CityOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    list_subjects_organization_subjects_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SubjectOut"][];
+                };
+            };
+        };
+    };
+    create_subject_organization_subjects_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["SubjectIn"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SubjectOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    delete_subject_organization_subjects__subject_id__delete: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                subject_id: number;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    update_subject_organization_subjects__subject_id__patch: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                subject_id: number;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["SubjectPatch"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SubjectOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    list_departments_organization_departments_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DepartmentOut"][];
+                };
+            };
+        };
+    };
+    create_department_organization_departments_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["DepartmentIn"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DepartmentOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    delete_department_organization_departments__department_id__delete: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                department_id: number;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    update_department_organization_departments__department_id__patch: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                department_id: number;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["DepartmentPatch"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DepartmentOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    list_subject_departments_organization_subject_departments_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SubjectDepartmentOut"][];
+                };
+            };
+        };
+    };
+    create_subject_department_organization_subject_departments_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["SubjectDepartmentIn"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SubjectDepartmentOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    delete_subject_department_organization_subject_departments__row_id__delete: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                row_id: number;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    update_subject_department_organization_subject_departments__row_id__patch: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                row_id: number;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["SubjectDepartmentPatch"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SubjectDepartmentOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    list_city_rules_rules_city_rules_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CityRuleOut"][];
+                };
+            };
+        };
+    };
+    create_city_rule_rules_city_rules_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["CityRuleIn"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CityRuleOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    list_attendance_rules_rules_attendance_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AttendanceRuleOut"][];
+                };
+            };
+        };
+    };
+    create_attendance_rule_rules_attendance_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["AttendanceRuleIn"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AttendanceRuleOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    list_employees_employees_get: {
+        parameters: {
+            query?: {
+                company_id?: number | null;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["EmployeeOut"][];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    create_employee_employees_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["EmployeeIn"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["EmployeeOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_employee_employees__employee_id__get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                employee_id: number;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["EmployeeOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    update_employee_employees__employee_id__patch: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                employee_id: number;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["EmployeePatch"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["EmployeeOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    download_performance_template_imports_performance_template_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": unknown;
+                };
+            };
+        };
+    };
+    list_performance_imports_imports_performance_get: {
+        parameters: {
+            query: {
+                company_id: number;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["MonthlyImportBatchOut"][];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    upload_performance_imports_performance_post: {
+        parameters: {
+            query: {
+                payroll_batch_id: number;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "multipart/form-data": components["schemas"]["Body_upload_performance_imports_performance_post"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["MonthlyImportBatchOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_performance_import_imports_performance__batch_id__get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                batch_id: number;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["MonthlyImportBatchOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    download_performance_file_imports_performance__batch_id__file_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                batch_id: number;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": unknown;
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    correct_performance_row_imports_performance__batch_id__rows__row_id__correct_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                batch_id: number;
+                row_id: number;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["RowCorrection"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["MonthlyImportBatchOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    download_attendance_template_imports_attendance_template_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": unknown;
+                };
+            };
+        };
+    };
+    list_attendance_imports_imports_attendance_get: {
+        parameters: {
+            query: {
+                company_id: number;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["MonthlyImportBatchOut"][];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    upload_attendance_imports_attendance_post: {
+        parameters: {
+            query: {
+                payroll_batch_id: number;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "multipart/form-data": components["schemas"]["Body_upload_attendance_imports_attendance_post"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["MonthlyImportBatchOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_attendance_import_imports_attendance__batch_id__get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                batch_id: number;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["MonthlyImportBatchOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    download_attendance_file_imports_attendance__batch_id__file_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                batch_id: number;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": unknown;
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    correct_attendance_row_imports_attendance__batch_id__rows__row_id__correct_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                batch_id: number;
+                row_id: number;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["RowCorrection"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["MonthlyImportBatchOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    download_employee_template_imports_employee_template_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": unknown;
+                };
+            };
+        };
+    };
+    upload_employee_master_imports_employee_master_post: {
+        parameters: {
+            query: {
+                company_id: number;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "multipart/form-data": components["schemas"]["Body_upload_employee_master_imports_employee_master_post"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ImportBatchOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    list_employee_imports_imports_get: {
+        parameters: {
+            query: {
+                company_id: number;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ImportBatchOut"][];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_employee_import_imports__batch_id__get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                batch_id: number;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ImportBatchOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    download_original_file_imports__batch_id__file_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                batch_id: number;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": unknown;
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    correct_employee_import_row_imports__batch_id__rows__row_id__correct_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                batch_id: number;
+                row_id: number;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["RowCorrection"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ImportBatchOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_ledger_record_payroll_ledger_records__record_id__get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                record_id: number;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PayrollLedgerDetailOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_attendance_incentive_payroll_periods__period_id__attendance_incentive_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                period_id: number;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AttendanceIncentiveOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    post_attendance_incentive_payroll_periods__period_id__attendance_incentive_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                period_id: number;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AttendanceIncentiveOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_batch_trial_payroll_batches__batch_id__trial_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                batch_id: number;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PayrollTrialOut"] | null;
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    post_batch_trial_payroll_batches__batch_id__trial_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                batch_id: number;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PayrollTrialOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_confirmation_payroll_periods__period_id__confirmation_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                period_id: number;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PayrollConfirmationOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    post_confirmation_payroll_periods__period_id__confirmation_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                period_id: number;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PayrollConfirmationOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    post_lock_payroll_periods__period_id__lock_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                period_id: number;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PayrollConfirmationOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    post_batch_confirmation_payroll_batches__batch_id__confirm_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                batch_id: number;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PayrollConfirmationOut"] | components["schemas"]["PayrollSupplementStatusOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    post_batch_lock_payroll_batches__batch_id__lock_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                batch_id: number;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PayrollConfirmationOut"] | components["schemas"]["PayrollSupplementStatusOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_batch_corrections_payroll_batches__batch_id__corrections_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                batch_id: number;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PayrollCorrectionOut"][];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    post_batch_correction_payroll_batches__batch_id__corrections_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                batch_id: number;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["PayrollCorrectionCreate"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PayrollCorrectionOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_correction_input_rows_payroll_corrections__correction_id__inputs_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                correction_id: number;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PayrollCorrectionInputOut"][];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    put_correction_input_row_payroll_corrections__correction_id__inputs_put: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                correction_id: number;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["PayrollCorrectionInputPatch"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PayrollCorrectionInputOut"][];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    post_correction_cancel_payroll_corrections__correction_id__cancel_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                correction_id: number;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PayrollCorrectionOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_payroll_ledger_payroll_ledger_get: {
+        parameters: {
+            query?: {
+                period_id?: number | null;
+                period?: string | null;
+                subject_id?: number | null;
+                department?: string | null;
+                employee_id?: number | null;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PayrollLedgerOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_batch_payroll_batches__batch_id__get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                batch_id: number;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PayrollBatchOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_supplement_inputs_payroll_batches__batch_id__supplement_inputs_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                batch_id: number;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PayrollSupplementInput-Output"][];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    put_supplement_inputs_payroll_batches__batch_id__supplement_inputs_put: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                batch_id: number;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["PayrollSupplementInput-Input"][];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PayrollSupplementInput-Output"][];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_periods_payroll_periods_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PayrollPeriodOut"][];
+                };
+            };
+        };
+    };
+    post_period_payroll_periods_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["PayrollPeriodCreate"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PayrollPeriodOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_period_batches_payroll_periods__period_id__batches_get: {
+        parameters: {
+            query?: {
+                subject_id?: number | null;
+                batch_type?: ("normal" | "supplement" | "performance_supplement" | "other") | null;
+                status?: ("draft" | "trial" | "confirmed" | "locked" | "exported" | "cancelled") | null;
+            };
+            header?: never;
+            path: {
+                period_id: number;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PayrollBatchOut"][];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    post_batch_payroll_periods__period_id__batches_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                period_id: number;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["PayrollBatchCreate"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PayrollBatchOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_workbench_payroll_workbench_get: {
+        parameters: {
+            query?: {
+                period?: string | null;
+                subject_id?: number | null;
+                batch_type?: ("normal" | "supplement" | "performance_supplement" | "other") | null;
+                status?: ("draft" | "trial" | "confirmed" | "locked" | "exported" | "cancelled") | null;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PayrollWorkbenchOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    preview_exports__kind__preview_get: {
+        parameters: {
+            query: {
+                period_id: number;
+                subject_id?: number | null;
+            };
+            header?: never;
+            path: {
+                kind: "payroll" | "bank" | "labor-cost" | "tax";
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ExportPreviewOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    template_exports__kind__template_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                kind: "payroll" | "bank" | "labor-cost" | "tax";
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": unknown;
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    history_exports__kind__get: {
+        parameters: {
+            query: {
+                period_id: number;
+            };
+            header?: never;
+            path: {
+                kind: "payroll" | "bank" | "labor-cost" | "tax";
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ExportReport"][];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    create_exports__kind__post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                kind: "payroll" | "bank" | "labor-cost" | "tax";
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ExportCreate"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ExportReport"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    report_exports__kind___export_id__get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                kind: "payroll" | "bank" | "labor-cost" | "tax";
+                export_id: number;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ExportReport"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    download_exports__kind___export_id__file_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                kind: "payroll" | "bank" | "labor-cost" | "tax";
+                export_id: number;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": unknown;
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
                 };
             };
         };

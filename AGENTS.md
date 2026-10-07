@@ -37,6 +37,8 @@ PayLite —— 单目标公司的工资数据管理系统。本机部署，数�
 | `/employees` | `design/employees.html`；员工详情参考 `design/employee-detail.html` |
 | `/imports` | `design/import-center.html`、`design/import-batch.html` |
 | `/payroll` | `design/periods.html`、`design/batch-detail.html`、`design/incentive.html` |
+| `/payroll/ledger` | `design/ledger.html` |
+| `/payroll/ledger/records/:recordId` | `design/ledger-employee.html`；正式结果使用计算时快照，保留已替代版本 |
 | `/rules` | `design/city-rules.html`、`design/payroll-rules.html` |
 | `/exports` | `design/export-center.html` |
 

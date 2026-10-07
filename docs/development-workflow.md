@@ -17,9 +17,23 @@ docker compose up -d --no-deps backend
 
 只修改产品文档、README 或 Excel 模板时，不会触发后端镜像重建。
 
+启动完整本机网页前先构建前端；Compose 将产物只读挂载到后端，缺少构建会明确拒绝启动：
+
+```bash
+nvm use
+cd frontend
+corepack pnpm install --frozen-lockfile
+corepack pnpm build
+cd ..
+docker compose up -d --build backend
+```
+
+更新前端后重新执行 build，再重启后端即可；提交钩子只重建后端镜像，不代替前端构建。
+
 本地服务：
 
-- Backend：`http://127.0.0.1:31000`
+- 本机网页与 Backend：`http://127.0.0.1:31000`
+- 业务 API：`http://127.0.0.1:31000/api`（Vite 代理保留此前缀）
 - Health：`http://127.0.0.1:31000/health`
 - PostgreSQL：`127.0.0.1:15432`
 
@@ -84,3 +98,5 @@ PAYLITE_ALLOW_TEST_DATABASE_RESET=1
 ```
 
 测试 teardown 会执行数据库 downgrade，因此不能把测试 URL 指向开发数据库 `paylite`。
+
+API 单独运行不设置 PAYLITE_FRONTEND_DIRECTORY，原 /organization、/payroll 等接口保持兼容，同时提供 /api 别名。完整页面运行和深链接由设置该配置的 FastAPI 同源提供，不需要另建静态容器。

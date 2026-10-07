@@ -3,6 +3,10 @@
     flex-direction: column;
     gap: 14px;
     width: 100%;
+
+    > * {
+        min-width: 0;
+    }
 }
 
 .pageLead {
@@ -88,6 +92,10 @@
     gap: 14px;
     align-items: stretch;
 
+    > * {
+        min-width: 0;
+    }
+
     :global(.ant-alert) {
         align-items: flex-start;
     }
@@ -115,5 +123,14 @@
 
     .metrics {
         grid-template-columns: 1fr;
+    }
+}
+
+.todos {
+    padding-left: 18px;
+    margin: 0 0 16px;
+    li {
+        margin-bottom: 10px;
+        line-height: 1.6;
     }
 }

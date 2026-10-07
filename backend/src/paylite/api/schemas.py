@@ -356,6 +356,15 @@ class PayrollDataPreparationOut(BaseModel):
     overall_status: Literal["ready", "partial", "blocked"]
 
 
+class PayrollTrialSummaryOut(BaseModel):
+    stale: bool
+    success_count: int
+    error_count: int
+    total_count: int
+    ready_for_confirmation: bool
+    confirmation_blockers: list[str]
+
+
 class PayrollBatchOut(BaseModel):
     id: int
     period_id: int
@@ -369,6 +378,7 @@ class PayrollBatchOut(BaseModel):
     data_preparation: PayrollDataPreparationOut
     payment_date: date | None
     payment_date_confirmed: bool
+    trial_summary: PayrollTrialSummaryOut | None = None
 
 
 class PayrollSupplementInput(BaseModel):
@@ -387,6 +397,54 @@ class PayrollWorkbenchOut(BaseModel):
     batches: list[PayrollBatchOut]
 
 
+class PayrollSnapshotOut(BaseModel):
+    model_config = ConfigDict(extra="allow")
+    employee_no: str | None = None
+    name: str | None = None
+    id_number: str | None = None
+    department_name: str | None = None
+    position_title: str | None = None
+    level_code: str | None = None
+    level_number: int | None = None
+    fixed_salary: str | None = None
+    performance_base: str | None = None
+    base_city_name: str | None = None
+    bank_account: str | None = None
+    last_effective_subject_id: int | None = None
+
+
+class PayrollItemOut(BaseModel):
+    code: str
+    name: str
+    category: str
+    amount: str
+    source_type: str | None = None
+    source_reference: str | None = None
+
+
+class PayrollCalculationStepOut(BaseModel):
+    code: str
+    formula: str
+    inputs: dict[str, Any]
+    amount: str | None
+
+
+class PayrollTrialIssueOut(BaseModel):
+    code: str
+    message: str
+
+
+class PayrollTrialRowOut(BaseModel):
+    employee_id: int
+    employee_name: str | None = None
+    snapshot: PayrollSnapshotOut
+    errors: list[PayrollTrialIssueOut]
+    warnings: list[str]
+    amounts: dict[str, str] | None
+    items: list[PayrollItemOut]
+    steps: list[PayrollCalculationStepOut]
+
+
 class PayrollTrialOut(BaseModel):
     id: int
     payroll_batch_id: int
@@ -397,7 +455,7 @@ class PayrollTrialOut(BaseModel):
     error_count: int
     total_count: int
     totals: dict[str, str]
-    results: list[dict[str, Any]]
+    results: list[PayrollTrialRowOut]
     includes_final_incentive: bool
     ready_for_confirmation: bool
     confirmation_blockers: list[str]
@@ -458,12 +516,20 @@ class PayrollCorrectionInputOut(BaseModel):
     source_note: str | None
 
 
+class PayrollCorrectionHistoryOut(BaseModel):
+    employee_id: int
+    source_note: str
+    created_at: datetime
+    attendance: dict[str, Any] = Field(default_factory=dict)
+    performance_coefficient: str | None = None
+
+
 class PayrollCorrectionOut(BaseModel):
     id: int
     original_batch_id: int
     replacement_batch_id: int
     reason: str
-    input_history: list[dict[str, Any]]
+    input_history: list[PayrollCorrectionHistoryOut]
     status: Literal["requested", "applied", "cancelled"]
     created_at: datetime
     original_status: Literal["draft", "trial", "confirmed", "locked", "exported", "cancelled"]
@@ -482,11 +548,12 @@ class PayrollLedgerRecordOut(BaseModel):
     subject_id: int
     subject_name: str
     employee_id: int
-    snapshot: dict[str, Any]
+    snapshot: PayrollSnapshotOut
     amounts: dict[str, str]
-    items: list[dict[str, Any]]
-    steps: list[dict[str, Any]]
+    items: list[PayrollItemOut]
+    steps: list[PayrollCalculationStepOut]
     calculation_status: Literal["confirmed", "locked"]
+    is_effective: bool
 
 
 class PayrollLedgerOut(BaseModel):
@@ -497,6 +564,27 @@ class PayrollLedgerOut(BaseModel):
     employee_count: int
     records: list[PayrollLedgerRecordOut]
     totals: dict[str, str]
+    untaxed_tax_notice: str
+
+
+class PayrollLedgerHistoryOut(BaseModel):
+    id: int
+    period: str
+    subject_name: str
+    batch_type: Literal["normal", "supplement"]
+    batch_no: int
+    gross: str
+    untaxed_amount: str
+    calculation_status: Literal["confirmed", "locked"]
+    is_effective: bool
+
+
+class PayrollLedgerDetailOut(BaseModel):
+    period_id: int
+    period: str
+    record: PayrollLedgerRecordOut
+    attendance: dict[str, Any] | None
+    history: list[PayrollLedgerHistoryOut]
     untaxed_tax_notice: str
 
 

@@ -7,7 +7,7 @@
 - React 19、TypeScript strict、Vite、Ant Design。
 - React Router 负责页面路由，TanStack Query 负责服务端状态。
 - React Hook Form 与 Zod 负责表单状态和即时输入校验。
-- Vitest、Testing Library 和 Playwright 分别覆盖逻辑、交互与关键业务流程；Playwright 在首条完整业务竖切时接入。
+- Vitest、Testing Library 和 Playwright 分别覆盖逻辑、交互与关键业务流程，浏览器验收按实际关键流程运行。
 
 ## 模块结构
 
@@ -19,8 +19,10 @@ frontend/src/
 │   ├── organization/        # index.tsx + index.module.less
 │   ├── employees/           # index.tsx + index.module.less
 │   ├── rules/               # index.tsx + index.module.less
-│   └── feature-placeholder/ # index.tsx + index.module.less
-├── features/     # 按员工、导入、工资、规则、导出等业务能力组织
+│   ├── imports/             # 三类导入与批次纠错
+│   ├── payroll/             # 期间、批次、试算、激励、台账、补发
+│   ├── exports/             # 四类导出与报告下载
+│   └── feature-placeholder/ # 历史占位组件
 └── shared/       # API 客户端、通用 UI、格式化和配置
 ```
 
@@ -48,6 +50,14 @@ FastAPI OpenAPI 是请求与响应类型的唯一来源。`openapi-typescript` �
 
 ## 运行边界
 
-开发环境由 Vite 把 `/api` 转发到本机 FastAPI `127.0.0.1:31000`。规则维护页面 `/rules` 通过 TanStack Query 读取和新增城市规则、考勤规则，展示版本、生效期、来源及缺失/过期状态。正式本地运行保持同源访问，后续在发布竖切中确定由 FastAPI 直接托管静态文件还是增加静态 Web 容器。
+开发环境由 Vite 把 `/api` 转发到本机 FastAPI `127.0.0.1:31000`。规则维护页面 `/rules` 通过 TanStack Query 读取和新增城市规则、考勤规则，展示版本、生效期、来源及缺失/过期状态。正式本地运行由 FastAPI 托管 frontend/dist，业务接口保留 /api 前缀，深链接刷新返回 SPA；Compose 通过只读挂载接入构建产物。Vite 保留 /api 路径；API 单独运行也提供 /api 别名。
 
 第一版不实现登录和复杂权限。服务只监听 `127.0.0.1`；身份证号、银行卡号和工资结果不得写入 `localStorage`、浏览器持久缓存或前端日志。
+
+## 当前落地（2026-10-04）
+
+业务响应类型来自完整 OpenAPI（77 个 HTTP 操作），`npm run api:generate` 通过后端本地虚拟环境离线生成 schema，无需启动服务。工资期间、主体、批次类型/状态、台账部门/员工和导出模板筛选保存在 URL；菜单用年月衔接期间 ID，避免历史期间切换到最新期间。部分既有表单仍使用 Ant Design Form，不能把 React Hook Form/Zod 描述为全仓库实际实现。
+
+首页读取真实准备状态、只读试算摘要、正式金额和导出版本；摘要不记录“已查看”凭证。正式台账详情独立路由 `/payroll/ledger/records/:recordId` 仅展示历史快照和计算依据，不重新计算工资。敏感号码脱敏；没有保存的事实显示 —，金额由 `shared/money.ts` 按文本格式化。
+
+13 文件/54 项测试、生产构建、lint 与格式检查通过；8 页面×9 视口无整页溢出，表格在容器内横向滚动。04 用户页面验收与真实工资对账尚待业务确认，见 [完成情况](mvp-completion-2026-10-03.md)。

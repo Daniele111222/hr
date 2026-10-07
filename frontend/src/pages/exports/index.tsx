@@ -1,3 +1,4 @@
+import { useSearchParams } from "react-router-dom";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import {
   Alert,
@@ -24,19 +25,46 @@ import styles from "./index.module.less";
 
 export function ExportsPage() {
   const client = useQueryClient();
-  const [kind, setKind] = useState<ExportKind>("payroll");
+  const [params, setParams] = useSearchParams();
+  const requestedKind = params.get("kind");
+  const kind: ExportKind =
+    requestedKind && requestedKind in exportLabels
+      ? (requestedKind as ExportKind)
+      : "payroll";
+  const updateFilter = (key: string, value: string | number | undefined) =>
+    setParams((current) => {
+      const next = new URLSearchParams(current);
+      if (value === undefined) next.delete(key);
+      else next.set(key, String(value));
+      return next;
+    });
+  const setKind = (value: ExportKind) => updateFilter("kind", value);
   const [subjectTemplates, setSubjectTemplates] = useState<
     Record<string, string>
   >({});
   const label = exportLabels[kind];
-  const [selectedPeriod, setPeriod] = useState<number>();
-  const [subject, setSubject] = useState<number>();
+  const selectedPeriod = params.has("period_id")
+    ? Number(params.get("period_id"))
+    : undefined;
+  const subject = params.has("subject_id")
+    ? Number(params.get("subject_id"))
+    : undefined;
+  const setPeriod = (value: number) =>
+    setParams((current) => {
+      const next = new URLSearchParams(current);
+      next.delete("period");
+      next.set("period_id", String(value));
+      return next;
+    });
+  const setSubject = (value: number | undefined) =>
+    updateFilter("subject_id", value);
   const [report, setReport] = useState<PayrollExportReport>();
   const [downloadError, setDownloadError] = useState<string>();
   const requestId = useRef<string | undefined>(undefined);
   const workbench = useQuery({
-    queryKey: ["payroll", "workbench"],
-    queryFn: () => resources.payrollWorkbench(),
+    queryKey: ["payroll", "workbench", params.get("period") ?? undefined],
+    queryFn: () =>
+      resources.payrollWorkbench(params.get("period") ?? undefined),
   });
   const subjects = useQuery({
     queryKey: ["subjects"],

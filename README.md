@@ -45,6 +45,21 @@
 
 开发阶段、16 项正式任务、依赖关系及验收标准见 [docs/development-plan.md](docs/development-plan.md)。
 
+## 本机运行
+
+按 `.nvmrc` 使用 Node 24.21.0，先构建前端，再启动 Compose：
+
+```bash
+nvm use
+cd frontend
+corepack pnpm install --frozen-lockfile
+corepack pnpm build
+cd ..
+docker compose up -d --build backend
+```
+
+浏览器访问 `http://127.0.0.1:31000`；前端与 `/api` 同源，支持页面深链接刷新。数据保存在本机 Compose 数据卷，完整说明见 [开发工作流](docs/development-workflow.md)。当前验收与外部待验证事项见 [需求完成情况](docs/mvp-completion-2026-10-03.md)。
+
 ## License
 
 [MIT](LICENSE)

@@ -16,6 +16,7 @@ from paylite.api.schemas import (
     PayrollCorrectionInputPatch,
     PayrollCorrectionOut,
     PayrollDataPreparationOut,
+    PayrollLedgerDetailOut,
     PayrollLedgerOut,
     PayrollPeriodCreate,
     PayrollPeriodOut,
@@ -25,6 +26,7 @@ from paylite.api.schemas import (
     PayrollSupplementInput,
     PayrollSupplementStatusOut,
     PayrollTrialOut,
+    PayrollTrialSummaryOut,
     PayrollWorkbenchOut,
 )
 from paylite.db.models import PayrollBatch, PayrollPeriod
@@ -49,7 +51,7 @@ from paylite.services.payroll_correction import (
     request_correction,
     update_correction_inputs,
 )
-from paylite.services.payroll_ledger import PayrollLedgerError, get_ledger
+from paylite.services.payroll_ledger import PayrollLedgerError, get_ledger, get_record_detail
 from paylite.services.payroll_trial import TrialError, get_trial, run_trial
 from paylite.services.payroll_workbench import (
     BatchType,
@@ -68,6 +70,14 @@ from paylite.services.payroll_workbench import (
 )
 
 router = APIRouter(prefix="/payroll", tags=["payroll"])
+
+
+@router.get("/ledger/records/{record_id}", response_model=PayrollLedgerDetailOut)
+def get_ledger_record(record_id: int, db: Session = Depends(get_db)):
+    try:
+        return get_record_detail(db, record_id)
+    except PayrollLedgerError as exc:
+        raise HTTPException(exc.status_code, exc.detail) from exc
 
 
 @router.get("/periods/{period_id}/attendance-incentive", response_model=AttendanceIncentiveOut)
@@ -349,12 +359,23 @@ def _scope_out(period: PayrollPeriod, scope: EmployeeScope) -> PayrollScopeOut:
     )
 
 
-def _batch_out(db: Session, period: PayrollPeriod, batch: PayrollBatch) -> PayrollBatchOut:
+def _batch_out(
+    db: Session, period: PayrollPeriod, batch: PayrollBatch, *, include_trial: bool = False
+) -> PayrollBatchOut:
     subject = get_batch_subject(db, batch)
     scope, preparation = batch_scope_and_preparation(db, period, batch)
     payment_date = (
         batch.payment_date if batch.batch_type == "supplement" else period.actual_payment_date
     )
+    summary = None
+    if include_trial and batch.status in {"draft", "trial"}:
+        trial = (
+            payroll_supplement.get_trial(db, batch.id)
+            if batch.batch_type == "supplement"
+            else get_trial(db, batch.id)
+        )
+        if trial:
+            summary = PayrollTrialSummaryOut.model_validate(trial)
     return PayrollBatchOut(
         id=batch.id,
         period_id=period.id,
@@ -368,6 +389,7 @@ def _batch_out(db: Session, period: PayrollPeriod, batch: PayrollBatch) -> Payro
         data_preparation=_preparation_out(preparation),
         payment_date=payment_date,
         payment_date_confirmed=payment_date is not None,
+        trial_summary=summary,
     )
 
 
@@ -453,7 +475,7 @@ def get_workbench(
         batches = []
         if selected:
             batches = [
-                _batch_out(db, selected, batch)
+                _batch_out(db, selected, batch, include_trial=True)
                 for batch in list_batches(
                     db,
                     selected,

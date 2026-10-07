@@ -1,10 +1,10 @@
 from datetime import datetime
-from typing import Any, Literal
+from typing import Literal
 from urllib.parse import quote
 from uuid import UUID
 
 from fastapi import APIRouter, Depends, HTTPException, Query, Response
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, ConfigDict, Field
 from sqlalchemy.orm import Session
 
 from paylite.api.deps import get_db
@@ -30,18 +30,66 @@ class ExportCreate(BaseModel):
     subject_templates: dict[str, str] = Field(default_factory=dict)
 
 
+class ExportVersionOut(BaseModel):
+    batch_id: int
+    trial_id: int
+    batch_no: int
+    batch_type: str
+    input_fingerprint: str | None
+    record_ids: list[int]
+
+
+class ExportParametersOut(BaseModel):
+    model_config = ConfigDict(extra="allow")
+    period: str
+    subject_id: int | None
+    employee_count: int
+    record_count: int
+    untaxed_amount: str
+    employer_cost: str
+    versions: list[ExportVersionOut]
+
+
+class ExportWarningOut(BaseModel):
+    code: str
+    severity: str
+    message: str
+    employee_id: int | None
+    field_name: str | None
+
+
+class ExportSubjectOut(BaseModel):
+    id: int
+    name: str
+
+
+class ExportPreviewOut(BaseModel):
+    subjects: list[ExportSubjectOut]
+    template_sheets: list[str]
+    period: str
+    employee_count: int
+    record_count: int
+    untaxed_amount: str
+    employer_cost: str
+    template_version: str
+    can_export: bool
+    blockers: list[str]
+    skipped_subjects: list[str]
+    versions: list[ExportVersionOut]
+
+
 class ExportReport(BaseModel):
     id: int
     period_id: int
-    status: str
+    status: Literal["started", "completed", "failed"]
     template_version: str
-    parameters: dict[str, Any]
+    parameters: ExportParametersOut
     created_at: datetime
     completed_at: datetime | None
-    warnings: list[dict[str, Any]]
+    warnings: list[ExportWarningOut]
 
 
-@router.get("/{kind}/preview")
+@router.get("/{kind}/preview", response_model=ExportPreviewOut)
 def preview(
     kind: ExportKind,
     period_id: int = Query(gt=0),

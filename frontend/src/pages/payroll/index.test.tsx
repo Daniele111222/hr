@@ -36,23 +36,40 @@ const batch = {
     status: "ready" as const,
   },
   data_preparation: {
-    attendance: { status: "partial" as const, prepared_count: 1, missing_count: 1, message: null },
-    performance: { status: "missing" as const, prepared_count: 0, missing_count: 2, message: null },
-    city_rules: { status: "ready" as const, prepared_count: 2, missing_count: 0, message: null },
+    attendance: {
+      status: "partial" as const,
+      prepared_count: 1,
+      missing_count: 1,
+      message: null,
+    },
+    performance: {
+      status: "missing" as const,
+      prepared_count: 0,
+      missing_count: 2,
+      message: null,
+    },
+    city_rules: {
+      status: "ready" as const,
+      prepared_count: 2,
+      missing_count: 0,
+      message: null,
+    },
     overall_status: "partial" as const,
   },
   payment_date: null,
   payment_date_confirmed: false,
 };
 
-function renderPage() {
+function renderPage(path = "/payroll") {
   const client = new QueryClient({
     defaultOptions: { queries: { retry: false }, mutations: { retry: false } },
   });
   return render(
     <AntdApp>
       <QueryClientProvider client={client}>
-        <MemoryRouter><PayrollPage /></MemoryRouter>
+        <MemoryRouter initialEntries={[path]}>
+          <PayrollPage />
+        </MemoryRouter>
       </QueryClientProvider>
     </AntdApp>,
   );
@@ -99,19 +116,21 @@ test("工资工作台显示 API 错误", async () => {
 });
 
 test("工资工作台可以幂等创建期间并刷新当前期间", async () => {
-  const fetchMock = vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
-    const path = String(input);
-    if (path.endsWith("/payroll/periods") && init?.method === "POST") {
-      return Response.json(period);
-    }
-    if (path.includes("/organization/subjects")) {
+  const fetchMock = vi.fn(
+    async (input: RequestInfo | URL, init?: RequestInit) => {
+      const path = String(input);
+      if (path.endsWith("/payroll/periods") && init?.method === "POST") {
+        return Response.json(period);
+      }
+      if (path.includes("/organization/subjects")) {
+        return Response.json([]);
+      }
+      if (path.includes("/payroll/workbench")) {
+        return Response.json({ period, periods: [period], batches: [] });
+      }
       return Response.json([]);
-    }
-    if (path.includes("/payroll/workbench")) {
-      return Response.json({ period, periods: [period], batches: [] });
-    }
-    return Response.json([]);
-  });
+    },
+  );
   vi.stubGlobal("fetch", fetchMock);
   const user = userEvent.setup();
 
@@ -130,14 +149,20 @@ test("工资工作台可以幂等创建期间并刷新当前期间", async () =>
 });
 
 test("没有现有批次时仍可选择主体建立首个批次", async () => {
-  const fetchMock = vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
-    const path = String(input);
-    if (path.includes("/organization/subjects")) return Response.json([batch.subject]);
-    if (path.endsWith("/payroll/periods/1/batches") && init?.method === "POST") {
-      return Response.json(batch, { status: 201 });
-    }
-    return Response.json({ period, periods: [period], batches: [] });
-  });
+  const fetchMock = vi.fn(
+    async (input: RequestInfo | URL, init?: RequestInit) => {
+      const path = String(input);
+      if (path.includes("/organization/subjects"))
+        return Response.json([batch.subject]);
+      if (
+        path.endsWith("/payroll/periods/1/batches") &&
+        init?.method === "POST"
+      ) {
+        return Response.json(batch, { status: 201 });
+      }
+      return Response.json({ period, periods: [period], batches: [] });
+    },
+  );
   vi.stubGlobal("fetch", fetchMock);
   const user = userEvent.setup();
 
@@ -159,10 +184,17 @@ test("重复正常批次显示后端冲突", async () => {
   vi.stubGlobal(
     "fetch",
     vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
-      if (String(input).endsWith("/payroll/periods/1/batches") && init?.method === "POST") {
-        return Response.json({ detail: "该主体在此工资期间已有正常批次" }, { status: 409 });
+      if (
+        String(input).endsWith("/payroll/periods/1/batches") &&
+        init?.method === "POST"
+      ) {
+        return Response.json(
+          { detail: "该主体在此工资期间已有正常批次" },
+          { status: 409 },
+        );
       }
-      if (String(input).includes("/organization/subjects")) return Response.json([batch.subject]);
+      if (String(input).includes("/organization/subjects"))
+        return Response.json([batch.subject]);
       return Response.json({ period, periods: [period], batches: [batch] });
     }),
   );
@@ -174,16 +206,27 @@ test("重复正常批次显示后端冲突", async () => {
   await user.click(await screen.findByText("主主体（MAIN）"));
   await user.click(screen.getByText("OK"));
 
-  expect(await screen.findByText("该主体在此工资期间已有正常批次")).toBeInTheDocument();
+  expect(
+    await screen.findByText("该主体在此工资期间已有正常批次"),
+  ).toBeInTheDocument();
 });
 
 test("可建立独立补发批次且必须填写原因", async () => {
-  const fetchMock = vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
-    if (String(input).includes("/organization/subjects")) return Response.json([batch.subject]);
-    if (String(input).endsWith("/payroll/periods/1/batches") && init?.method === "POST")
-      return Response.json({ ...batch, batch_type: "supplement", name: "补发差额" }, { status: 201 });
-    return Response.json({ period, periods: [period], batches: [batch] });
-  });
+  const fetchMock = vi.fn(
+    async (input: RequestInfo | URL, init?: RequestInit) => {
+      if (String(input).includes("/organization/subjects"))
+        return Response.json([batch.subject]);
+      if (
+        String(input).endsWith("/payroll/periods/1/batches") &&
+        init?.method === "POST"
+      )
+        return Response.json(
+          { ...batch, batch_type: "supplement", name: "补发差额" },
+          { status: 201 },
+        );
+      return Response.json({ period, periods: [period], batches: [batch] });
+    },
+  );
   vi.stubGlobal("fetch", fetchMock);
   const user = userEvent.setup();
   renderPage();
@@ -194,11 +237,43 @@ test("可建立独立补发批次且必须填写原因", async () => {
   await user.click(await screen.findByText("独立补发"));
   await user.click(screen.getByText("OK"));
   expect(await screen.findByText("请填写补发原因")).toBeInTheDocument();
-  expect(fetchMock.mock.calls.some(([input, init]) => String(input).endsWith("/payroll/periods/1/batches") && init?.method === "POST")).toBe(false);
-  await user.type(screen.getByRole("textbox", { name: "补发原因" }), "补发差额");
+  expect(
+    fetchMock.mock.calls.some(
+      ([input, init]) =>
+        String(input).endsWith("/payroll/periods/1/batches") &&
+        init?.method === "POST",
+    ),
+  ).toBe(false);
+  await user.type(
+    screen.getByRole("textbox", { name: "补发原因" }),
+    "补发差额",
+  );
   await user.click(screen.getByText("OK"));
-  await waitFor(() => expect(fetchMock).toHaveBeenCalledWith(
-    "/api/payroll/periods/1/batches",
-    expect.objectContaining({ method: "POST", body: expect.stringContaining('"batch_type":"supplement"') }),
-  ));
+  await waitFor(() =>
+    expect(fetchMock).toHaveBeenCalledWith(
+      "/api/payroll/periods/1/batches",
+      expect.objectContaining({
+        method: "POST",
+        body: expect.stringContaining('"batch_type":"supplement"'),
+      }),
+    ),
+  );
+});
+
+test("工作台从 URL 恢复期间、主体与状态筛选", async () => {
+  const fetcher = vi.fn(async (input: RequestInfo | URL) =>
+    String(input).includes("/subjects")
+      ? Response.json([batch.subject])
+      : Response.json({ period, periods: [period], batches: [batch] }),
+  );
+  vi.stubGlobal("fetch", fetcher);
+  renderPage("/payroll?period=2026-09&subject_id=2&status=locked");
+  expect(
+    await screen.findByText("本期间暂无批次，请建立工资批次"),
+  ).toBeInTheDocument();
+  expect(
+    fetcher.mock.calls.some(([input]) =>
+      String(input).includes("period=2026-09"),
+    ),
+  ).toBe(true);
 });

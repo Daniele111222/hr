@@ -1,3 +1,4 @@
+import { MemoryRouter } from "react-router-dom";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { cleanup, render, screen, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
@@ -8,15 +9,25 @@ afterEach(() => {
   cleanup();
   vi.unstubAllGlobals();
 });
-function setup(canExport = true, fail = false, completed = false) {
+function setup(
+  canExport = true,
+  fail = false,
+  completed = false,
+  path = "/exports",
+) {
   const fetcher = vi.fn(
     async (input: RequestInfo | URL, init?: RequestInit) => {
       const url = String(input);
       if (fail) return Response.json({ detail: "连接失败" }, { status: 500 });
       if (url.includes("workbench"))
         return Response.json({
-          period: { id: 1, period: "2026-09" },
-          periods: [{ id: 1, period: "2026-09" }],
+          period: url.includes("period=2026-08")
+            ? { id: 8, period: "2026-08" }
+            : { id: 1, period: "2026-09" },
+          periods: [
+            { id: 1, period: "2026-09" },
+            { id: 8, period: "2026-08" },
+          ],
         });
       if (url.includes("organization"))
         return Response.json([{ id: 2, name: "测试主体" }]);
@@ -72,7 +83,9 @@ function setup(canExport = true, fail = false, completed = false) {
         })
       }
     >
-      <ExportsPage />
+      <MemoryRouter initialEntries={[path]}>
+        <ExportsPage />
+      </MemoryRouter>
     </QueryClientProvider>,
   );
   return fetcher;
@@ -179,4 +192,33 @@ test("申报辅助未锁定范围同样禁止生成", async () => {
   await userEvent.click(screen.getByRole("button", { name: "申报辅助模板" }));
   await screen.findByText("仅为申报辅助，未完成税务申报");
   expect(screen.getByRole("button", { name: "生成导出文件" })).toBeDisabled();
+});
+
+test("导出中心从 URL 恢复期间、主体与文件类型", async () => {
+  const fetcher = setup(
+    false,
+    false,
+    false,
+    "/exports?period_id=7&subject_id=2&kind=tax",
+  );
+  expect(await screen.findByText("当前范围暂不能导出")).toBeInTheDocument();
+  expect(
+    fetcher.mock.calls.some(([input]) =>
+      String(input).includes("/exports/tax/preview?period_id=7&subject_id=2"),
+    ),
+  ).toBe(true);
+  expect(screen.getByRole("button", { name: "申报辅助模板" })).toHaveAttribute(
+    "aria-pressed",
+    "true",
+  );
+});
+
+test("菜单传入旧期间年月时导出预览使用该期间 ID", async () => {
+  const fetcher = setup(false, false, false, "/exports?period=2026-08");
+  expect(await screen.findByText("当前范围暂不能导出")).toBeInTheDocument();
+  expect(
+    fetcher.mock.calls.some(([input]) =>
+      String(input).includes("/exports/payroll/preview?period_id=8"),
+    ),
+  ).toBe(true);
 });

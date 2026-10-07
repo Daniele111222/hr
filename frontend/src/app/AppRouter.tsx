@@ -8,12 +8,6 @@ const OverviewPage = lazy(() =>
   })),
 );
 
-const FeaturePlaceholderPage = lazy(() =>
-  import("../pages/feature-placeholder/index.tsx").then((module) => ({
-    default: module.FeaturePlaceholderPage,
-  })),
-);
-
 const OrganizationPage = lazy(() =>
   import("../pages/organization/index.tsx").then((module) => ({
     default: module.OrganizationPage,
@@ -62,28 +56,11 @@ const ExportsPage = lazy(() =>
   })),
 );
 
-const placeholders = [
-  {
-    path: "employees",
-    title: "员工管理",
-    description: "维护员工主档、任职信息和薪酬标准。",
-  },
-  {
-    path: "imports",
-    title: "数据导入",
-    description: "导入并校验考勤、绩效及员工数据。",
-  },
-  {
-    path: "payroll",
-    title: "工资核算",
-    description: "按期间执行试算、确认、锁定和更正。",
-  },
-  {
-    path: "exports",
-    title: "结果导出",
-    description: "生成工资表、代发文件和人工成本表。",
-  },
-] as const;
+const PayrollLedgerDetailPage = lazy(() =>
+  import("../pages/payroll/ledger-detail.tsx").then((module) => ({
+    default: module.PayrollLedgerDetailPage,
+  })),
+);
 
 export function AppRouter() {
   return (
@@ -106,25 +83,10 @@ export function AppRouter() {
             element={<AttendanceIncentivePage />}
           />
           <Route path="payroll/ledger" element={<PayrollLedgerPage />} />
-          {placeholders
-            .filter(
-              (item) =>
-                item.path !== "employees" &&
-                item.path !== "payroll" &&
-                item.path !== "exports",
-            )
-            .map((item) => (
-              <Route
-                key={item.path}
-                path={item.path}
-                element={
-                  <FeaturePlaceholderPage
-                    title={item.title}
-                    description={item.description}
-                  />
-                }
-              />
-            ))}
+          <Route
+            path="payroll/ledger/records/:recordId"
+            element={<PayrollLedgerDetailPage />}
+          />
           <Route path="*" element={<Navigate to="/" replace />} />
         </Route>
       </Routes>

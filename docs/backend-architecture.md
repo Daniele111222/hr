@@ -1,14 +1,14 @@
 # PayLite 后端架构
 
-> 文档版本：v0.3（2026-09-22）
+> 文档版本：v0.5（2026-10-04）
 > 适用仓库：`/Users/hyperchain/Desktop/ai_lession/hr`  
-> 架构基线：当前已落地健康检查、组织、员工、导入、试算、确认、锁定、台账和整批更正接口；导出仍在后续票。
+> 架构基线：当前已落地健康检查、组织、员工、规则、三类导入、试算、激励、确认、锁定、台账、更正、独立补发与四类导出；功能缺口已补齐；人工验收与标准镜像网络验证见完成情况核查。
 
 这份文档描述当前仓库可以被代码证明的事实、下一阶段要落地的代码接口，以及业务决策对后端的约束。规划中的目录和流程不代表已经存在的实现。
 
 ## 1. 事实基线
 
-当前后端使用 Python 3.13、FastAPI、Uvicorn、Pydantic Settings、SQLAlchemy 2.x、Alembic 和 psycopg 3。服务入口在 `backend/src/paylite/main.py`，当前注册 `/health`、组织、员工、规则、导入、试算、确认、锁定、台账和更正路由；导出接口尚未实现。
+当前后端使用 Python 3.13、FastAPI、Uvicorn、Pydantic Settings、SQLAlchemy 2.x、Alembic 和 psycopg 3。服务入口在 `backend/src/paylite/main.py`，当前注册 `/health`、组织、员工、规则、导入、试算、确认、锁定、台账、更正、独立补发和导出路由。
 
 当前已落地的应用与持久化部分包括：
 
@@ -16,26 +16,20 @@
 - `db/base.py` 的 SQLAlchemy `Base`；
 - `db/session.py` 的 engine、`SessionLocal` 和 `get_session` 生成器；
 - 按组织、员工、月度输入、规则、工资和导出主题拆分的 ORM 模型包；
-- `backend/sql/001_initial_schema.sql`、`backend/sql/002_city_attendance_rules.sql` 及 Alembic `0001_initial_schema`、`0002_city_attendance_rules`；
+- `backend/sql/001_initial_schema.sql` 至 `010_supplement_batches.sql` 及对应 Alembic `0001`—`0010`（head：`0010_supplement_batches`）；
 - PostgreSQL 约束、日期区间排斥约束、更新时间触发器、部门树防循环触发器和锁定工资结果不可变触发器；
 - 模型约束测试、应用工厂/健康检查测试和 PostgreSQL 集成测试；
 - `import-linter` 开发依赖，以及 CI 中对当前数据库层导入边界的检查。
 
-当前尚未落地：
+当前业务模块均已落地：`services` 负责导入、工资工作台、试算、激励、确认、台账、更正、补发和导出；`domain/payroll.py` 使用不可变 dataclass 与 Decimal 纯计算；`excel` 包含三类输入模板和四类输出适配器、运行时 xlsx 模板。无需为了目录规划新增 Repository 或空包。
 
-- 导出业务路由；确认、锁定、台账和更正路由已落地；
-- 导出用例编排；确认、锁定、台账、更正与既有导入/试算服务已落地；
-- `domain` 领域 dataclass、Decimal 计算函数和计算追溯；
-- Excel 导入/导出适配器；
-- 业务 Repository 或查询服务。
-
-仓库当前的后端依赖中没有 `openpyxl`；Excel 适配器仍是后续实现。`import-linter` 已加入开发依赖并由 CI 执行，但当前 contract 只覆盖已存在的 `db`、`api`、`application` 和 `config` 之间的导入禁令，不能把它扩大解释成完整分层检查。
+`openpyxl` 已是运行依赖。`import-linter` 当前两条 contract 只检查数据库层与 HTTP/应用装配层的边界及 ORM 对配置/Session 的禁令，不能解释成完整分层验证。组织、员工和规则路由仍直接使用 Session 并提交，下面 service 事务职责是目标约定，不代表全仓库已经完成该分层整改。
 
 真实 CI 位于 `.github/workflows/backend-ci.yml`：在 Python 3.13 和 PostgreSQL 16 下安装 `.[dev]`，执行 Ruff 检查、Ruff 格式检查、`lint-imports`、`compileall` 和 pytest；测试通过后构建带 commit SHA 的 Docker 镜像。当前 workflow 没有发布镜像或部署生产环境。
 
 ## 2. 架构结论
 
-PayLite 采用本地优先的分层单体。HTTP、数据库和文件系统属于外壳；算薪规则在后续实现中放进不依赖 FastAPI、SQLAlchemy 或 Excel 的纯计算核心。当前代码量很小，所以只建立真实需要的模块，不预先创建没有行为的 `services`、`domain` 或 `excel` 空目录。
+PayLite 采用本地优先的分层单体。HTTP、数据库和文件系统属于外壳；算薪规则已位于不依赖 FastAPI、SQLAlchemy 或 Excel 的 `domain/payroll.py`。当前代码量很小，所以只建立真实需要的模块，不预先创建没有行为的 `services`、`domain` 或 `excel` 空目录。
 
 目标依赖方向如下：
 
@@ -58,38 +52,20 @@ domain 不依赖 api、db、excel
 
 ## 3. 目录职责
 
-本次重构已经落地应用工厂、系统路由和 ORM 分包；业务用例包仍在规划中，不预建空壳。目标形状如下：
+当前实际目录如下，不建立规划中的空包：
 
 ```text
 backend/src/paylite/
-├── main.py                         # 暴露 create_app() 创建的 ASGI app
-├── application.py                  # 应用工厂，组装路由和应用级配置
-├── config.py                       # Settings 与 PAYLITE_* 环境变量
-├── api/                            # HTTP 外部接口（当前已落地 system.py）
-│   ├── system.py                   # /health
-│   ├── deps.py                     # 规划：get_session 等请求依赖
-│   ├── errors.py                   # 规划：领域/持久化错误到 HTTP 错误
-│   ├── schemas/                    # 规划：Pydantic v2 请求和响应 DTO
-│   └── routes/                     # 规划：按资源或用例拆分路由
+├── main.py / application.py / config.py
+├── api/                 # system、organization、employees、rules、imports、payroll、exports
+│   └── deps.py / errors.py / schemas.py
 ├── db/
-│   ├── base.py                     # Declarative Base
-│   ├── session.py                  # engine、sessionmaker、会话生成器
-│   └── models/                     # 已落地：ORM 按主题分包
-│       ├── __init__.py             # 保留 paylite.db.models 的公开导入路径
-│       ├── common.py               # 金额/比例类型和通用列辅助函数
-│       ├── organization.py         # company、city、subject、department
-│       ├── employees.py            # employee 及任职/薪酬/base/银行卡
-│       ├── payroll.py              # period、batch、record、item、trace
-│       ├── imports.py              # import_batch、import_row、月度输入
-│       ├── rules.py                # 社保、公积金、考勤规则
-│       └── exports.py              # export/warning；CorrectionBatch 在 payroll.py
-├── services/                       # 规划：用例和事务编排，不预建空包
-├── domain/                         # 规划：纯计算核心
-│   ├── shared/                     # 金额、期间、枚举、状态迁移
-│   └── payroll/                    # 薪酬、考勤、社保、激励计算
-└── excel/                          # 规划：固定模板导入/导出适配器，不预建空包
-    ├── importers/
-    └── exporters/
+│   └── models/          # organization、employees、imports、rules、payroll、exports
+├── services/            # 导入、期间批次、试算、激励、确认、台账、更正、补发、导出
+├── domain/
+│   └── payroll.py       # Decimal 算薪与考勤激励纯计算
+└── excel/               # employee/attendance/performance_template 与四类 export
+    └── templates/       # payroll-v1、bank-v1、labor-cost-v1、tax-v1.xlsx
 ```
 
 ORM 分包只改变实现文件位置，不改变调用方已经使用的公开符号。`from paylite.db.models import Employee`、`PayrollBatch` 等路径由 `models/__init__.py` 继续导出；迁移脚本和测试不应因为拆包而改用内部模块路径。
@@ -114,33 +90,17 @@ ORM 分包只改变实现文件位置，不改变调用方已经使用的公开�
 
 Pydantic DTO 是外部契约。金额用字符串接收和返回，API mapper 在进入 service 前转换为适合用例命令的值；日期使用 ISO 日期，时间使用带时区的 ISO 时间；身份证号和银行卡号始终是字符串。响应中不直接暴露 ORM 对象，也不把 `net_amount` 无说明地称为最终到账金额。
 
-DTO 按用例设计，例如：
-
-- `ImportCreateRequest` / `ImportSummaryResponse`：文件元数据、模板版本和行级结果；
-- `PayrollTrialRequest` / `PayrollTrialResponse`：试算结果、失败员工和是否已包含全公司激励；
-- `PayrollRecordResponse` / `PayrollItemResponse` / `CalculationDetailResponse`：历史快照、工资项目和公式追溯；
-- `CorrectionCreateRequest`：原批次和更正原因；
-- `ExportCreateRequest` / `ExportResponse`：输出类型、模板版本、警告和文件状态。
-
-这些类型在业务接口落地时创建；当前 `api/system.py` 的 `/health` 仍返回简单的 `{"status": "ok"}`。
+当前 DTO 定义在 `api/schemas.py`，包括 `EmployeeIn/Out/Patch`、`PayrollPeriodCreate/Out`、`PayrollBatchCreate/Out`、`PayrollTrialOut`、`PayrollConfirmationOut`、`PayrollLedgerOut`、更正/补发与激励响应；导出 `ExportCreate/ExportReport` 定义在 `api/exports.py`。`GET /health` 返回 `{"status": "ok"}`。准确路径和参数以 `create_app().openapi()` 为准。
 
 ### 领域 dataclass
 
-领域输入应是不可变或不被调用方修改的 dataclass，至少包含：
+`domain/payroll.py` 当前使用冻结的 `SalarySegment`、`Attendance`、`SocialItem`、`PayrollInput`、`PayrollItemResult`、`CalculationStep`、`PayrollResult`、`IncentiveCandidate`、`IncentiveAllocation` 和 `AttendanceIncentiveResult`。`calculate()` 计算普通工资，`calculate_attendance_incentive()` 计算合格名单分配和尾差；service 读取与规范化输入，并保存结果与计算步骤。
 
-- `EmployeeSnapshot`：员工标识、主体、部门、职位、职级、正式/转正状态、入离职和当期薪酬；
-- `SalaryInput`：固定薪资、绩效基数、适用期间和转正/生效信息；
-- `AttendanceFact`：应出勤天数、迟到/早退分钟、有薪/无薪假、忘打卡及补卡事实；
-- `PerformanceFact`：非负绩效系数和原始来源；
-- `SocialSecurityRule`、`HousingFundRule`、`AttendanceRule`：按期间解析后的规则快照；
-- `PayrollCalculationInput`：一名员工的完整输入；全公司激励另接收跨主体的期间输入；
-- `PayrollCalculationResult`：金额汇总、`PayrollItemResult` 项目、`CalculationStep` 步骤、警告和可确认性。
-
-API mapper 先把请求 DTO 构建成不依赖 Pydantic 的用例命令；service 从 ORM 读取并组装领域 dataclass，再把领域结果持久化，最后由 API mapper 构建响应 DTO。领域函数只接收这些规范化值并返回结果，不从 Session 查数据。任何一条金额都应能沿着工资项目和计算步骤追溯到输入事实与规则版本。中间计算使用 `Decimal`，项目和最终金额按产品约定保留两位并四舍五入。
+中间计算使用 Decimal，项目和最终金额四舍五入到两位；领域函数不查询 Session、不读写工作簿。
 
 ### ORM model
 
-ORM model 只表达 PostgreSQL 表、外键、唯一约束、索引、日期区间和数据库不可变约束。当前模型仍是初始 schema 的持久化骨架，不能被当成已经完成的工资用例实现。
+ORM model 只表达 PostgreSQL 表、外键、唯一约束、索引、日期区间和数据库不可变约束。当前 ORM 包含 28 张表，包括独立试算与公司期间激励记录；工资用例由 service 与 domain 承载，不能仅凭字段存在判断验收完成。
 
 ## 5. Session 与事务生命周期
 
@@ -164,19 +124,19 @@ ORM model 只表达 PostgreSQL 表、外键、唯一约束、索引、日期区�
 
 - 对批次动作按 `payroll_batch.id` 使用 `SELECT ... FOR UPDATE`，使试算、确认、锁定、更正和导出串行化；跨主体的全公司激励动作需要按固定顺序锁定相关期间和批次，避免死锁。
 - 依赖输入变化后递增输入版本或生成稳定指纹。确认必须验证 trial 使用的指纹仍等于当前输入；不一致时将试算视为失效，要求重新试算。
-- 保留数据库的唯一索引作为最终防线：当前 schema 的有效正常批次主体+期间唯一、同一期间/员工输入唯一、同一期间+导入类型+文件哈希拒绝重复、工资记录批次内员工唯一。整批更正通过批次级 `is_effective` 标记允许历史版本保留；普通建批接口仍不接受仅改变 `batch_no` 的重复正常批次。
-- 状态迁移通过显式合法迁移表校验：`draft → trial → confirmed → locked → exported`；取消、更正和导出失败按用例定义，不允许路由直接改字符串绕过校验。
+- 保留数据库的唯一索引作为最终防线：当前 schema 的有效正常批次主体+期间唯一、同一期间/员工输入唯一、公司/期间作用域+导入类型+文件哈希拒绝重复、工资记录批次内员工唯一。整批更正通过批次级 `is_effective` 标记允许历史版本保留；普通建批接口仍不接受仅改变 `batch_no` 的重复正常批次。
+- 工资动作由 service 校验 `draft → trial → confirmed → locked`；schema 另保留 `exported/cancelled` 值，生成导出记录不代表批次必然改为 exported。更正取消和导出失败按各自用例处理。
 - 当前数据库触发器保护 `confirmed`/`locked`/`superseded` 工资记录及其项目、计算步骤；更正创建新批次，不直接重写旧快照。批次级 `is_effective` 标记负责旧版本保留和新版本切换，不需要改写锁定记录状态。
 
-当前 schema 已覆盖部分唯一约束、行锁可用的主键和锁定后不可变触发器，但没有输入版本/指纹、服务级动作锁或业务状态用例；这些属于业务接口落地时的必做项。
+当前已经保存输入修订号、试算与激励指纹、查看凭证及确认版本，并在相关 service 使用行锁与状态校验；确认后不可变及更正切换由新增迁移保护。
 
 ## 7. 业务用例与计算核心
 
 ### 导入与数据质量
 
-Excel 导入应由 `excel.importers` 读取固定模板、计算文件哈希、保存原始文件信息和字段映射，再把每行转成规范化输入。正确行可以先导入，错误行保留 `raw_data`、列位置和错误码；导入层返回 `ImportResult`，不把行级错误当成整个请求的未捕获异常。绩效缺失、城市规则缺失等会影响正式工资的错误必须在试算和确认门槛中体现。
+Excel 列映射和解析由 `excel/*_template.py` 完成；导入 service 保存文件哈希、原始文件与行级规范化输入。正确行可以先导入，错误行保留 `raw_data`、列位置和错误码；导入用例返回批次摘要和行级结果，不把行级错误当成整个请求的未捕获异常。绩效缺失、城市规则缺失等会影响正式工资的错误必须在试算和确认门槛中体现。
 
-`openpyxl` 只在真正实现 `.xlsx` 适配器时加入后端依赖；固定模板和 `.xls` 转换策略是产品决策，当前代码尚未提供该能力。
+`openpyxl` 已处理固定 `.xlsx` 导入与四类导出。税务原始 `.xls` 已真实转换为运行时 `.xlsx`，原件保留；系统不提供任意 `.xls` 上传转换流程。
 
 ### 试算、确认和失效
 
@@ -200,28 +160,22 @@ Excel 导入应由 `excel.importers` 读取固定模板、计算文件哈希、�
 
 系统不计算个税，也不新增个税回填流程。系统导出的金额应标识为“未扣个税金额”，不是最终实际到账金额。没有外部税务来源的数据保持空值并写入导出 warning，不把未知税额解释为零。整批校验通过后可以导出供 Excel 线下扣税和核对；导出文件在人工核对前不称为最终发薪文件。
 
-## 8. 当前 ORM 与最新决策的差距
+## 8. 最新业务决策的实现对应
 
-初始模型为业务骨架，不能把字段存在误写成规则已经实现。以下差距在实现业务接口和迁移时显式处理：
+| 业务约束 | 当前实现依据 |
+| --- | --- |
+| 固定薪资 80%/绩效基数 20%、试用期无绩效、转正固定薪资不变 | 员工 DTO/API 校验及 `domain/payroll.py` |
+| 普通调薪整月、自然日折算、跨主体调动报错 | 员工生效日期校验、期间输入快照、普通试算 service/domain |
+| 城市统一社保固定基数、公积金固定薪资 5%/5% | 0002、规则维护及纯计算；公司成本与个人扣缴分离 |
+| 输入/规则变化后旧试算失效 | 期间输入修订号、试算 input_fingerprint、最新版本与 viewed_at 校验 |
+| 全公司就绪和上月锁定激励来源 | 0007、attendance_incentive_run、激励 service 和确定性分配 |
+| 全员通过才确认、确认后不可变 | 0008、确认 service、工资记录与子明细触发器 |
+| 整批更正保留历史、不改锁定结果 | 0009、input_overrides、批次 is_effective 原子切换；仅改考勤/绩效 |
+| 独立补发不重算社保公积金/激励 | 0010、supplement_inputs、独立试算确认锁定、有效台账合并 |
+| 四类导出只取有效锁定结果 | 导出 service 短事务、生成/下载复核、模板与来源报告；更正/补发回归 |
+| 个税未知留空、系统金额未扣税 | DTO/页面/Excel 明确未扣个税口径，external_tax_data/source 保留可空 |
 
-| 最新口径 | 当前 schema/代码事实 | 后续处理 |
-| --- | --- | --- |
-| 整批更正、最新版本汇总 | 更正 service 沿用原确认快照、记录修正输入、校验全员并切换有效版本；台账按 `is_effective` 过滤 | 已由 `0009_correction_versions`、更正 service 和 PostgreSQL 集成测试覆盖 |
-| 更正时原批次转为 `superseded` | 锁定工资记录不可直接修改 | 采用批次级 `is_effective` 标记保留旧快照并完成原子切换 |
-| 正常批次版本并存 | 有效正常批次保持唯一，历史更正版本可并存 | 更正路由分配新批次号；普通建批接口仍拒绝同期间已有正常批次 |
-| 固定薪资 80% + 绩效基数 20%，试用期无绩效；转正当月绩效基数整月采用转正后标准 | `employee_salary` 只有 `fixed_salary`、`performance_base` 字段，没有比例校验或算薪代码 | 领域输入明确固定薪资、绩效基数、转正状态；由计算函数执行口径并保存步骤 |
-| 普通加减薪按适用期间整月；入离职、主体/部门变化按生效日期处理 | 任职、薪酬等表有生效日期区间，但没有读取区间和工资折算实现 | 在 service 形成期间快照，domain 实现生效日期和自然日折算；未决极端值单独配置 |
-| 全体校验通过才确认/正式导出 | 批次和导入行有状态列，但没有确认/导出路由或门槛检查 | service 汇总全批错误和依赖完整性，失败时不改变确认状态 |
-| 激励等待全公司数据齐全，跨主体统一分配 | 可用 `payroll_item` 存项目，但没有激励池实体、候选快照或计算流程 | 增加期间级用例和来源追溯；是否需要独立表由第一条竖切验证后决定 |
-| 公司+期间的激励就绪协调 | 当前没有公司期间级“全主体数据是否齐全/激励是否已计算”的协调记录或 service；单个主体批次状态不足以表达全公司门槛 | 新增期间级协调用例/持久化版本，锁定顺序固定，并将激励结果来源写入追溯 |
-| 试算输入变化后失效 | `payroll_batch` 有 status/updated_at，但没有计算输入版本或指纹字段 | 增加输入版本/哈希或等价的持久化快照，确认时强校验 |
-| 社保采用员工 base 地对应城市的统一固定缴费基数，与员工薪资无关 | 社保明细只有 `base_min`/`base_max`；没有统一固定 base 字段和计算实现，旧文档曾把固定薪资当基数 | 新迁移明确城市固定基数的存储/来源；domain 禁止从员工薪资推导社保基数 |
-| 公积金以员工固定薪资为基数，个人/公司各 5%，绩效不计入 | `housing_fund_rule` 要求 `base_min`/`base_max` 且比例可变；没有 5% 约束或工资计算。旧模型的必填上下限和可变比例不能未经确认地继续作为 `fixed_salary × rate` 的 clamp 规则 | 领域函数使用员工固定薪资快照，校验 5%/5% 配置；由后续迁移明确上下限是否仍有业务意义，保留公司成本与个人扣款分开 |
-| 个税线下人工处理，系统金额未扣税 | `payroll_record.net_amount` 名称容易被理解为实发，另有可空 `external_tax_data/source` | DTO、页面和导出明确“未扣个税金额”；必要时新增语义字段/迁移，不把未知税额写成 0 |
-
-此外，当前员工主表只保留最新资料，工资结果通过 `snapshot_*` 保存历史解释所需的信息；这符合已确认的“员工资料不建完整历史版本”决定。任何新接口都必须继续依赖工资快照解释历史，不回读当前员工资料覆盖旧结果。
-
-0008 migration 已将 `confirmed` 工资记录及其项目、计算步骤设为数据库级不可变，仅允许记录状态受控地变为 `locked`；确认和锁定由 service 统一执行。
+历史解释使用工资快照，不读取当前员工资料覆盖旧事实。全套后端 73 项回归通过，但前端员工历史计算明细、首页进度和人工验收仍有缺口，详见 [需求完成情况核查](mvp-completion-2026-10-03.md)。
 
 ## 9. 最新八条业务约束（实现依据）
 
@@ -236,16 +190,11 @@ Excel 导入应由 `excel.importers` 读取固定模板、计算文件哈希、�
 7. **社保基数**：采用城市配置的统一固定缴费基数，与员工薪资、试用期或转正无关；按员工 base 地匹配城市，不作员工薪资折算。统一的是缴费基数，不是直接固定每项缴费金额。
 8. **公积金**：以员工固定薪资为基数，个人、公司单边比例各为 5%，合计 10%；个人部分作为工资扣款，公司部分计入公司成本，不从员工工资扣除。固定薪资为薪酬标准的 80%，绩效不计入公积金基数。
 
-## 10. 落地顺序与验证
+## 10. 验证与交付状态
 
-1. **已完成** ORM 分包、应用工厂、系统路由和公开模型导入路径兼容；后续保持迁移/测试可运行。
-2. 接入 API 的 session dependency、统一错误映射和真实的状态迁移接口；先以一条业务竖切验证 service 的事务边界。
-3. 先实现规范化导入和考勤扣款试算，再扩展绩效、社保、公积金与跨主体激励；领域函数用 fixture 测试，不依赖数据库。
-4. 已为确认、锁定、期间汇总和整批更正加入 PostgreSQL 集成测试；导出版本回归待 13—16 落地后补充。
-5. 真实需要 Excel 文件时再加入 `openpyxl` 及模板适配器，并为四个模板分别做结构/样式回归；不要先创建空的 Excel 框架。
-6. 每次后端变更继续通过 Ruff、`lint-imports`、`compileall`、pytest、PostgreSQL 集成测试和 Docker 构建；新增层级 contract 时必须同步更新真实配置和开发依赖。
+核心工资用例与四类 Excel 已实现；2026-10-03 在隔离 PostgreSQL 16 `paylite_test` 上完整后端 73 项、前端 41 项及前端生产构建通过。Ruff lint、两条 import-linter contract 和编译检查通过；后端 1 文件与前端 7 文件格式检查失败。本次后端镜像因 Docker Hub 连接超时未构建成功。
 
-03 规则维护验收记录：PostgreSQL 集成测试 `23 passed`；Ruff、`lint-imports`、`compileall`、Docker 构建和运行态检查通过；新增规则迁移未改写初始迁移。
+04 用户页面验收、10 正式台账员工计算明细、首页月度工作台与真实工资人工对账尚未完成。不能据自动化通过宣称所有页面/业务实数验收完成。
 
 ## 11. 运行与数据边界
 
@@ -258,5 +207,13 @@ Excel 导入应由 `excel.importers` 读取固定模板、计算文件哈希、�
 - [领域上下文](</Users/hyperchain/Desktop/ai_lession/hr/CONTEXT.md>)
 - [产品决策](</Users/hyperchain/Desktop/ai_lession/hr/docs/product.md>)
 - [数据库设计](</Users/hyperchain/Desktop/ai_lession/hr/docs/database-design.md>)
-- [接口设计（规划）](</Users/hyperchain/Documents/Obsidian Vault/PayLite/PayLite 接口文档.md>)
+- [当前接口文档](</Users/hyperchain/Documents/Obsidian Vault/PayLite/PayLite 接口文档.md>)
 - [数据表设计](</Users/hyperchain/Documents/Obsidian Vault/PayLite/PayLite 数据表文档.md>)
+
+## 2026-10-04 正式明细与本机托管
+
+`GET /payroll/ledger/records/{record_id}` 读取正式工资快照、保存的 trial.input_snapshot 考勤、items/steps 和该员工历史版本；旧更正版本允许追溯，汇总仍只取有效正式结果。考勤扣款以 Decimal 累加 category=deduction 的 attendance_* 项，激励收入不混入。工作台返回只读 trial_summary，读取不修改 latest_trial_viewed_at。导入、试算、导出和正式详情响应已显式定义 DTO，供前端完整生成契约。
+
+配置 `PAYLITE_FRONTEND_DIRECTORY` 后由 FastAPI 托管前端构建产物，所有业务 API 增加 `/api` 前缀，`/health` 保留兼容，未知 `/api/*` 返回404；SPA深链接返回 index.html。配置的构建目录缺少 index.html 时拒绝启动。未配置时保留原路径并提供隐藏于 OpenAPI 的 `/api` 别名。Compose 只读挂载 frontend/dist，因此启动前须先构建前端。
+
+本轮未变更 schema 或迁移；完整 77 项测试通过（含隔离 PostgreSQL），静态检查与依赖检查通过。标准 Dockerfile 基础镜像获取失败，缓存依赖的最新源码运行镜像验证通过，二者明确分开记录，见 [当前验收](mvp-completion-2026-10-03.md)。

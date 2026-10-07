@@ -34,11 +34,16 @@ export function AttendanceIncentivePage() {
   const { message } = App.useApp();
   const queryClient = useQueryClient();
   const workbench = useQuery({
-    queryKey: ["payroll", "workbench"],
+    queryKey: ["payroll", "workbench", params.get("period") ?? undefined],
     queryFn: () =>
       resources.payrollWorkbench(params.get("period") ?? undefined),
   });
-  const period = params.get("period") ?? workbench.data?.period?.period;
+  const period =
+    params.get("period") ??
+    workbench.data?.periods.find(
+      (item) => String(item.id) === params.get("period_id"),
+    )?.period ??
+    workbench.data?.period?.period;
   const periodId = workbench.data?.periods.find(
     (item) => item.period === period,
   )?.id;

@@ -72,9 +72,51 @@ export function AppLayout() {
     queryKey: ["org", "company"],
     queryFn: resources.company,
   });
+  const params = new URLSearchParams(location.search);
+  const requestedPeriod = params.get("period") ?? undefined;
+  const workbench = useQuery({
+    queryKey: ["payroll", "workbench", requestedPeriod],
+    queryFn: () => resources.payrollWorkbench(requestedPeriod),
+  });
+  const periodById = workbench.data?.periods.find(
+    (period) => String(period.id) === params.get("period_id"),
+  );
+  const batchId = Number(
+    location.pathname.match(/^\/payroll\/batches\/(\d+)$/)?.[1],
+  );
+  const recordId = Number(
+    location.pathname.match(/^\/payroll\/ledger\/records\/(\d+)$/)?.[1],
+  );
+  const batch = useQuery({
+    queryKey: ["payroll", "batch", batchId],
+    queryFn: () => resources.payrollBatch(batchId),
+    enabled: Number.isInteger(batchId) && batchId > 0,
+  });
+  const record = useQuery({
+    queryKey: ["payroll", "ledger-record", recordId],
+    queryFn: () => resources.payrollLedgerDetail(recordId),
+    enabled: Number.isInteger(recordId) && recordId > 0,
+  });
+  const activePeriod =
+    record.data?.period ??
+    workbench.data?.periods.find(
+      (period) => period.id === batch.data?.period_id,
+    )?.period ??
+    periodById?.period ??
+    requestedPeriod ??
+    workbench.data?.period?.period;
   const current = location.pathname.startsWith("/payroll/batches/")
     ? { group: "工资处理", title: "批次核算详情" }
-    : (routeMeta[location.pathname] ?? routeMeta["/"]);
+    : location.pathname.startsWith("/payroll/ledger")
+      ? {
+          group: "工资处理",
+          title: location.pathname.includes("/records/")
+            ? "员工计算明细"
+            : "工资台账与汇总",
+        }
+      : location.pathname === "/payroll/incentive"
+        ? { group: "工资处理", title: "考勤激励" }
+        : (routeMeta[location.pathname] ?? routeMeta["/"]);
 
   return (
     <Layout className={styles.shell}>
@@ -106,11 +148,13 @@ export function AppLayout() {
           mode="inline"
           items={navigation}
           selectedKeys={[
-            location.pathname.startsWith("/payroll/batches/")
+            location.pathname.startsWith("/payroll/")
               ? "/payroll"
               : location.pathname,
           ]}
-          onClick={({ key }) => navigate(key)}
+          onClick={({ key }) =>
+            navigate(`${key}${activePeriod ? `?period=${activePeriod}` : ""}`)
+          }
         />
         <div className={styles.localNote}>
           <span className={styles.localDot} />
@@ -126,7 +170,9 @@ export function AppLayout() {
           </div>
           <div className={styles.headerActions}>
             <span className={styles.periodLabel}>工资期间</span>
-            <span className={styles.periodValue}>尚未选择</span>
+            <span className={styles.periodValue}>
+              {activePeriod ?? "尚未选择"}
+            </span>
             <Tag color="blue" bordered={false}>
               本地运行
             </Tag>

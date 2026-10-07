@@ -1,3 +1,4 @@
+import { money } from "../../shared/money";
 import { ArrowLeftOutlined, ReloadOutlined } from "@ant-design/icons";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import {
@@ -36,11 +37,6 @@ const statusLabels = {
   exported: "已导出",
   cancelled: "已取消",
 } as const;
-const money = (value?: string) => {
-  if (value === undefined) return "—";
-  const [whole, fraction = ""] = value.split(".");
-  return `¥${whole.replace(/\B(?=(\d{3})+(?!\d))/g, ",")}.${fraction.padEnd(2, "0")}`;
-};
 
 export function PayrollBatchDetailPage() {
   const batchId = Number(useParams().batchId);
@@ -65,16 +61,16 @@ export function PayrollBatchDetailPage() {
   const confirmation = useQuery({
     queryKey: ["payroll", "confirmation", batch.data?.period_id],
     queryFn: () => resources.payrollConfirmation(batch.data!.period_id),
-    enabled: Boolean(batch.data?.period_id) && batch.data?.batch_type === "normal",
+    enabled:
+      Boolean(batch.data?.period_id) && batch.data?.batch_type === "normal",
   });
   const corrections = useQuery({
     queryKey: ["payroll", "corrections", batch.data?.id],
     queryFn: () => resources.payrollCorrections(batch.data!.id),
     enabled:
-      batch.data?.batch_type === "normal" && (
-        batch.data?.is_effective === false ||
-        ["confirmed", "locked", "exported"].includes(batch.data?.status ?? "")
-      ),
+      batch.data?.batch_type === "normal" &&
+      (batch.data?.is_effective === false ||
+        ["confirmed", "locked", "exported"].includes(batch.data?.status ?? "")),
   });
   const replacementCorrection = corrections.data?.find(
     (item) =>
@@ -430,7 +426,7 @@ export function PayrollBatchDetailPage() {
             {result?.includes_final_incentive
               ? "激励已写入本批次，金额均为未扣个税金额。"
               : "全公司考勤激励尚未计算，不能整批确认。金额均为未扣个税金额，不代表最终到账金额。"}{" "}
-            <Link to={`/payroll/incentive?period=${detail.period_id}`}>
+            <Link to={`/payroll/incentive?period_id=${detail.period_id}`}>
               查看考勤激励
             </Link>
           </span>

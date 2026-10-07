@@ -13,6 +13,7 @@ from paylite.db.models import (
     PayrollItem,
     PayrollPeriod,
     PayrollRecord,
+    PayrollTrialRun,
     Subject,
 )
 
@@ -28,6 +29,71 @@ def _money(value: Decimal) -> str:
     return f"{value:.2f}"
 
 
+def get_record_detail(db: Session, record_id: int) -> dict[str, Any]:
+    record = db.get(PayrollRecord, record_id)
+    if record is None:
+        raise PayrollLedgerError(404, "正式工资记录不存在")
+    ledger = get_ledger(
+        db, record.payroll_period_id, employee_id=record.employee_id, include_superseded=True
+    )
+    selected = next((row for row in ledger["records"] if row["id"] == record_id), None)
+    if selected is None:
+        raise PayrollLedgerError(404, "记录尚未确认，不能作为正式工资明细查询")
+    batch = db.get(PayrollBatch, record.payroll_batch_id)
+    trial = db.get(PayrollTrialRun, batch.confirmed_trial_id) if batch else None
+    attendance = next(
+        (
+            row
+            for row in (trial.input_snapshot.get("attendance", []) if trial else [])
+            if row.get("employee_id") == record.employee_id
+        ),
+        None,
+    )
+    attendance_items = [
+        item
+        for item in selected["items"]
+        if item["code"].startswith("attendance_") and item["category"] == "deduction"
+    ]
+    if attendance_items:
+        selected["amounts"]["attendance_deduction"] = _money(
+            sum((Decimal(item["amount"]) for item in attendance_items), Decimal("0"))
+        )
+    elif selected["batch_type"] == "supplement":
+        selected["amounts"]["attendance_deduction"] = "0.00"
+    history = db.execute(
+        select(PayrollRecord, PayrollPeriod, PayrollBatch, Subject.name)
+        .join(PayrollPeriod, PayrollPeriod.id == PayrollRecord.payroll_period_id)
+        .join(PayrollBatch, PayrollBatch.id == PayrollRecord.payroll_batch_id)
+        .join(Subject, Subject.id == PayrollRecord.subject_id)
+        .where(
+            PayrollRecord.employee_id == record.employee_id,
+            PayrollRecord.calculation_status.in_(["confirmed", "locked"]),
+        )
+        .order_by(PayrollPeriod.year.desc(), PayrollPeriod.month.desc(), PayrollRecord.id.desc())
+    )
+    return {
+        "period_id": ledger["period_id"],
+        "period": ledger["period"],
+        "record": selected,
+        "attendance": attendance,
+        "history": [
+            {
+                "id": row.id,
+                "period": f"{period.year:04d}-{period.month:02d}",
+                "subject_name": subject_name,
+                "batch_type": batch.batch_type,
+                "batch_no": batch.batch_no,
+                "gross": _money(row.gross_amount),
+                "untaxed_amount": _money(row.net_amount),
+                "calculation_status": row.calculation_status,
+                "is_effective": batch.is_effective,
+            }
+            for row, period, batch, subject_name in history
+        ],
+        "untaxed_tax_notice": ledger["untaxed_tax_notice"],
+    }
+
+
 def get_ledger(
     db: Session,
     period_id: int,
@@ -35,6 +101,7 @@ def get_ledger(
     subject_id: int | None = None,
     department: str | None = None,
     employee_id: int | None = None,
+    include_superseded: bool = False,
 ) -> dict[str, Any]:
     period = db.get(PayrollPeriod, period_id)
     if period is None:
@@ -46,7 +113,6 @@ def get_ledger(
         .where(
             PayrollRecord.payroll_period_id == period_id,
             PayrollRecord.calculation_status.in_(["confirmed", "locked"]),
-            PayrollBatch.is_effective.is_(True),
         )
         .order_by(
             PayrollRecord.subject_id,
@@ -54,6 +120,8 @@ def get_ledger(
             PayrollRecord.id,
         )
     )
+    if not include_superseded:
+        query = query.where(PayrollBatch.is_effective.is_(True))
     if subject_id is not None:
         query = query.where(PayrollRecord.subject_id == subject_id)
     if department:
@@ -153,6 +221,7 @@ def get_ledger(
                 "items": items_by_record.get(record.id, []),
                 "steps": steps_by_record.get(record.id, []),
                 "calculation_status": record.calculation_status,
+                "is_effective": batch.is_effective,
             }
         )
     return {

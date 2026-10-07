@@ -1866,6 +1866,11 @@ def test_payroll_confirmation_lock_and_ledger_use_snapshot(
     batch_id = batch.id
     period_id = period.id
     db_session.commit()
+    dashboard = api_client.get("/payroll/workbench", params={"period": "2028-09"})
+    assert dashboard.status_code == 200, dashboard.text
+    assert dashboard.json()["batches"][0]["trial_summary"]["total_count"] == 1
+    db_session.expire_all()
+    assert db_session.get(PayrollTrialRun, trial.id).viewed_at is None
     viewed = api_client.get(f"/payroll/batches/{batch_id}/trial")
     assert viewed.status_code == 200
     db_session.expire_all()
@@ -1937,6 +1942,15 @@ def test_payroll_confirmation_lock_and_ledger_use_snapshot(
     assert ledger.json()["record_count"] == 1
     assert ledger.json()["records"][0]["snapshot"]["name"] == "快照员工"
     assert ledger.json()["totals"]["untaxed_amount"] == "9000.00"
+    employee.name = "后续员工现名"
+    db_session.commit()
+    detail = api_client.get(f"/payroll/ledger/records/{record.id}")
+    assert detail.status_code == 200, detail.text
+    assert detail.json()["record"]["snapshot"]["name"] == "快照员工"
+    assert detail.json()["record"]["items"][0]["amount"] == "8000.00"
+    assert detail.json()["attendance"] is None
+    assert detail.json()["history"][0]["untaxed_amount"] == "9000.00"
+    assert api_client.get("/payroll/ledger/records/999999999").status_code == 404
 
 
 def test_correction_switches_effective_version_without_rewriting_ledger(
@@ -2248,6 +2262,15 @@ def test_correction_switches_effective_version_without_rewriting_ledger(
     assert ledger["records"][0]["payroll_batch_id"] == replacement_id
     assert ledger["records"][0]["amounts"]["untaxed_amount"] != str(original_amount)
     assert db_session.get(PayrollRecord, original_record_id).net_amount == original_amount
+    old_detail = api_client.get(f"/payroll/ledger/records/{original_record_id}")
+    assert old_detail.status_code == 200, old_detail.text
+    assert old_detail.json()["record"]["is_effective"] is False
+    assert Decimal(old_detail.json()["record"]["amounts"]["untaxed_amount"]) == original_amount
+    current_detail = api_client.get(f"/payroll/ledger/records/{ledger['records'][0]['id']}")
+    assert current_detail.status_code == 200, current_detail.text
+    assert current_detail.json()["attendance"]["late_minutes"] == 30
+    assert old_detail.json()["attendance"]["late_minutes"] != 30
+    assert len(current_detail.json()["history"]) == 2
 
     next_correction = request_correction(db_session, replacement_id, "再次修正")
     next_replacement_id = next_correction["replacement_batch_id"]
@@ -3009,3 +3032,43 @@ def test_tax_export_api_sources_missing_fields_retry_and_stale_file(
     blocked = api_client.post("/exports/tax", json=body).json()
     assert blocked["status"] == "failed"
     assert api_client.get(f"/exports/tax/{blocked['id']}/file").status_code == 409
+
+
+@pytest.mark.parametrize(
+    "export_case",
+    [
+        {
+            "amounts": {"gross": "1005.00", "untaxed_amount": "905.00", "employer_cost": "1205.00"},
+            "extra_items": [
+                {
+                    "code": "attendance_late",
+                    "name": "迟到扣款",
+                    "category": "deduction",
+                    "amount": "25.00",
+                },
+                {
+                    "code": "attendance_incentive",
+                    "name": "考勤激励",
+                    "category": "income",
+                    "amount": "30.00",
+                },
+            ],
+        }
+    ],
+    indirect=True,
+)
+def test_formal_detail_separates_incentive_income_from_attendance_deduction(
+    api_client, db_session, export_case
+):
+    period_id, _, batch_id, _, _ = export_case
+    record = db_session.scalar(
+        select(PayrollRecord).where(PayrollRecord.payroll_batch_id == batch_id)
+    )
+    detail = api_client.get(f"/payroll/ledger/records/{record.id}")
+    assert detail.status_code == 200, detail.text
+    assert detail.json()["record"]["amounts"]["attendance_deduction"] == "25.00"
+    assert detail.json()["record"]["amounts"]["gross"] == "1005.00"
+    assert (
+        api_client.get(f"/payroll/ledger?period_id={period_id}").json()["totals"]["untaxed_amount"]
+        == "905.00"
+    )

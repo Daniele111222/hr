@@ -1,3 +1,4 @@
+import { useSearchParams } from "react-router-dom";
 import {
   CheckCircleOutlined,
   DownloadOutlined,
@@ -32,9 +33,13 @@ import { MonthlyImportsPage } from "./attendance.tsx";
 const API_BASE = import.meta.env.VITE_API_BASE_URL ?? "/api";
 
 export function ImportsPage() {
-  const [type, setType] = useState<"employee" | "attendance" | "performance">(
-    "employee",
-  );
+  const [params, setParams] = useSearchParams();
+  const requested = params.get("type");
+  const type =
+    requested === "attendance" || requested === "performance"
+      ? requested
+      : "employee";
+  const setType = (value: string) => setParams({ type: value });
   return (
     <>
       <Space wrap>
@@ -93,7 +98,7 @@ function EmployeeImportsPage() {
     },
     onError: (error: Error) => messageApi.error(error.message),
   });
-  const rows = selectedBatch?.rows ?? [];
+  const rows = useMemo(() => selectedBatch?.rows ?? [], [selectedBatch]);
   const errorRows = useMemo(
     () => rows.filter((row) => row.validation_status === "invalid"),
     [rows],

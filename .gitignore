@@ -43,3 +43,6 @@ desktop.ini
 # Generated local export files
 backend/data/
 verification/
+# Local browser verification artifacts
+.playwright-cli/
+output/playwright/

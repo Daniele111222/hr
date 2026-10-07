@@ -1,3 +1,4 @@
+from datetime import datetime
 from typing import Any
 
 from fastapi import APIRouter, Depends, File, HTTPException, Query, UploadFile
@@ -29,6 +30,47 @@ from paylite.services.employee_import import (
 router = APIRouter(prefix="/imports", tags=["imports"])
 
 
+class ImportIssueOut(BaseModel):
+    code: str
+    field: str
+    message: str
+    column: str | None = None
+
+
+class ImportRowOut(BaseModel):
+    id: int
+    sheet_name: str
+    source_row_number: int
+    validation_status: str
+    raw_data: dict[str, str]
+    correction_values: dict[str, str] | None
+    normalized_data: dict[str, Any] | None
+    errors: list[ImportIssueOut] | None
+    correction_history: list[dict[str, Any]]
+
+
+class ImportBatchOut(BaseModel):
+    id: int
+    company_id: int
+    import_type: str
+    original_filename: str
+    file_sha256: str
+    template_version: str
+    field_mapping: dict[str, str]
+    status: str
+    uploaded_at: datetime
+    total_rows: int
+    success_rows: int
+    error_rows: int
+    rows: list[ImportRowOut] | None
+
+
+class MonthlyImportBatchOut(ImportBatchOut):
+    payroll_period_id: int
+    payroll_batch_id: int
+    subject_name: str
+
+
 class RowCorrection(BaseModel):
     values: dict[str, str] = Field(min_length=1)
 
@@ -46,7 +88,7 @@ def download_performance_template() -> Response:
     )
 
 
-@router.post("/performance", status_code=201)
+@router.post("/performance", status_code=201, response_model=MonthlyImportBatchOut)
 async def upload_performance(
     payroll_batch_id: int = Query(...), file: UploadFile = File(...), db: Session = Depends(get_db)
 ) -> dict[str, Any]:
@@ -60,14 +102,14 @@ async def upload_performance(
     )
 
 
-@router.get("/performance")
+@router.get("/performance", response_model=list[MonthlyImportBatchOut])
 def list_performance_imports(
     company_id: int = Query(...), db: Session = Depends(get_db)
 ) -> list[dict[str, Any]]:
     return performance_import.list_batches(db, company_id)
 
 
-@router.get("/performance/{batch_id}")
+@router.get("/performance/{batch_id}", response_model=MonthlyImportBatchOut)
 def get_performance_import(batch_id: int, db: Session = Depends(get_db)) -> dict[str, Any]:
     return _run(lambda: performance_import.get_batch(db, batch_id))
 
@@ -84,7 +126,7 @@ def download_performance_file(batch_id: int, db: Session = Depends(get_db)) -> R
     )
 
 
-@router.post("/performance/{batch_id}/rows/{row_id}/correct")
+@router.post("/performance/{batch_id}/rows/{row_id}/correct", response_model=MonthlyImportBatchOut)
 def correct_performance_row(
     batch_id: int, row_id: int, payload: RowCorrection, db: Session = Depends(get_db)
 ) -> dict[str, Any]:
@@ -104,7 +146,7 @@ def download_attendance_template() -> Response:
     )
 
 
-@router.post("/attendance", status_code=201)
+@router.post("/attendance", status_code=201, response_model=MonthlyImportBatchOut)
 async def upload_attendance(
     payroll_batch_id: int = Query(...), file: UploadFile = File(...), db: Session = Depends(get_db)
 ) -> dict[str, Any]:
@@ -118,14 +160,14 @@ async def upload_attendance(
     )
 
 
-@router.get("/attendance")
+@router.get("/attendance", response_model=list[MonthlyImportBatchOut])
 def list_attendance_imports(
     company_id: int = Query(...), db: Session = Depends(get_db)
 ) -> list[dict[str, Any]]:
     return attendance_import.list_batches(db, company_id)
 
 
-@router.get("/attendance/{batch_id}")
+@router.get("/attendance/{batch_id}", response_model=MonthlyImportBatchOut)
 def get_attendance_import(batch_id: int, db: Session = Depends(get_db)) -> dict[str, Any]:
     return _run(lambda: attendance_import.get_batch(db, batch_id))
 
@@ -142,7 +184,7 @@ def download_attendance_file(batch_id: int, db: Session = Depends(get_db)) -> Re
     )
 
 
-@router.post("/attendance/{batch_id}/rows/{row_id}/correct")
+@router.post("/attendance/{batch_id}/rows/{row_id}/correct", response_model=MonthlyImportBatchOut)
 def correct_attendance_row(
     batch_id: int, row_id: int, payload: RowCorrection, db: Session = Depends(get_db)
 ) -> dict[str, Any]:
@@ -169,7 +211,7 @@ def download_employee_template() -> Response:
     )
 
 
-@router.post("/employee-master", status_code=201)
+@router.post("/employee-master", status_code=201, response_model=ImportBatchOut)
 async def upload_employee_master(
     company_id: int = Query(...), file: UploadFile = File(...), db: Session = Depends(get_db)
 ) -> dict[str, Any]:
@@ -181,14 +223,14 @@ async def upload_employee_master(
     return _run(lambda: upload_batch(db, company_id, file.filename or "", content))
 
 
-@router.get("")
+@router.get("", response_model=list[ImportBatchOut])
 def list_employee_imports(
     company_id: int = Query(...), db: Session = Depends(get_db)
 ) -> list[dict[str, Any]]:
     return _run(lambda: list_batches(db, company_id))
 
 
-@router.get("/{batch_id}")
+@router.get("/{batch_id}", response_model=ImportBatchOut)
 def get_employee_import(batch_id: int, db: Session = Depends(get_db)) -> dict[str, Any]:
     return _run(lambda: get_batch(db, batch_id))
 
@@ -203,7 +245,7 @@ def download_original_file(batch_id: int, db: Session = Depends(get_db)) -> Resp
     )
 
 
-@router.post("/{batch_id}/rows/{row_id}/correct")
+@router.post("/{batch_id}/rows/{row_id}/correct", response_model=ImportBatchOut)
 def correct_employee_import_row(
     batch_id: int, row_id: int, payload: RowCorrection, db: Session = Depends(get_db)
 ) -> dict[str, Any]:
