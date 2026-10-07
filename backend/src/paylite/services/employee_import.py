@@ -2,16 +2,19 @@
 
 import hashlib
 import re
-from datetime import date
+from datetime import date, datetime
 from decimal import Decimal, InvalidOperation
 from typing import Any
+from zoneinfo import ZoneInfo
 
-from sqlalchemy import select
+from openpyxl.utils import get_column_letter
+from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
 from paylite.db.models import (
     City,
     Company,
+    Department,
     Employee,
     EmployeeAssignment,
     EmployeeBankAccount,
@@ -24,6 +27,8 @@ from paylite.db.models import (
 )
 from paylite.excel.employee_template import (
     HEADERS,
+    LEGACY_HEADERS,
+    LEGACY_TEMPLATE_VERSION,
     SHEET_NAME,
     TEMPLATE_VERSION,
     WorkbookFormatError,
@@ -72,8 +77,8 @@ class ImportFailure(Exception):
 
 
 def _issue(code: str, field: str, message: str, row: int) -> dict[str, str]:
-    column = HEADERS.index(field) + 1
-    letter = chr(64 + column)
+    headers = LEGACY_HEADERS if field in LEGACY_HEADERS else HEADERS
+    letter = get_column_letter(headers.index(field) + 1)
     return {
         "code": code,
         "field": field,
@@ -112,15 +117,19 @@ def _money(raw: str, field: str, row: int, errors: list[dict[str, str]]) -> Deci
     return value
 
 
-def _validate(
+def _validate_values(
     db: Session,
     company_id: int,
     row_number: int,
     raw: dict[str, str],
     workbook_errors: list[dict[str, str]] | None = None,
+    *,
+    auto_number: bool = False,
 ) -> tuple[dict[str, Any] | None, list[dict[str, str]]]:
     errors = list(workbook_errors or [])
     for field in REQUIRED:
+        if auto_number and field == "员工编号":
+            continue
         if not raw[field]:
             errors.append(_issue("REQUIRED", field, f"{field}不能为空", row_number))
     for field, maximum in FIELD_LIMITS.items():
@@ -138,10 +147,14 @@ def _validate(
         errors.append(
             _issue("EMPLOYEE_EXISTS", "身份证号", "身份证号已存在，请到员工管理核对", row_number)
         )
-    if raw["员工编号"] and db.scalar(
-        select(Employee.id).where(
-            Employee.company_id == company_id,
-            Employee.employee_no == raw["员工编号"],
+    if (
+        not auto_number
+        and raw["员工编号"]
+        and db.scalar(
+            select(Employee.id).where(
+                Employee.company_id == company_id,
+                Employee.employee_no == raw["员工编号"],
+            )
         )
     ):
         errors.append(_issue("EMPLOYEE_NO_EXISTS", "员工编号", "员工编号已存在", row_number))
@@ -217,7 +230,7 @@ def _validate(
     return {
         "company_id": company_id,
         "id_number": id_number,
-        "employee_no": raw["员工编号"],
+        "employee_no": raw["员工编号"] or None,
         "name": raw["姓名"],
         "employee_type": raw["员工类型"],
         "level_code": raw["职级"] or None,
@@ -241,6 +254,207 @@ def _validate(
     }, []
 
 
+def _validate(
+    db: Session,
+    company_id: int,
+    row_number: int,
+    raw: dict[str, str],
+    workbook_errors: list[dict[str, str]] | None = None,
+    *,
+    imported_on: date | None = None,
+) -> tuple[dict[str, Any] | None, list[dict[str, str]]]:
+    if "证件号码" not in raw:
+        return _validate_values(db, company_id, row_number, raw, workbook_errors)
+
+    imported_on = imported_on or datetime.now(ZoneInfo("Asia/Shanghai")).date()
+    fields = {
+        "身份证号": "证件号码",
+        "姓名": "姓名",
+        "入职日期": "入职时间",
+        "离职日期": "离职时间",
+        "转正日期": "转正日期",
+        "职位": "岗位",
+        "职级": "职级",
+        "职级数字": "职级",
+        "固定薪资": "转正固定薪资",
+        "绩效基数": "转正绩效标准",
+        "银行卡号": "银行卡号",
+        "银行名称": "开户行",
+        "主体编码": "公司主体全称",
+        "部门编码": next(
+            (field for field in ("三级部门", "二级部门", "一级部门") if raw[field]), "一级部门"
+        ),
+        "base城市编码": "公司主体全称",
+        "生效日期": "入职时间",
+    }
+    values = {field: "" for field in LEGACY_HEADERS}
+    for field, source in fields.items():
+        values[field] = raw[source]
+    values.update(员工类型="employee", 是否正式="是", 开户名=raw["姓名"])
+    values["生效日期"] = imported_on.isoformat()
+    errors: list[dict[str, str]] = []
+
+    subjects = list(
+        db.scalars(
+            select(Subject).where(
+                Subject.company_id == company_id, Subject.name == raw["公司主体全称"]
+            )
+        )
+    )
+    subject = subjects[0] if len(subjects) == 1 else None
+    values["主体编码"] = subject.code if subject else raw["公司主体全称"]
+    if raw["公司主体全称"] and subject is None:
+        errors.append(
+            _issue(
+                "SUBJECT_NOT_FOUND",
+                "公司主体全称",
+                "公司主体全称须唯一匹配已维护的主体",
+                row_number,
+            )
+        )
+
+    parent_ids = None
+    departments = []
+    department_fields = ("一级部门", "二级部门", "三级部门")
+    for index, field in enumerate(department_fields):
+        if not raw[field]:
+            if any(raw[later] for later in department_fields[index + 1 :]):
+                errors.append(
+                    _issue("DEPARTMENT_LEVEL_GAP", field, "部门层级不能跳级填写", row_number)
+                )
+            break
+        departments = list(
+            db.scalars(
+                select(Department).where(
+                    Department.company_id == company_id,
+                    (
+                        Department.parent_id.is_(None)
+                        if parent_ids is None
+                        else Department.parent_id.in_(parent_ids)
+                    ),
+                    Department.name == raw[field],
+                )
+            )
+        )
+        if not departments:
+            errors.append(
+                _issue("DEPARTMENT_NOT_FOUND", field, "该层级部门名称无法唯一匹配", row_number)
+            )
+            break
+        parent_ids = [department.id for department in departments]
+    relations = (
+        list(
+            db.scalars(
+                select(SubjectDepartment).where(
+                    SubjectDepartment.subject_id == subject.id,
+                    SubjectDepartment.department_id.in_(
+                        [department.id for department in departments]
+                    ),
+                )
+            )
+        )
+        if subject and departments
+        else []
+    )
+    relation = relations[0] if len(relations) == 1 else None
+    if subject and relation is None:
+        errors.append(
+            _issue(
+                "DEPARTMENT_NOT_FOUND",
+                fields["部门编码"],
+                "该主体下部门路径无法唯一匹配",
+                row_number,
+            )
+        )
+    values["部门编码"] = relation.code if relation else ""
+
+    cities = list(db.scalars(select(City)))
+    subject_name = subject.name if subject else raw["公司主体全称"]
+    if subject_name.endswith("分公司"):
+        matches = [
+            city
+            for city in cities
+            if subject_name.endswith(f"{city.name.removesuffix('市')}分公司")
+            or subject_name.endswith(f"{city.name}分公司")
+        ]
+    else:
+        locations = re.findall(r"[（(]([^（）()]+)[）)]", subject_name)
+        matches = [
+            city
+            for city in cities
+            if city.name.removesuffix("市") in locations or city.name in locations
+        ]
+    values["base城市编码"] = matches[0].code if len(matches) == 1 else ""
+    if len(matches) != 1:
+        errors.append(
+            _issue(
+                "CITY_NOT_FOUND",
+                "公司主体全称",
+                "无法从主体名称唯一匹配已维护的 base 城市，请先维护城市与主体名称",
+                row_number,
+            )
+        )
+
+    level = re.fullmatch(r"[Pp]?(\d+)", raw["职级"])
+    values["职级数字"] = level.group(1) if level else ""
+    if raw["职级"] and level is None:
+        errors.append(_issue("INVALID_LEVEL", "职级", "职级须为 P 加数字或非负整数", row_number))
+
+    try:
+        probation_date = date.fromisoformat(raw["转正日期"])
+    except ValueError:
+        probation_date = None
+    status = "confirmed" if probation_date and probation_date <= imported_on else "in_probation"
+    values["转正状态"] = status
+    fixed = _money(raw["转正固定薪资"], "固定薪资", row_number, errors)
+    performance = _money(raw["转正绩效标准"], "绩效基数", row_number, errors)
+    if not raw["转正绩效标准"]:
+        errors.append(_issue("REQUIRED", "转正绩效标准", "转正绩效标准不能为空", row_number))
+    if fixed is not None and performance is not None and performance * 4 != fixed:
+        errors.append(
+            _issue(
+                "SALARY_RATIO",
+                "转正绩效标准",
+                "转正固定薪资和绩效标准须按 80%/20% 表达",
+                row_number,
+            )
+        )
+    probation_fixed = _money(raw["试用期底薪"], "试用期底薪", row_number, errors)
+    probation_performance = _money(raw["试用期绩效"], "试用期绩效", row_number, errors)
+    if probation_fixed is not None and fixed is not None and probation_fixed != fixed:
+        errors.append(
+            _issue("PROBATION_FIXED", "试用期底薪", "试用期底薪须与转正固定薪资相同", row_number)
+        )
+    if probation_performance not in (None, Decimal("0")):
+        errors.append(_issue("PROBATION_PAY", "试用期绩效", "试用期绩效必须为 0", row_number))
+    values["绩效基数"] = (
+        str(performance) if status == "confirmed" and performance is not None else "0"
+    )
+    normalized, validation_errors = _validate_values(
+        db, company_id, row_number, values, auto_number=True
+    )
+    errors.extend(validation_errors)
+    for error in errors:
+        field = fields.get(error["field"], error["field"])
+        # 自动生成的信息没有模板列；相关错误定位到它的实际输入来源。
+        field = {"开户名": "姓名", "转正状态": "转正日期"}.get(field, field)
+        letter = get_column_letter(HEADERS.index(field) + 1)
+        error.update(
+            message=(
+                "入职时间不能晚于本次导入日期"
+                if error["field"] == "生效日期"
+                else error["message"].replace(error["field"], field)
+            ),
+            field=field,
+            column=letter,
+            cell=f"{letter}{row_number}",
+        )
+    errors = [*(workbook_errors or []), *errors]
+    if errors:
+        return None, errors
+    return normalized, []
+
+
 def _save_employee(db: Session, values: dict[str, Any]) -> int:
     employee = Employee(
         **{
@@ -261,10 +475,33 @@ def _save_employee(db: Session, values: dict[str, Any]) -> int:
             )
         }
     )
+    if employee.employee_no is None:
+        while True:
+            employee.id = db.scalar(
+                select(func.nextval(func.pg_get_serial_sequence("employee", "id")))
+            )
+            employee.employee_no = f"AUTO-{employee.id}"
+            if (
+                db.scalar(
+                    select(Employee.id).where(
+                        Employee.company_id == employee.company_id,
+                        Employee.employee_no == employee.employee_no,
+                    )
+                )
+                is None
+            ):
+                break
     db.add(employee)
     db.flush()
     employee_id = employee.id
     effective_date = values["effective_from"]
+    salary = EmployeeSalary(
+        employee_id=employee_id,
+        fixed_salary=values["fixed_salary"],
+        performance_base=values["performance_base"],
+        effective_from=effective_date,
+        source="employee_import",
+    )
     db.add_all(
         [
             EmployeeAssignment(
@@ -276,13 +513,7 @@ def _save_employee(db: Session, values: dict[str, Any]) -> int:
                 level_number=values["level_number"],
                 effective_from=effective_date,
             ),
-            EmployeeSalary(
-                employee_id=employee_id,
-                fixed_salary=values["fixed_salary"],
-                performance_base=values["performance_base"],
-                effective_from=effective_date,
-                source="employee_import",
-            ),
+            salary,
             EmployeeBase(
                 employee_id=employee_id, city_id=values["city_id"], effective_from=effective_date
             ),
@@ -389,8 +620,12 @@ def upload_batch(db: Session, company_id: int, filename: str, content: bytes) ->
         original_filename=filename,
         file_sha256=digest,
         original_file=content,
-        template_version=TEMPLATE_VERSION,
-        field_mapping={field: chr(65 + index) for index, field in enumerate(HEADERS)},
+        template_version=(
+            TEMPLATE_VERSION if "证件号码" in workbook_rows[0].raw else LEGACY_TEMPLATE_VERSION
+        ),
+        field_mapping={
+            field: get_column_letter(index) for index, field in enumerate(workbook_rows[0].raw, 1)
+        },
         status="uploaded",
     )
     db.add(batch)
@@ -399,19 +634,28 @@ def upload_batch(db: Session, company_id: int, filename: str, content: bytes) ->
     seen_numbers: set[str] = set()
     successful = 0
     for source in workbook_rows:
-        normalized, errors = _validate(db, company_id, source.number, source.raw, source.errors)
-        id_number = source.raw["身份证号"].upper()
-        employee_no = source.raw["员工编号"]
+        normalized, errors = _validate(
+            db,
+            company_id,
+            source.number,
+            source.raw,
+            source.errors,
+            imported_on=batch.uploaded_at.astimezone(ZoneInfo("Asia/Shanghai")).date(),
+        )
+        identity_field = "证件号码" if "证件号码" in source.raw else "身份证号"
+        id_number = source.raw[identity_field].upper()
+        employee_no = source.raw.get("员工编号")
         if id_number in seen_ids:
             errors.append(
-                _issue("DUPLICATE_IN_FILE", "身份证号", "同一文件中身份证号重复", source.number)
+                _issue("DUPLICATE_IN_FILE", identity_field, "同一文件中证件号码重复", source.number)
             )
-        if employee_no in seen_numbers:
+        if employee_no and employee_no in seen_numbers:
             errors.append(
                 _issue("DUPLICATE_IN_FILE", "员工编号", "同一文件中员工编号重复", source.number)
             )
         seen_ids.add(id_number)
-        seen_numbers.add(employee_no)
+        if employee_no:
+            seen_numbers.add(employee_no)
         if errors:
             normalized = None
         row = ImportRow(
@@ -456,10 +700,26 @@ def correct_row(
         raise ImportFailure(404, "导入行不存在")
     if row.validation_status != "invalid":
         raise ImportFailure(409, "该行已入库，不能重复写入")
-    if not values or any(field not in HEADERS for field in values):
+    if not values or any(field not in batch.field_mapping for field in values):
         raise ImportFailure(400, "只能修正固定模板中的字段")
     corrected = {**row.raw_data, **(row.correction_values or {}), **values}
-    normalized, errors = _validate(db, batch.company_id, row.source_row_number, corrected)
+    corrected_fields = {
+        field for entry in row.correction_history for field in entry["values"]
+    } | set(values)
+    workbook_errors = [
+        error
+        for error in row.errors or []
+        if error["code"] in {"FORMULA_NOT_ALLOWED", "EXCEL_ERROR", "IDENTIFIER_NOT_TEXT"}
+        and error["field"] not in corrected_fields
+    ]
+    normalized, errors = _validate(
+        db,
+        batch.company_id,
+        row.source_row_number,
+        corrected,
+        workbook_errors,
+        imported_on=batch.uploaded_at.astimezone(ZoneInfo("Asia/Shanghai")).date(),
+    )
     row.correction_values = corrected
     row.correction_history = [
         *row.correction_history,

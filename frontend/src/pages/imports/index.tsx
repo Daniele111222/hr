@@ -154,14 +154,14 @@ function EmployeeImportsPage() {
           <div className={styles.scope}>
             <Typography.Text type="secondary">导入范围</Typography.Text>
             <strong>{company.data?.name ?? "请先维护目标公司"}</strong>
-            <span>身份证号是唯一匹配键；既有身份证不会被静默覆盖。</span>
+            <span>证件号码是唯一匹配键；既有员工不会被静默覆盖。</span>
           </div>
           <Alert
             type="info"
             showIcon
             icon={<InfoCircleOutlined />}
-            message={`员工资料模板 ${"TPL-EMP-v2.4"}`}
-            description="表头、工作表名称和列顺序固定。身份证号、银行卡号按文本保存，金额按 80%/20% 校验。"
+            message="员工资料模板 TPL-EMP-v3"
+            description="固定 27 列，表头、工作表名称和列顺序固定。证件号码、手机号、银行卡号按文本填写。员工编号自动生成，默认正式员工；base 城市按主体名称匹配，分公司所在地优先；生效日期为本次导入日期。转正薪酬按 80%/20% 校验，试用期底薪相同、绩效为 0。"
             action={
               <Button
                 size="small"
@@ -259,10 +259,12 @@ function EmployeeImportsPage() {
                   width: 90,
                 },
                 {
-                  title: "身份证号",
+                  title: "证件号码",
                   render: (_, row) => (
                     <span className={styles.mono}>
-                      {row.raw_data["身份证号"] || "—"}
+                      {row.raw_data["证件号码"] ||
+                        row.raw_data["身份证号"] ||
+                        "—"}
                     </span>
                   ),
                 },

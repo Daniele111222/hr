@@ -40,8 +40,10 @@ test("员工导入页面显示固定模板说明并限制 xlsx 文件", async ()
   renderPage();
 
   expect(
-    await screen.findByText("员工资料模板 TPL-EMP-v2.4"),
+    await screen.findByText("员工资料模板 TPL-EMP-v3"),
   ).toBeInTheDocument();
+  expect(screen.getByText(/固定 27 列/)).toBeInTheDocument();
+  expect(screen.getByText(/生效日期为本次导入日期/)).toBeInTheDocument();
   expect(document.querySelector('input[type="file"]')).toHaveAttribute(
     "accept",
     ".xlsx",
@@ -55,7 +57,7 @@ test("员工导入页面展示部分成功行并打开逐行修正入口", async
     import_type: "employee_master",
     original_filename: "employees.xlsx",
     file_sha256: "a".repeat(64),
-    template_version: "TPL-EMP-v1",
+    template_version: "TPL-EMP-v3",
     field_mapping: {},
     status: "partially_imported",
     total_rows: 2,
@@ -67,7 +69,7 @@ test("员工导入页面展示部分成功行并打开逐行修正入口", async
         sheet_name: "员工资料",
         source_row_number: 3,
         validation_status: "imported",
-        raw_data: { 身份证号: "11010119900101123X", 姓名: "张三" },
+        raw_data: { 证件号码: "11010119900101123X", 姓名: "张三" },
         correction_values: null,
         normalized_data: {},
         errors: null,
@@ -78,15 +80,15 @@ test("员工导入页面展示部分成功行并打开逐行修正入口", async
         sheet_name: "员工资料",
         source_row_number: 4,
         validation_status: "invalid",
-        raw_data: { 身份证号: "123" },
+        raw_data: { 证件号码: "123" },
         correction_values: null,
         normalized_data: null,
         errors: [
           {
             code: "INVALID_ID",
-            field: "身份证号",
+            field: "证件号码",
             column: "A",
-            message: "身份证号须为 18 位文本",
+            message: "证件号码须为 18 位文本",
           },
         ],
         correction_history: [],
@@ -122,7 +124,7 @@ test("员工导入页面展示部分成功行并打开逐行修正入口", async
     screen.getByRole("button", { name: /查看导入批次详情与纠错/ }),
   );
   expect(
-    (await screen.findAllByText("身份证号须为 18 位文本")).length,
+    (await screen.findAllByText("证件号码须为 18 位文本")).length,
   ).toBeGreaterThan(0);
   expect(screen.getByRole("button", { name: "修正" })).toBeInTheDocument();
 });

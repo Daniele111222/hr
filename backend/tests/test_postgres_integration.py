@@ -2,16 +2,17 @@ import calendar
 import os
 from collections.abc import Generator
 from concurrent.futures import ThreadPoolExecutor
-from datetime import date
+from datetime import date, datetime, timedelta
 from decimal import Decimal
 from io import BytesIO
 from pathlib import Path
+from zoneinfo import ZoneInfo
 
 import pytest
 from alembic import command
 from alembic.config import Config
 from fastapi.testclient import TestClient
-from openpyxl import load_workbook
+from openpyxl import Workbook, load_workbook
 from sqlalchemy import create_engine, select, text
 from sqlalchemy.engine import URL, make_url
 from sqlalchemy.exc import IntegrityError
@@ -49,7 +50,7 @@ from paylite.db.models import (
     SubjectDepartment,
 )
 from paylite.excel.attendance_template import make_template as make_attendance_template
-from paylite.excel.employee_template import make_template
+from paylite.excel.employee_template import LEGACY_HEADERS, LEGACY_TEMPLATE_VERSION, make_template
 from paylite.excel.performance_template import make_template as make_performance_template
 from paylite.services.payroll_correction import cancel_correction, request_correction
 from paylite.services.payroll_ledger import get_ledger
@@ -960,8 +961,11 @@ def test_employee_import_uploads_partial_rows_and_corrects_one_row(
             "2026-01-01",
         ]
 
-    workbook = load_workbook(BytesIO(make_template()))
-    sheet = workbook["员工资料"]
+    workbook = Workbook()
+    sheet = workbook.active
+    sheet.title = "员工资料"
+    sheet.append([LEGACY_TEMPLATE_VERSION])
+    sheet.append(LEGACY_HEADERS)
     sheet.append(row("11010119900101123X", "IMP001"))
     sheet.append(row("11010119900101124X", "IMP002", performance="1000.00"))
     sheet.append(row("11010119900101123X", "IMP003"))
@@ -996,6 +1000,194 @@ def test_employee_import_uploads_partial_rows_and_corrects_one_row(
     assert correction.json()["rows"][1]["correction_history"]
     assert db_session.scalar(select(Employee).where(Employee.employee_no == "IMP002"))
     assert existing.id
+
+
+def test_employee_import_27_columns_maps_subject_city_department_and_defaults(
+    api_client, db_session: Session
+) -> None:
+    company = Company(code="EMP27", name="模板测试公司")
+    cities = [City(code="EMP27HZ", name="模板杭州"), City(code="EMP27BJ", name="模板北城")]
+    db_session.add_all([company, *cities])
+    db_session.flush()
+    subjects = [
+        Subject(company_id=company.id, code="EMP27HZ", name="测试（模板杭州）科技有限公司"),
+        Subject(
+            company_id=company.id,
+            code="EMP27BJ",
+            name="测试（模板杭州）科技有限公司模板北城分公司",
+        ),
+        Subject(
+            company_id=company.id,
+            code="EMP27SZ",
+            name="测试（模板杭州）科技有限公司模板深圳分公司",
+        ),
+    ]
+    root = Department(company_id=company.id, code="EMP27ROOT", name="研发中心")
+    db_session.add_all([*subjects, root])
+    db_session.flush()
+    child = Department(company_id=company.id, code="EMP27CHILD", name="平台部", parent_id=root.id)
+    db_session.add(child)
+    db_session.flush()
+    leaf = Department(company_id=company.id, code="EMP27LEAF", name="后端组", parent_id=child.id)
+    db_session.add(leaf)
+    db_session.flush()
+    other_root = Department(company_id=company.id, code="EMP27OTHERROOT", name="研发中心")
+    db_session.add(other_root)
+    db_session.flush()
+    other_child = Department(
+        company_id=company.id, code="EMP27OTHERCHILD", name="平台部", parent_id=other_root.id
+    )
+    db_session.add(other_child)
+    db_session.flush()
+    other_leaf = Department(
+        company_id=company.id, code="EMP27OTHERLEAF", name="后端组", parent_id=other_child.id
+    )
+    db_session.add(other_leaf)
+    db_session.flush()
+    for index, subject in enumerate(subjects):
+        db_session.add(
+            SubjectDepartment(
+                company_id=company.id,
+                subject_id=subject.id,
+                department_id=leaf.id if index < 2 else other_leaf.id,
+                code="EMP27REL",
+                name="后端组",
+            )
+        )
+    legacy_employee = Employee(
+        company_id=company.id,
+        id_number="11010119900101555X",
+        employee_no="MANUAL",
+        name="旧编号员工",
+        employee_type="employee",
+        hire_date=date(2020, 1, 1),
+    )
+    db_session.add(legacy_employee)
+    db_session.flush()
+    legacy_employee.employee_no = f"AUTO-{legacy_employee.id + 1}"
+    db_session.commit()
+
+    today = datetime.now(ZoneInfo("Asia/Shanghai")).date()
+
+    def row(number: int, subject_index: int = 0) -> list[object]:
+        return [
+            f"11010119900101{number:03d}X",
+            f"模板员工{number}",
+            "简称",
+            subjects[subject_index].name,
+            "研发中心",
+            "平台部",
+            "后端组",
+            "工程师",
+            "P6",
+            "技术",
+            "研发",
+            "上级",
+            "2020-01-01",
+            "2020-07-01",
+            "",
+            "013800000000",
+            "000012345678901234",
+            "银行支行",
+            "8000.00",
+            "2000.00",
+            "8000.00",
+            "0",
+            "劳动合同",
+            "月度",
+            "原始备注",
+            "12",
+            "employee@example.com",
+        ]
+
+    rows = [row(1), row(2, 1), row(3), row(4), row(5), row(6), row(7, 2), row(8), row(9)]
+    rows[2][19] = "1000.00"
+    rows[3][20] = "7000.00"
+    rows[4][26] = "=1+1"
+    rows[5][16] = 123456789012345678
+    rows[7][13] = ""  # 尚未转正，保留转正标准，当前绩效为零。
+    rows[8][13] = (today + timedelta(days=30)).isoformat()
+    workbook = load_workbook(BytesIO(make_template()))
+    for values in rows:
+        workbook.active.append(values)
+    content = BytesIO()
+    workbook.save(content)
+    response = api_client.post(
+        f"/imports/employee-master?company_id={company.id}",
+        files={
+            "file": (
+                "employee-27.xlsx",
+                content.getvalue(),
+                "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+            )
+        },
+    )
+    assert response.status_code == 201, response.text
+    batch = response.json()
+    assert (batch["total_rows"], batch["success_rows"], batch["error_rows"]) == (9, 4, 5), [
+        item["errors"] for item in batch["rows"]
+    ]
+    assert batch["template_version"] == "TPL-EMP-v3"
+    assert batch["field_mapping"]["企业微信邮箱"] == "AA"
+    assert batch["rows"][0]["raw_data"]["备注"] == "原始备注"
+    assert batch["rows"][4]["source_row_number"] == 7
+    assert batch["rows"][4]["errors"][0]["column"] == "AA"
+    assert any(e["code"] == "CITY_NOT_FOUND" for e in batch["rows"][6]["errors"])
+    employees = api_client.get(f"/employees?company_id={company.id}").json()
+    by_name = {employee["name"]: employee for employee in employees}
+    imported_on = (
+        datetime.fromisoformat(batch["uploaded_at"])
+        .astimezone(ZoneInfo("Asia/Shanghai"))
+        .date()
+        .isoformat()
+    )
+    for index in (1, 2, 8, 9):
+        employee = by_name[f"模板员工{index}"]
+        assert employee["employee_no"] == f"AUTO-{employee['id']}"
+        assert employee["formal_status"] is True
+        assert employee["level_number"] == 6
+        assert employee["assignment"]["effective_from"] == imported_on
+        assert employee["base"]["effective_from"] == imported_on
+        assert employee["bank_account"]["account_number"] == "000012345678901234"
+        assert employee["bank_account"]["bank_name"] == "银行支行"
+    assert by_name["模板员工1"]["base"]["city_id"] == cities[0].id
+    assert by_name["模板员工2"]["base"]["city_id"] == cities[1].id
+    assert by_name["模板员工8"]["salary"]["performance_base"] == "0.00"
+    assert by_name["模板员工8"]["probation_status"] == "in_probation"
+    future = by_name["模板员工9"]
+    assert future["probation_status"] == "in_probation"
+    assert future["salary"]["effective_from"] == imported_on
+    assert future["salary"]["performance_base"] == "0.00"
+    updated_base = api_client.patch(
+        f"/employees/{future['id']}",
+        json={
+            "base": {
+                "city_id": cities[0].id,
+                "effective_from": (today + timedelta(days=1)).isoformat(),
+            }
+        },
+    )
+    assert updated_base.status_code == 200, updated_base.text
+    corrected = api_client.post(
+        f"/imports/{batch['id']}/rows/{batch['rows'][2]['id']}/correct",
+        json={"values": {"转正绩效标准": "2000.00"}},
+    )
+    assert corrected.status_code == 200
+    assert corrected.json()["success_rows"] == 5
+    formula_row = batch["rows"][4]["id"]
+    unchanged_formula = api_client.post(
+        f"/imports/{batch['id']}/rows/{formula_row}/correct",
+        json={"values": {"备注": "只改备注"}},
+    )
+    assert unchanged_formula.status_code == 200
+    assert unchanged_formula.json()["rows"][4]["errors"][0]["code"] == "FORMULA_NOT_ALLOWED"
+    assert unchanged_formula.json()["success_rows"] == 5
+    fixed_formula = api_client.post(
+        f"/imports/{batch['id']}/rows/{formula_row}/correct",
+        json={"values": {"企业微信邮箱": "fixed@example.com"}},
+    )
+    assert fixed_formula.status_code == 200
+    assert fixed_formula.json()["success_rows"] == 6
 
 
 def test_attendance_import_partial_correction_and_revision(api_client, db_session: Session) -> None:
