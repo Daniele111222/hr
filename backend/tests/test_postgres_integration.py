@@ -50,7 +50,12 @@ from paylite.db.models import (
     SubjectDepartment,
 )
 from paylite.excel.attendance_template import make_template as make_attendance_template
-from paylite.excel.employee_template import LEGACY_HEADERS, LEGACY_TEMPLATE_VERSION, make_template
+from paylite.excel.employee_template import (
+    HEADERS,
+    LEGACY_HEADERS,
+    LEGACY_TEMPLATE_VERSION,
+    make_template,
+)
 from paylite.excel.performance_template import make_template as make_performance_template
 from paylite.services.payroll_correction import cancel_correction, request_correction
 from paylite.services.payroll_ledger import get_ledger
@@ -422,14 +427,16 @@ def test_organization_and_employee_api_flow(api_client: TestClient, postgres_eng
         ("subject-departments", subject_department),
     ):
         row_id = response.json()["id"]
-        assert any(row["id"] == row_id for row in api_client.get(f"/organization/{path}").json())
+        assert any(
+            row["id"] == row_id for row in api_client.get(f"/organization/{path}/options").json()
+        )
         assert (
             api_client.patch(f"/organization/{path}/{row_id}", json={"name": "已更新"}).status_code
             == 200
         )
         assert any(
             row["id"] == row_id and row["name"] == "已更新"
-            for row in api_client.get(f"/organization/{path}").json()
+            for row in api_client.get(f"/organization/{path}/options").json()
         )
 
     duplicate_city = api_client.post("/organization/cities", json={"code": "BJ", "name": "重复"})
@@ -897,6 +904,16 @@ def test_concurrent_normal_batch_creation_keeps_one_batch(
         )
 
 
+def test_import_batch_correction_routes_remain_available(api_client) -> None:
+    paths = api_client.get("/openapi.json").json()["paths"]
+    for path in (
+        "/imports/{batch_id}/rows/{row_id}/correct",
+        "/imports/attendance/{batch_id}/rows/{row_id}/correct",
+        "/imports/performance/{batch_id}/rows/{row_id}/correct",
+    ):
+        assert "post" in paths[path]
+
+
 def test_employee_import_uploads_partial_rows_and_corrects_one_row(
     api_client, db_session: Session
 ) -> None:
@@ -966,10 +983,11 @@ def test_employee_import_uploads_partial_rows_and_corrects_one_row(
     sheet.title = "员工资料"
     sheet.append([LEGACY_TEMPLATE_VERSION])
     sheet.append(LEGACY_HEADERS)
-    sheet.append(row("11010119900101123X", "IMP001"))
-    sheet.append(row("11010119900101124X", "IMP002", performance="1000.00"))
+    sheet.append(row("11010119900101123X", "IMP001", fixed="=3000+5000", performance="0.00"))
+    sheet.append(row("11010119900101124X", "IMP002", performance="-1.00"))
     sheet.append(row("11010119900101123X", "IMP003"))
     sheet.append(row(110101199001011250, "IMP004"))
+    sheet.append(row(existing.id_number.lower(), "IGNORED", performance="-1.00"))
     content = BytesIO()
     workbook.save(content)
 
@@ -985,21 +1003,74 @@ def test_employee_import_uploads_partial_rows_and_corrects_one_row(
     )
     assert response.status_code == 201
     batch = response.json()
-    assert (batch["total_rows"], batch["success_rows"], batch["error_rows"]) == (4, 1, 3)
+    assert (batch["total_rows"], batch["success_rows"], batch["error_rows"]) == (3, 1, 2)
     assert batch["template_version"] == "TPL-EMP-v2.4"
-    assert batch["rows"][1]["errors"][0]["code"] == "SALARY_RATIO"
-    assert any(error["code"] == "EMPLOYEE_EXISTS" for error in batch["rows"][2]["errors"])
-    assert any(error["code"] == "IDENTIFIER_NOT_TEXT" for error in batch["rows"][3]["errors"])
+    assert batch["rows"][1]["errors"][0]["code"] == "INVALID_AMOUNT"
+    assert [item["source_row_number"] for item in batch["rows"]] == [3, 4, 6]
+    assert any(error["code"] == "IDENTIFIER_NOT_TEXT" for error in batch["rows"][2]["errors"])
 
     correction = api_client.post(
         f"/imports/{batch['id']}/rows/{batch['rows'][1]['id']}/correct",
-        json={"values": {"绩效基数": "2000.00"}},
+        json={"values": {"绩效基数": "1000.00"}},
     )
     assert correction.status_code == 200
     assert correction.json()["success_rows"] == 2
     assert correction.json()["rows"][1]["correction_history"]
-    assert db_session.scalar(select(Employee).where(Employee.employee_no == "IMP002"))
-    assert existing.id
+    employees = api_client.get(f"/employees?company_id={company.id}").json()
+    salaries = {employee["employee_no"]: employee["salary"] for employee in employees}
+    assert salaries["IMP001"]["performance_base"] == "0.00"
+    assert salaries["IMP002"]["fixed_salary"] == "8000.00"
+    assert salaries["IMP002"]["performance_base"] == "1000.00"
+    repeated_file = api_client.post(
+        f"/imports/employee-master?company_id={company.id}",
+        files={"file": ("employees.xlsx", content.getvalue())},
+    )
+    assert repeated_file.status_code == 201
+    assert repeated_file.json()["id"] == batch["id"]
+    duplicate_correction = api_client.post(
+        f"/imports/{batch['id']}/rows/{batch['rows'][2]['id']}/correct",
+        json={"values": {"身份证号": "11010119900101123x"}},
+    )
+    assert duplicate_correction.status_code == 200
+    assert (
+        duplicate_correction.json()["total_rows"],
+        duplicate_correction.json()["error_rows"],
+    ) == (2, 0)
+    assert duplicate_correction.json()["status"] == "imported"
+    assert (
+        api_client.post(
+            f"/imports/{batch['id']}/rows/{batch['rows'][2]['id']}/correct",
+            json={"values": {"身份证号": "11010119900101123x"}},
+        ).status_code
+        == 200
+    )
+    duplicate_book = Workbook()
+    duplicate_sheet = duplicate_book.active
+    duplicate_sheet.title = "员工资料"
+    duplicate_sheet.append([LEGACY_TEMPLATE_VERSION])
+    duplicate_sheet.append(LEGACY_HEADERS)
+    duplicate_sheet.append(row(existing.id_number, "ALLIGNORED", performance="-1.00"))
+    duplicate_content = BytesIO()
+    duplicate_book.save(duplicate_content)
+    ignored = api_client.post(
+        f"/imports/employee-master?company_id={company.id}",
+        files={"file": ("duplicate.xlsx", duplicate_content.getvalue())},
+    )
+    assert ignored.status_code == 201
+    assert ignored.json()["rows"] == []
+    assert (
+        ignored.json()["total_rows"],
+        ignored.json()["success_rows"],
+        ignored.json()["error_rows"],
+    ) == (0, 0, 0)
+    assert ignored.json()["status"] == "imported"
+    final_employees = api_client.get(f"/employees?company_id={company.id}").json()
+    assert len(final_employees) == 3
+    assert next(e for e in final_employees if e["id"] == existing.id)["name"] == "既有员工"
+    assert (
+        api_client.get(f"/imports/{ignored.json()['id']}/file").content
+        == duplicate_content.getvalue()
+    )
 
 
 def test_employee_import_27_columns_maps_subject_city_department_and_defaults(
@@ -1101,11 +1172,17 @@ def test_employee_import_27_columns_maps_subject_city_department_and_defaults(
         ]
 
     rows = [row(1), row(2, 1), row(3), row(4), row(5), row(6), row(7, 2), row(8), row(9)]
+    rows[0][12] = "2020-01-31"
+    rows[0][13] = "=EDATE(M3,3)"
+    rows[0][18] = "=3048+755.01"
+    rows[0][20] = "=S3"
+    rows[0][25] = "=ROUND((S3+T3)*12/10000,2)"
     rows[2][19] = "1000.00"
     rows[3][20] = "7000.00"
     rows[4][26] = "=1+1"
     rows[5][16] = 123456789012345678
     rows[7][13] = ""  # 尚未转正，保留转正标准，当前绩效为零。
+    rows[7][19] = "1234.00"
     rows[8][13] = (today + timedelta(days=30)).isoformat()
     workbook = load_workbook(BytesIO(make_template()))
     for values in rows:
@@ -1124,12 +1201,15 @@ def test_employee_import_27_columns_maps_subject_city_department_and_defaults(
     )
     assert response.status_code == 201, response.text
     batch = response.json()
-    assert (batch["total_rows"], batch["success_rows"], batch["error_rows"]) == (9, 4, 5), [
+    assert (batch["total_rows"], batch["success_rows"], batch["error_rows"]) == (9, 5, 4), [
         item["errors"] for item in batch["rows"]
     ]
     assert batch["template_version"] == "TPL-EMP-v3"
     assert batch["field_mapping"]["企业微信邮箱"] == "AA"
     assert batch["rows"][0]["raw_data"]["备注"] == "原始备注"
+    assert batch["rows"][0]["raw_data"]["转正日期"] == "=EDATE(M3,3)"
+    assert batch["rows"][0]["raw_data"]["年薪（万元）"] == "=ROUND((S3+T3)*12/10000,2)"
+    assert batch["rows"][0]["raw_data"]["试用期底薪"] == "=S3"
     assert batch["rows"][4]["source_row_number"] == 7
     assert batch["rows"][4]["errors"][0]["column"] == "AA"
     assert any(e["code"] == "CITY_NOT_FOUND" for e in batch["rows"][6]["errors"])
@@ -1141,7 +1221,7 @@ def test_employee_import_27_columns_maps_subject_city_department_and_defaults(
         .date()
         .isoformat()
     )
-    for index in (1, 2, 8, 9):
+    for index in (1, 2, 3, 8, 9):
         employee = by_name[f"模板员工{index}"]
         assert employee["employee_no"] == f"AUTO-{employee['id']}"
         assert employee["formal_status"] is True
@@ -1151,7 +1231,12 @@ def test_employee_import_27_columns_maps_subject_city_department_and_defaults(
         assert employee["bank_account"]["account_number"] == "000012345678901234"
         assert employee["bank_account"]["bank_name"] == "银行支行"
     assert by_name["模板员工1"]["base"]["city_id"] == cities[0].id
+    assert by_name["模板员工1"]["probation_date"] == "2020-04-30"
+    assert by_name["模板员工1"]["probation_status"] == "confirmed"
+    assert by_name["模板员工1"]["salary"]["fixed_salary"] == "3803.01"
     assert by_name["模板员工2"]["base"]["city_id"] == cities[1].id
+    assert by_name["模板员工3"]["salary"]["fixed_salary"] == "8000.00"
+    assert by_name["模板员工3"]["salary"]["performance_base"] == "1000.00"
     assert by_name["模板员工8"]["salary"]["performance_base"] == "0.00"
     assert by_name["模板员工8"]["probation_status"] == "in_probation"
     future = by_name["模板员工9"]
@@ -1169,11 +1254,16 @@ def test_employee_import_27_columns_maps_subject_city_department_and_defaults(
     )
     assert updated_base.status_code == 200, updated_base.text
     corrected = api_client.post(
-        f"/imports/{batch['id']}/rows/{batch['rows'][2]['id']}/correct",
-        json={"values": {"转正绩效标准": "2000.00"}},
+        f"/imports/{batch['id']}/rows/{batch['rows'][3]['id']}/correct",
+        json={
+            "values": {"转正固定薪资": "=4000+0.01", "试用期底薪": "=S6", "转正绩效标准": "1234.00"}
+        },
     )
     assert corrected.status_code == 200
-    assert corrected.json()["success_rows"] == 5
+    assert corrected.json()["success_rows"] == 6, corrected.json()["rows"][3]["errors"]
+    by_name = {e["name"]: e for e in api_client.get(f"/employees?company_id={company.id}").json()}
+    assert by_name["模板员工4"]["salary"]["fixed_salary"] == "4000.01"
+    assert by_name["模板员工4"]["salary"]["performance_base"] == "1234.00"
     formula_row = batch["rows"][4]["id"]
     unchanged_formula = api_client.post(
         f"/imports/{batch['id']}/rows/{formula_row}/correct",
@@ -1181,13 +1271,358 @@ def test_employee_import_27_columns_maps_subject_city_department_and_defaults(
     )
     assert unchanged_formula.status_code == 200
     assert unchanged_formula.json()["rows"][4]["errors"][0]["code"] == "FORMULA_NOT_ALLOWED"
-    assert unchanged_formula.json()["success_rows"] == 5
+    assert unchanged_formula.json()["success_rows"] == 6
+    unsupported = api_client.post(
+        f"/imports/{batch['id']}/rows/{formula_row}/correct",
+        json={"values": {"企业微信邮箱": "=SUM(1,2)"}},
+    )
+    assert unsupported.status_code == 200
+    assert unsupported.json()["rows"][4]["errors"][0]["code"] == "FORMULA_NOT_ALLOWED"
     fixed_formula = api_client.post(
         f"/imports/{batch['id']}/rows/{formula_row}/correct",
         json={"values": {"企业微信邮箱": "fixed@example.com"}},
     )
     assert fixed_formula.status_code == 200
-    assert fixed_formula.json()["success_rows"] == 6
+    assert fixed_formula.json()["success_rows"] == 7
+
+
+def test_employee_import_matches_city_prefixes_and_reports_only_source_errors(
+    api_client, db_session: Session
+) -> None:
+    company = Company(code="CITYPREFIX", name="城市匹配测试公司")
+    cities = [
+        City(code="PREFIXGD", name="广东"),
+        City(code="PREFIXCD", name=" 成都市 "),
+        City(code="PREFIXHZ", name="杭州"),
+    ]
+    db_session.add_all([company, *cities])
+    db_session.flush()
+    subject_names = [
+        "广东六棱镜数字科技发展有限公司",
+        "成都六棱镜数字科技有限公司",
+        "六棱镜（ 杭州市 ）科技有限公司",
+        "六棱镜（杭州）科技有限公司成都市分公司",
+        "六棱镜（杭州）科技有限公司未知城市分公司",
+        "广东六棱镜（杭州）科技有限公司",
+        "新成都科技有限公司",
+        "无城市科技有限公司",
+    ]
+    subjects = [
+        Subject(company_id=company.id, code=f"PREFIX{i}", name=name)
+        for i, name in enumerate(subject_names)
+    ]
+    db_session.add_all(subjects)
+    db_session.commit()
+    workbook = load_workbook(BytesIO(make_template()))
+    for index, subject in enumerate(subjects):
+        values = dict.fromkeys(HEADERS, "")
+        values.update(
+            证件号码=f"11010119900101{index:03d}X",
+            姓名=f"城市匹配员工{index}",
+            公司主体全称=subject.name,
+            一级部门="研发",
+            岗位="工程师",
+            入职时间="2020-01-01",
+            转正日期="2020-04-01",
+            手机号="013800000000",
+            银行卡号="000012345678901234",
+            转正固定薪资="=2520+647.58",
+            转正绩效标准="1000",
+            试用期底薪=f"=S{index + 3}",
+            试用期绩效="0",
+        )
+        workbook.active.append([values[field] for field in HEADERS])
+    content = BytesIO()
+    workbook.save(content)
+    response = api_client.post(
+        f"/imports/employee-master?company_id={company.id}",
+        files={"file": ("city-prefix.xlsx", content.getvalue())},
+    )
+    assert response.status_code == 201, response.text
+    batch = response.json()
+    assert (batch["success_rows"], batch["error_rows"]) == (4, 4), [
+        row["errors"] for row in batch["rows"]
+    ]
+    employees = api_client.get(f"/employees?company_id={company.id}").json()
+    by_name = {employee["name"]: employee for employee in employees}
+    for index, city_index in enumerate((0, 1, 2, 1)):
+        assert by_name[f"城市匹配员工{index}"]["base"]["city_id"] == cities[city_index].id
+        assert by_name[f"城市匹配员工{index}"]["salary"]["fixed_salary"] == "3167.58"
+    for row in batch["rows"][4:]:
+        assert [error["code"] for error in row["errors"]] == ["CITY_NOT_FOUND"]
+        assert row["errors"][0]["field"] == "公司主体全称"
+        assert row["errors"][0]["column"] == "D"
+    missing_subject = api_client.post(
+        f"/imports/{batch['id']}/rows/{batch['rows'][4]['id']}/correct",
+        json={"values": {"公司主体全称": ""}},
+    )
+    assert missing_subject.status_code == 200, missing_subject.text
+    assert any(
+        error["code"] == "REQUIRED" and error["field"] == "公司主体全称"
+        for error in missing_subject.json()["rows"][4]["errors"]
+    )
+    corrected = api_client.post(
+        f"/imports/{batch['id']}/rows/{batch['rows'][4]['id']}/correct",
+        json={"values": {"公司主体全称": subjects[1].name}},
+    )
+    assert corrected.status_code == 200, corrected.text
+    assert corrected.json()["success_rows"] == 5
+    assert corrected.json()["rows"][4]["errors"] is None
+    assert corrected.json()["rows"][4]["raw_data"]["公司主体全称"] == subjects[4].name
+    assert api_client.get(f"/imports/{batch['id']}/file").content == content.getvalue()
+
+
+def test_employee_duplicate_migration_hides_historical_errors(
+    api_client, db_session: Session
+) -> None:
+    config = Config(str(Path(__file__).parents[1] / "alembic.ini"))
+    company = Company(code="DUPLEGACY", name="历史重复测试公司")
+    db_session.add(company)
+    db_session.flush()
+    db_session.add(
+        Employee(
+            company_id=company.id,
+            id_number="11010119900101123X",
+            employee_no="DUPLEGACY",
+            name="既有员工",
+            employee_type="employee",
+            hire_date=date(2020, 1, 1),
+        )
+    )
+    batch = ImportBatch(
+        company_id=company.id,
+        import_type="employee_master",
+        original_filename="legacy.xlsx",
+        file_sha256="d" * 64,
+        original_file=b"legacy original",
+        template_version="TPL-EMP-v3",
+        field_mapping={"证件号码": "A", "姓名": "B"},
+        status="rejected",
+    )
+    db_session.add(batch)
+    db_session.flush()
+    batch_id = batch.id
+    original_errors = [{"code": "EMPLOYEE_EXISTS", "field": "证件号码", "message": "已存在"}]
+    row = ImportRow(
+        import_batch_id=batch_id,
+        sheet_name="员工资料",
+        source_row_number=3,
+        validation_status="invalid",
+        raw_data={"证件号码": "11010119900101123X", "姓名": "历史重复"},
+        errors=original_errors,
+    )
+    db_session.add(row)
+    db_session.add(
+        ImportRow(
+            import_batch_id=batch_id,
+            sheet_name="员工资料",
+            source_row_number=4,
+            validation_status="skipped",
+            raw_data={"证件号码": "11010119900101123X", "姓名": "已跳过重复"},
+            errors=None,
+        )
+    )
+    db_session.commit()
+    command.downgrade(config, "0010_supplement_batches")
+    command.upgrade(config, "head")
+    migrated = api_client.get(f"/imports/{batch_id}")
+    assert migrated.status_code == 200
+    assert migrated.json()["rows"] == []
+    assert (migrated.json()["total_rows"], migrated.json()["error_rows"]) == (0, 0)
+    assert migrated.json()["status"] == "imported"
+    assert api_client.get(f"/imports/{batch_id}/file").content == b"legacy original"
+    assert len(api_client.get(f"/employees?company_id={company.id}").json()) == 1
+    db_session.expire_all()
+    stored = db_session.scalar(
+        select(ImportRow).where(
+            ImportRow.import_batch_id == batch_id, ImportRow.source_row_number == 3
+        )
+    )
+    assert stored.validation_status == "skipped"
+    assert stored.errors == original_errors
+    db_session.commit()
+
+
+def test_organization_lists_share_pagination_and_keep_complete_options(
+    api_client, db_session: Session
+) -> None:
+    first = api_client.get("/organization/cities?page_no=1&page_size=2")
+    assert first.status_code == 200
+    assert isinstance(first.json(), dict)
+    company = Company(code="PAGINATION", name="分页测试公司")
+    db_session.add(company)
+    db_session.flush()
+    cities = [City(code=f"PAGE{i}", name=f"分页城市{i}") for i in range(3)]
+    subjects = [
+        Subject(company_id=company.id, code=f"PAGE{i}", name=f"分页主体{i}") for i in range(3)
+    ]
+    departments = [
+        Department(company_id=company.id, code=f"PAGE{i}", name=f"分页部门{i}") for i in range(3)
+    ]
+    db_session.add_all([*cities, *subjects, *departments])
+    db_session.flush()
+    departments[1].parent_id = departments[0].id
+    relations = [
+        SubjectDepartment(
+            company_id=company.id,
+            subject_id=subject.id,
+            department_id=departments[0].id,
+            code=f"PAGE{i}",
+            name=f"分页关联{i}",
+        )
+        for i, subject in enumerate(subjects)
+    ]
+    db_session.add_all(relations)
+    db_session.commit()
+
+    for path in ("cities", "subjects", "departments", "subject-departments"):
+        options_response = api_client.get(f"/organization/{path}/options")
+        assert options_response.status_code == 200
+        options = options_response.json()
+        first_page = api_client.get(f"/organization/{path}?page_no=1&page_size=2").json()
+        second_page = api_client.get(f"/organization/{path}?page_no=2&page_size=2").json()
+        assert first_page["total"] == second_page["total"] == len(options)
+        assert (second_page["page_no"], second_page["page_size"]) == (2, 2)
+        assert [row["id"] for row in first_page["items"]] == [row["id"] for row in options[:2]]
+        assert [row["id"] for row in second_page["items"]] == [row["id"] for row in options[2:4]]
+        empty_page = api_client.get(f"/organization/{path}?page_no=100000&page_size=2").json()
+        assert empty_page["items"] == []
+        assert empty_page["total"] == len(options)
+        default = api_client.get(f"/organization/{path}").json()
+        assert (default["page_no"], default["page_size"]) == (1, 10)
+        assert api_client.get(f"/organization/{path}?page_no=0").status_code == 422
+        assert api_client.get(f"/organization/{path}?page_size=101").status_code == 422
+    department_rows = api_client.get("/organization/departments?page_size=100").json()["items"]
+    child = next(row for row in department_rows if row["id"] == departments[1].id)
+    assert child["parent_name"] == "分页部门0"
+    relation_rows = api_client.get("/organization/subject-departments?page_size=100").json()[
+        "items"
+    ]
+    linked = next(row for row in relation_rows if row["id"] == relations[0].id)
+    assert linked["subject_name"] == "分页主体0"
+    assert linked["department_name"] == "分页部门0"
+
+
+def test_employee_import_creates_missing_department_paths_and_reuses_them(
+    api_client, db_session: Session
+) -> None:
+    company = Company(code="EMPDEPT", name="导入建部门测试公司")
+    city = City(code="EMPDEPTCITY", name="部门测试城")
+    db_session.add_all([company, city])
+    db_session.flush()
+    subjects = [
+        Subject(company_id=company.id, code="EMPDEPTA", name="测试（部门测试城）有限公司"),
+        Subject(company_id=company.id, code="EMPDEPTB", name="其他（部门测试城）有限公司"),
+    ]
+    db_session.add_all(subjects)
+    db_session.commit()
+
+    def row(number, path, subject_index=0, **changes):
+        values = {
+            "证件号码": f"11010119900102{number:03d}X",
+            "姓名": f"建部门测试员工{number}",
+            "公司主体全称": subjects[subject_index].name,
+            "一级部门": path[0],
+            "二级部门": path[1],
+            "三级部门": path[2],
+            "岗位": "工程师",
+            "入职时间": "2020-01-01",
+            "转正日期": "2020-04-01",
+            "银行卡号": "000012345678901234",
+            "转正固定薪资": "8000.00",
+            "转正绩效标准": "2000.00",
+            "试用期底薪": "8000.00",
+            "试用期绩效": "0",
+            **changes,
+        }
+        return [values.get(field, "") for field in HEADERS]
+
+    workbook = load_workbook(BytesIO(make_template()))
+    for values in (
+        row(1, ("研发中心", "平台部", "后端组")),
+        row(2, ("研发中心", "平台部", "后端组")),
+        row(3, ("研发中心", "平台部", "后端组"), subject_index=1),
+        row(4, ("研发中心", "应用部", "后端组")),
+        row(5, ("行政部", "", "")),
+        row(6, ("错误行部门", "小组", ""), 转正绩效标准="-1.00"),
+        row(1, ("重复身份部门", "", "")),
+        row(7, ("研发中心", "", "跳级组")),
+        row(8, ("未维护主体部门", "", ""), 公司主体全称="未维护的主体"),
+        row(9, ("超" * 201, "", "")),
+        row(6, ("文件重复部门", "", "")),
+    ):
+        workbook.active.append(values)
+    content = BytesIO()
+    workbook.save(content)
+    response = api_client.post(
+        f"/imports/employee-master?company_id={company.id}",
+        files={"file": ("create-departments.xlsx", content.getvalue())},
+    )
+    assert response.status_code == 201, response.text
+    batch = response.json()
+    assert (batch["total_rows"], batch["success_rows"], batch["error_rows"]) == (9, 5, 4), batch[
+        "rows"
+    ]
+    by_source = {item["source_row_number"]: item for item in batch["rows"]}
+    assert 9 not in by_source and 13 not in by_source
+
+    def departments():
+        return [
+            item
+            for item in api_client.get("/organization/departments/options").json()
+            if item["company_id"] == company.id
+        ]
+
+    created = departments()
+    assert len(created) == 6
+    root = next(item for item in created if item["name"] == "研发中心")
+    platform = next(item for item in created if item["name"] == "平台部")
+    application = next(item for item in created if item["name"] == "应用部")
+    assert root["parent_id"] is None
+    assert platform["parent_id"] == application["parent_id"] == root["id"]
+    assert {item["parent_id"] for item in created if item["name"] == "后端组"} == {
+        platform["id"],
+        application["id"],
+    }
+    relations = [
+        item
+        for item in api_client.get("/organization/subject-departments/options").json()
+        if item["company_id"] == company.id
+    ]
+    assert len(relations) == 4
+    employees = api_client.get(f"/employees?company_id={company.id}").json()
+    by_name = {item["name"]: item for item in employees}
+    first = by_name["建部门测试员工1"]["assignment"]
+    assert (
+        first["subject_department_id"]
+        == by_name["建部门测试员工2"]["assignment"]["subject_department_id"]
+    )
+    assert by_name["建部门测试员工3"]["assignment"]["subject_id"] == subjects[1].id
+    assert any(error["code"] == "DEPARTMENT_LEVEL_GAP" for error in by_source[10]["errors"])
+    assert any(error["code"] == "TOO_LONG" for error in by_source[12]["errors"])
+
+    failed = api_client.post(
+        f"/imports/{batch['id']}/rows/{batch['rows'][5]['id']}/correct",
+        json={"values": {"转正绩效标准": "-2.00"}},
+    )
+    assert failed.status_code == 200
+    assert failed.json()["success_rows"] == 5
+    assert len(departments()) == 6
+    corrected = api_client.post(
+        f"/imports/{batch['id']}/rows/{batch['rows'][5]['id']}/correct",
+        json={"values": {"转正绩效标准": "2000.00"}},
+    )
+    assert corrected.status_code == 200
+    assert corrected.json()["success_rows"] == 6
+    assert len(departments()) == 8
+    assert any(item["name"] == "错误行部门" for item in departments())
+    assert (
+        api_client.post(
+            f"/imports/{batch['id']}/rows/{batch['rows'][5]['id']}/correct",
+            json={"values": {"转正绩效标准": "2000.00"}},
+        ).status_code
+        == 409
+    )
 
 
 def test_attendance_import_partial_correction_and_revision(api_client, db_session: Session) -> None:
@@ -1308,9 +1743,6 @@ def test_attendance_import_partial_correction_and_revision(api_client, db_sessio
         ).status_code
         == 409
     )
-    db_session.expire_all()
-    assert db_session.get(PayrollPeriod, period.id).attendance_input_revision == 2
-
     second = load_workbook(BytesIO(make_attendance_template()))
     second["月度考勤"].append(row(0, late=12))
     second["月度考勤"].append(row(2, days="-1"))

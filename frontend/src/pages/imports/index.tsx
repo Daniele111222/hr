@@ -1,6 +1,5 @@
 import { useSearchParams } from "react-router-dom";
 import {
-  CheckCircleOutlined,
   DownloadOutlined,
   InfoCircleOutlined,
   UploadOutlined,
@@ -21,7 +20,7 @@ import {
   Typography,
   message,
 } from "antd";
-import { useMemo, useRef, useState } from "react";
+import { useRef, useState } from "react";
 import {
   resources,
   type EmployeeImportBatch,
@@ -29,6 +28,7 @@ import {
 } from "../../shared/api/resources.ts";
 import styles from "./index.module.less";
 import { MonthlyImportsPage } from "./attendance.tsx";
+import { ImportFailureTable } from "./failure-table.tsx";
 
 const API_BASE = import.meta.env.VITE_API_BASE_URL ?? "/api";
 
@@ -76,6 +76,10 @@ function EmployeeImportsPage() {
   const fileInput = useRef<HTMLInputElement>(null);
   const [selectedBatch, setSelectedBatch] =
     useState<EmployeeImportBatch | null>(null);
+  const [previewBatch, setPreviewBatch] = useState<EmployeeImportBatch | null>(
+    null,
+  );
+  const [readOnly, setReadOnly] = useState(false);
   const company = useQuery({
     queryKey: ["org", "company"],
     queryFn: resources.company,
@@ -86,23 +90,34 @@ function EmployeeImportsPage() {
     enabled: !!company.data?.id,
   });
   const client = useQueryClient();
+  const updateBatch = (batch: EmployeeImportBatch) => {
+    void client.invalidateQueries({ queryKey: ["employee-imports"] });
+    void client.invalidateQueries({ queryKey: ["org"] });
+    void client.invalidateQueries({ queryKey: ["employees"] });
+    client.setQueryData(["employee-import", batch.id], batch);
+    setPreviewBatch(batch);
+    setSelectedBatch(batch);
+    setReadOnly(false);
+  };
   const upload = useMutation({
     mutationFn: (file: File) =>
       resources.uploadEmployeeImport(company.data!.id, file),
     onSuccess: (batch) => {
-      void client.invalidateQueries({ queryKey: ["employee-imports"] });
-      setSelectedBatch(batch);
+      updateBatch(batch);
       messageApi.success(
-        `已完成校验：${batch.success_rows} 行通过，${batch.error_rows} 行待修正`,
+        `已完成校验：${batch.success_rows} 行通过，${batch.error_rows} 行失败`,
       );
     },
     onError: (error: Error) => messageApi.error(error.message),
   });
-  const rows = useMemo(() => selectedBatch?.rows ?? [], [selectedBatch]);
-  const errorRows = useMemo(
-    () => rows.filter((row) => row.validation_status === "invalid"),
-    [rows],
-  );
+  const detail = useQuery({
+    queryKey: ["employee-import", selectedBatch?.id],
+    queryFn: () => resources.employeeImport(selectedBatch!.id),
+    enabled: !!selectedBatch && !selectedBatch.rows,
+    initialData: selectedBatch?.rows ? selectedBatch : undefined,
+  });
+  const rows = previewBatch?.rows ?? [];
+  const activeDetail = readOnly ? detail.data : selectedBatch;
 
   const chooseFile = (file: File | undefined) => {
     if (!file) return;
@@ -120,7 +135,7 @@ function EmployeeImportsPage() {
         <div>
           <Typography.Title level={2}>数据导入</Typography.Title>
           <Typography.Paragraph type="secondary">
-            员工资料使用固定模板。正确行先入库，错误行留在批次中，修正后重新校验，不会重复导入。
+            员工资料使用固定模板。正确行先入库，错误行可逐行修正；导入历史的详情仅供查看。
           </Typography.Paragraph>
         </div>
         <Tag color="blue">
@@ -154,14 +169,14 @@ function EmployeeImportsPage() {
           <div className={styles.scope}>
             <Typography.Text type="secondary">导入范围</Typography.Text>
             <strong>{company.data?.name ?? "请先维护目标公司"}</strong>
-            <span>证件号码是唯一匹配键；既有员工不会被静默覆盖。</span>
+            <span>证件号码是唯一匹配键。</span>
           </div>
           <Alert
             type="info"
             showIcon
             icon={<InfoCircleOutlined />}
             message="员工资料模板 TPL-EMP-v3"
-            description="固定 27 列，表头、工作表名称和列顺序固定。证件号码、手机号、银行卡号按文本填写。员工编号自动生成，默认正式员工；base 城市按主体名称匹配，分公司所在地优先；生效日期为本次导入日期。转正薪酬按 80%/20% 校验，试用期底薪相同、绩效为 0。"
+            description="固定 27 列，表头、工作表名称和列顺序固定。证件号码、手机号、银行卡号按文本填写。主体须已维护；缺失部门会按层级自动创建并关联所属主体，已有部门直接复用。员工编号自动生成，默认正式员工；base 城市按主体名称匹配，分公司所在地优先；生效日期为本次导入日期。转正固定薪资与绩效标准按实际金额填写，不限制比例；试用期底薪相同、绩效为 0。日期和薪资列支持本行引用、四则运算、括号、ROUND 和 EDATE；其他公式请先转为实际值。"
             action={
               <Button
                 size="small"
@@ -202,48 +217,48 @@ function EmployeeImportsPage() {
       <Card
         title="校验预览"
         extra={
-          selectedBatch ? (
-            <Tag color={selectedBatch.error_rows ? "warning" : "success"}>
-              {selectedBatch.status === "imported" ? "全部成功" : "部分成功"}
+          previewBatch ? (
+            <Tag color={previewBatch.error_rows ? "warning" : "success"}>
+              {previewBatch.status === "imported" ? "全部成功" : "部分成功"}
             </Tag>
           ) : null
         }
       >
-        {selectedBatch ? (
+        {previewBatch ? (
           <>
             <div className={styles.metrics}>
               <Metric
-                label="总行数"
-                value={selectedBatch.total_rows}
-                hint="表头下方全部数据行"
+                label="处理行数"
+                value={previewBatch.total_rows}
+                hint="参与本次校验的数据行"
               />
               <Metric
                 label="通过行数"
-                value={selectedBatch.success_rows}
+                value={previewBatch.success_rows}
                 hint="校验通过并写入员工主档"
               />
               <Metric
                 label="错误行数"
-                value={selectedBatch.error_rows}
+                value={previewBatch.error_rows}
                 warning
-                hint="保留在批次中待修正"
+                hint="保留失败原因，只读查看"
               />
             </div>
-            {selectedBatch.error_rows ? (
+            {previewBatch.error_rows ? (
               <Alert
                 className={styles.notice}
                 type="warning"
                 showIcon
                 icon={<WarningOutlined />}
-                message="正确行已先入库，错误行保留待修"
-                description="错误行不会影响已写入的员工，但对应资料在修正并通过校验前不会进入员工主档。"
+                message="正确行已先入库，失败原因保留"
+                description="失败行不会影响已写入的员工；请修改源文件后重新导入，可在本次上传结果中逐行修正。"
               />
             ) : (
               <Alert
                 className={styles.notice}
                 type="success"
                 showIcon
-                message="全部行校验通过，员工资料已写入。"
+                message="本次导入已完成。"
               />
             )}
             <Table<ImportRow>
@@ -289,8 +304,13 @@ function EmployeeImportsPage() {
               ]}
             />
             <div className={styles.previewActions}>
-              <Button onClick={() => setSelectedBatch(selectedBatch)}>
-                查看导入批次详情与纠错 ({errorRows.length})
+              <Button
+                onClick={() => {
+                  setReadOnly(false);
+                  setSelectedBatch(previewBatch);
+                }}
+              >
+                查看导入批次详情与纠错 ({previewBatch.error_rows})
               </Button>
             </div>
           </>
@@ -342,7 +362,10 @@ function EmployeeImportsPage() {
                 <Button
                   type="link"
                   size="small"
-                  onClick={() => setSelectedBatch(row)}
+                  onClick={() => {
+                    setReadOnly(true);
+                    setSelectedBatch(row);
+                  }}
                 >
                   查看详情
                 </Button>
@@ -356,15 +379,25 @@ function EmployeeImportsPage() {
         title={selectedBatch ? `导入批次 #${selectedBatch.id}` : "导入批次"}
         open={!!selectedBatch}
         onClose={() => setSelectedBatch(null)}
-        width={780}
+        width="min(780px, 100vw)"
       >
-        {selectedBatch ? (
-          <ImportDetail
-            batch={selectedBatch}
-            errorRows={errorRows}
-            onUpdated={setSelectedBatch}
+        {readOnly && detail.isError ? (
+          <Alert
+            type="error"
+            showIcon
+            message="导入批次详情读取失败"
+            description={detail.error.message}
+            action={<Button onClick={() => void detail.refetch()}>重试</Button>}
           />
-        ) : null}
+        ) : activeDetail ? (
+          <ImportDetail
+            batch={activeDetail}
+            readOnly={readOnly}
+            onUpdated={updateBatch}
+          />
+        ) : (
+          <Typography.Text>正在加载导入批次详情…</Typography.Text>
+        )}
       </Drawer>
     </div>
   );
@@ -392,13 +425,15 @@ function Metric({
 
 function ImportDetail({
   batch,
-  errorRows,
+  readOnly,
   onUpdated,
 }: {
   batch: EmployeeImportBatch;
-  errorRows: ImportRow[];
+  readOnly: boolean;
   onUpdated: (batch: EmployeeImportBatch) => void;
 }) {
+  const errorRows =
+    batch.rows?.filter((row) => row.validation_status === "invalid") ?? [];
   const [editing, setEditing] = useState<number | null>(null);
   const [values, setValues] = useState<Record<string, string>>({});
   const [saving, setSaving] = useState(false);
@@ -415,15 +450,12 @@ function ImportDetail({
     );
   };
   const save = async () => {
-    if (!editing) return;
+    if (readOnly || editing === null) return;
     setSaving(true);
     try {
-      const updated = await resources.correctEmployeeImportRow(
-        batch.id,
-        editing,
-        values,
+      onUpdated(
+        await resources.correctEmployeeImportRow(batch.id, editing, values),
       );
-      onUpdated(updated);
       setEditing(null);
     } catch (error) {
       message.error(error instanceof Error ? error.message : "修正失败");
@@ -437,18 +469,18 @@ function ImportDetail({
         type={errorRows.length ? "warning" : "success"}
         showIcon
         message={
-          errorRows.length
-            ? `还有 ${errorRows.length} 行待修正`
-            : "没有待修正行"
+          errorRows.length ? `${errorRows.length} 行导入失败` : "没有失败行"
         }
         description={
-          errorRows.length
-            ? "错误行保留原始值、工作表和列位置；修正后重新上传一份新文件以保留完整原始批次。"
-            : "本批次所有行已完成校验并写入员工主档。"
+          readOnly
+            ? "历史详情只读，保留原始值、字段位置及全部失败原因。"
+            : "错误行可逐行修正并重新校验，已入库的其他行不会重复写入。"
         }
       />
       <Descriptions batch={batch} />
-      {errorRows.length ? (
+      {readOnly ? (
+        <ImportFailureTable rows={errorRows} />
+      ) : (
         <Table<ImportRow>
           size="small"
           rowKey="id"
@@ -471,12 +503,12 @@ function ImportDetail({
                     <Input
                       size="small"
                       value={Object.values(values)[0] ?? ""}
+                      aria-label="修正值"
                       onChange={(event) =>
                         setValues({
                           [row.errors?.[0]?.field ?? ""]: event.target.value,
                         })
                       }
-                      aria-label="修正值"
                     />
                     <Button
                       size="small"
@@ -499,8 +531,6 @@ function ImportDetail({
             },
           ]}
         />
-      ) : (
-        <Empty image={<CheckCircleOutlined />} description="全部行已入库" />
       )}
     </div>
   );
@@ -515,7 +545,9 @@ function Descriptions({ batch }: { batch: EmployeeImportBatch }) {
       <code>{batch.file_sha256}</code>
       <span>模板</span>
       <strong>{batch.template_version}</strong>
-      <span>成功 / 错误</span>
+      <span>原文件</span>
+      <a href={`${API_BASE}/imports/${batch.id}/file`}>下载原文件</a>
+      <span>成功 / 失败</span>
       <strong>
         {batch.success_rows} / {batch.error_rows}
       </strong>

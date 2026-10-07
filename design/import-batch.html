@@ -99,6 +99,7 @@
 <script>
 (function () {
   var Q = window.QSX, esc = Q.esc, PERIOD = '2026-08', ENT = 'SH01', TOTAL = 96;
+  var READ_ONLY = new URLSearchParams(location.search).get('mode') !== 'edit';
   var FIX = { 38: false, 59: false, 81: false };
   if (Q.state().perfFixed) { FIX[38] = FIX[59] = FIX[81] = true; }
 
@@ -142,12 +143,23 @@
       b.disabled = true;
     }
     Q.q('#btn-to-batch').hidden = !all;
+    if (READ_ONLY) { b.hidden = true; Q.q('#btn-to-batch').hidden = true; }
     Q.q('#bar-reason').innerHTML = all ? '' : Q.icon('warn') + ' <span>仍有 ' + left + ' 行未修正，整批试算无法完成</span>';
   }
 
   /* ── 待修正行 ───────────────────────────────────────────── */
   function renderPending() {
     var body = Q.q('#pending-body');
+    if (READ_ONLY) {
+      var pending = errRows().filter(function (r) { return !FIX[r.row]; });
+      body.innerHTML = '<div class="callout is-info"><span>' + Q.icon('info') +
+        '</span><div>历史详情只读，保留原始值、字段位置和失败原因。</div></div>' +
+        '<div class="tbl-wrap"><table class="tbl"><thead><tr><th>原始行号</th><th>员工 / 标识</th><th>字段</th><th>原始值</th><th>失败原因</th></tr></thead><tbody>' +
+        pending.map(function (r) { return '<tr><td>' + r.row + '</td><td>' + esc(r.emp) + '</td><td>' +
+          esc(r.field) + '</td><td>' + esc(r.raw) + '</td><td>' + esc(r.reason) + '</td></tr>'; }).join('') +
+        '</tbody></table></div>';
+      return;
+    }
     if (fixedCount() === 3) {
       body.innerHTML = '<div class="empty">' + Q.icon('check') +
         '<h3>没有待修正行</h3><p>本批次 3 条错误行已全部修正并通过重新校验，96 行绩效系数均已入库。</p>' +
@@ -222,6 +234,7 @@
   /* ── 修正抽屉 ───────────────────────────────────────────── */
   var fixing = null;
   function openFix(row) {
+    if (READ_ONLY) return;
     fixing = row;
     var r = errRows().filter(function (x) { return x.row === row; })[0];
     Q.q('#fix-title').textContent = '修正第 ' + row + ' 行';
@@ -259,6 +272,7 @@
   }
 
   Q.q('#fix-save').addEventListener('click', function () {
+    if (READ_ONLY) return;
     if (fixing === 81) { FIX[81] = true; closeAndRefresh(); return; }
     var input = Q.q('#fix-coef'), err = Q.q('#fix-err');
     var v = parseFloat(input.value);
@@ -282,6 +296,7 @@
   }
 
   Q.q('#btn-revalidate').addEventListener('click', function () {
+    if (READ_ONLY) return;
     if (fixedCount() !== 3) return;
     Q.setState({ perfFixed: true });
     renderStatus(); renderPending(); renderAll(); renderLog();
@@ -290,6 +305,7 @@
   });
 
   document.addEventListener('click', function (e) {
+    if (READ_ONLY) return;
     var f = e.target.closest('[data-fix]');
     if (f) { openFix(Number(f.getAttribute('data-fix'))); return; }
     var u = e.target.closest('[data-undo]');
@@ -300,6 +316,7 @@
   });
 
   renderStatus(); renderPending(); renderAll(); renderLog();
+  if (READ_ONLY) Q.q('#drawer-fix').remove();
 })();
 </script>
 </body>

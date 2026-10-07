@@ -74,12 +74,12 @@
     {
       "file": "import-batch.html",
       "role": "screen",
-      "implementationNote": "Preserve visual hierarchy, responsive behavior, and interactive states from this screen."
+      "implementationNote": "History details are read-only by default and show failure reasons, original values and field locations. Current-upload correction mode uses mode=edit and preserves existing edit/save/revalidation behavior; backend correction APIs are unchanged."
     },
     {
       "file": "import-center.html",
       "role": "screen",
-      "implementationNote": "Preserve visual hierarchy, responsive behavior, and interactive states from this screen."
+      "implementationNote": "Preserve visual hierarchy, responsive behavior and interactive states. Employee salary/date formulas use a shared local evaluator; duplicate identities are silently skipped. History detail views display every failure reason without editing. Current-upload preview and row correction remain available and separate from history selection."
     },
     {
       "file": "incentive.html",
@@ -104,7 +104,7 @@
     {
       "file": "organization.html",
       "role": "screen",
-      "implementationNote": "Preserve visual hierarchy, responsive behavior, and interactive states from this screen."
+      "implementationNote": "Preserve visual hierarchy and responsive behavior. Cities, subjects, shared departments and subject-department links have independent server pagination and URL page state. Explain shared departments versus their subject links, show parent department names, and keep form options independent from list pages."
     },
     {
       "file": "payroll-rules.html",

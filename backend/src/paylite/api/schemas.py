@@ -149,6 +149,10 @@ class DepartmentOut(DepartmentIn):
     id: int
 
 
+class DepartmentListOut(DepartmentOut):
+    parent_name: str | None
+
+
 class SubjectDepartmentIn(BaseModel):
     company_id: int
     subject_id: int
@@ -165,6 +169,11 @@ class SubjectDepartmentPatch(BaseModel):
 class SubjectDepartmentOut(SubjectDepartmentIn):
     model_config = ConfigDict(from_attributes=True)
     id: int
+
+
+class SubjectDepartmentListOut(SubjectDepartmentOut):
+    subject_name: str
+    department_name: str
 
 
 class AssignmentIn(BaseModel):

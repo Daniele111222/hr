@@ -19,7 +19,7 @@ frontend/src/
 │   ├── organization/        # index.tsx + index.module.less
 │   ├── employees/           # index.tsx + index.module.less
 │   ├── rules/               # index.tsx + index.module.less
-│   ├── imports/             # 三类导入与批次纠错
+│   ├── imports/             # 三类导入、批次纠错与只读历史详情
 │   ├── payroll/             # 期间、批次、试算、激励、台账、补发
 │   ├── exports/             # 四类导出与报告下载
 │   └── feature-placeholder/ # 历史占位组件
@@ -48,6 +48,8 @@ FastAPI OpenAPI 是请求与响应类型的唯一来源。`openapi-typescript` �
 
 金额由后端以十进制字符串返回，前端只负责展示和输入，不使用 JavaScript `number` 执行业务金额计算。工资期间使用 `YYYY-MM` 字符串，避免无意义的时区转换。
 
+组织维护四个列表独立分页，页码和每页条数保存在 URL 中。`shared/api/resources.ts` 导出的 `Page<T>`、`PageParams` 从生成的 OpenAPI 类型提取通用分页结构；列表摘要使用 `total`，当前页使用 `items`。表单选择器调用 `/options` 接口，关联行名称使用分页响应中的名称字段，避免把某一页误当作完整数据集。
+
 ## 运行边界
 
 开发环境由 Vite 把 `/api` 转发到本机 FastAPI `127.0.0.1:31000`。规则维护页面 `/rules` 通过 TanStack Query 读取和新增城市规则、考勤规则，展示版本、生效期、来源及缺失/过期状态。正式本地运行由 FastAPI 托管 frontend/dist，业务接口保留 /api 前缀，深链接刷新返回 SPA；Compose 通过只读挂载接入构建产物。Vite 保留 /api 路径；API 单独运行也提供 /api 别名。
@@ -61,3 +63,5 @@ FastAPI OpenAPI 是请求与响应类型的唯一来源。`openapi-typescript` �
 首页读取真实准备状态、只读试算摘要、正式金额和导出版本；摘要不记录“已查看”凭证。正式台账详情独立路由 `/payroll/ledger/records/:recordId` 仅展示历史快照和计算依据，不重新计算工资。敏感号码脱敏；没有保存的事实显示 —，金额由 `shared/money.ts` 按文本格式化。
 
 13 文件/54 项测试、生产构建、lint 与格式检查通过；8 页面×9 视口无整页溢出，表格在容器内横向滚动。04 用户页面验收与真实工资对账尚待业务确认，见 [完成情况](mvp-completion-2026-10-03.md)。
+
+历史记录查看详情为只读视图，三类导入共用 `pages/imports/failure-table.tsx` 展示每条失败原因、工作表、行列位置、原始值与历史校验值。员工历史摘要不包含明细行，打开详情时通过独立 Query 加载完整数据并提供加载、失败及重试状态；不把缺失详情当成无失败行。本次上传预览与历史选中批次单独保存，历史入口只读，本次上传入口保留逐行修正及其接口调用。

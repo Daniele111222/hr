@@ -9,7 +9,7 @@ PayLite 当前使用本机 PostgreSQL 保存单一目标公司的工资数据。
 - `backend/src/paylite/db/models/`：按主题拆分的规范化 SQLAlchemy 模型；`models/__init__.py` 保持公开导入路径。
 - `backend/alembic/versions/0001_initial_schema.py`：应用迁移入口。
 - `backend/sql/001_initial_schema.sql`：可独立审查和执行的 PostgreSQL DDL，保留具体 SQL 语句。
-- `backend/alembic/versions/0002`—`0010` 与 `backend/sql/002`—`010`：后续竖切迁移及可审查 SQL；当前 head 为 `0010_supplement_batches`，共 28 张 ORM 表。
+- `backend/alembic/versions/0002`—`0011` 与 `backend/sql/002`—`011`：后续竖切迁移及可审查 SQL；当前 head 为 `0011_duplicate_employee_ids`，共 28 张 ORM 表。
 
 ## 实体关系
 

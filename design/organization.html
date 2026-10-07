@@ -53,6 +53,7 @@
             <tbody id="entity-rows"></tbody>
           </table>
         </div>
+        <div class="pager" id="entity-pager"></div>
       </section>
 
       <div class="grid-2-1" data-od-id="org-depts">
@@ -69,18 +70,18 @@
               <tbody id="dept-rows"></tbody>
             </table>
           </div>
+          <div class="pager" id="dept-pager"></div>
         </section>
 
         <div class="stack">
           <section class="card" data-od-id="org-dept-entity">
             <div class="card-head"><h2>主体与部门关联</h2></div>
-            <div class="card-body stack" style="gap:12px">
-              <div class="field">
-                <label>选择部门</label>
-                <select class="select" id="dept-picker" data-od-id="dept-picker"></select>
-              </div>
-              <div id="dept-instances"></div>
-            </div>
+            <p class="meta" style="padding:10px 16px; margin:0">关联记录表示主体使用共用部门；同名关联引用原部门，不会复制部门。</p>
+            <div class="tbl-wrap"><table class="tbl">
+              <thead><tr><th>主体</th><th>共用部门</th><th>关联编码</th></tr></thead>
+              <tbody id="dept-instances"></tbody>
+            </table></div>
+            <div class="pager" id="relation-pager"></div>
           </section>
           <section class="callout is-info" data-od-id="org-tip">
             <span class="ci"></span>
@@ -91,6 +92,14 @@
           </section>
         </div>
       </div>
+
+      <section class="card" data-od-id="org-cities">
+        <div class="card-head"><h2>城市</h2></div>
+        <div class="tbl-wrap"><table class="tbl">
+          <thead><tr><th>名称</th></tr></thead><tbody id="city-rows"></tbody>
+        </table></div>
+        <div class="pager" id="city-pager"></div>
+      </section>
 
     </main>
     <footer class="pagefoot"></footer>
@@ -153,7 +162,26 @@
   var byEntity = countBy(function (e) { return e.entity; });
   var byDept = countBy(function (e) { return e.dept; });
 
-  document.getElementById('entity-rows').innerHTML = Q.ENTITIES.map(function (e) {
+  function pagedRows(rows, bodyId, pagerId, renderRow) {
+    var page = 1, size = 10;
+    function render() {
+      var pages = Math.max(1, Math.ceil(rows.length / size));
+      document.getElementById(bodyId).innerHTML = rows.slice((page - 1) * size, page * size).map(renderRow).join('');
+      var pager = document.getElementById(pagerId);
+      pager.innerHTML = '<span>共 ' + rows.length + ' 条</span><div class="pages">' +
+        '<button data-prev ' + (page === 1 ? 'disabled' : '') + '>上一页</button>' +
+        '<span class="meta">' + page + ' / ' + pages + '</span>' +
+        '<button data-next ' + (page === pages ? 'disabled' : '') + '>下一页</button></div>' +
+        '<select class="select" aria-label="每页条数" style="width:108px">' + [10, 20, 50, 100].map(function (value) {
+          return '<option value="' + value + '" ' + (size === value ? 'selected' : '') + '>' + value + ' 条 / 页</option>';
+        }).join('') + '</select>';
+      pager.querySelector('[data-prev]').onclick = function () { page--; render(); };
+      pager.querySelector('[data-next]').onclick = function () { page++; render(); };
+      pager.querySelector('select').onchange = function () { size = Number(this.value); page = 1; render(); };
+    }
+    render();
+  }
+  pagedRows(Q.ENTITIES, 'entity-rows', 'entity-pager', function (e) {
     var ds = Q.ENTITY_DEPTS[e.code].map(function (c) { return Q.dept(c).name; });
     return '<tr>' +
       '<td class="sticky-col"><span class="strong">' + esc(e.name) + '</span><span class="tbl-sub">工资归属主体</span></td>' +
@@ -164,11 +192,11 @@
       '<td><a class="btn btn-sm btn-ghost" href="employees.html">查看员工</a>' +
       '<button class="btn btn-sm btn-ghost" data-open="drawer-entity">编辑</button></td>' +
       '</tr>';
-  }).join('');
+  });
 
   var depth = {};
   Q.DEPTS.forEach(function (d) { depth[d.code] = d.parent ? 1 : 0; });
-  document.getElementById('dept-rows').innerHTML = Q.DEPTS.map(function (d) {
+  pagedRows(Q.DEPTS, 'dept-rows', 'dept-pager', function (d) {
     var n = byDept[d.code] || 0;
     var pad = depth[d.code] ? 'padding-left:26px' : 'font-weight:600';
     return '<tr><td style="' + pad + '">' + (depth[d.code] ? '└ ' : '') + esc(d.name) + '</td>' +
@@ -176,27 +204,17 @@
       '<td class="small muted">' + (d.parent ? esc(Q.dept(d.parent).name) : '—') + '</td>' +
       '<td class="n mono">' + n + '</td>' +
       '<td><a class="btn btn-sm btn-ghost" href="employees.html">查看员工</a></td></tr>';
-  }).join('');
+  });
 
-  var picker = document.getElementById('dept-picker');
-  picker.innerHTML = Q.DEPTS.filter(function (d) { return d.parent; }).map(function (d) {
-    return '<option value="' + d.code + '">' + esc(d.name) + '（' + d.code + '）</option>';
-  }).join('');
-
-  function renderInstances(code) {
-    var rows = Q.ENTITIES.map(function (e) {
-      var enabled = Q.ENTITY_DEPTS[e.code].indexOf(code) >= 0;
-      var n = Q.EMPLOYEES.filter(function (x) { return x.entity === e.code && x.dept === code; }).length;
-      return '<div class="between" style="padding:8px 0; border-bottom:1px solid var(--border)">' +
-        '<div><div class="strong small">' + esc(e.short) + ' · ' + esc(e.name) + '</div>' +
-        '<div class="meta">' + (enabled ? (n + ' 名员工') : '该主体未启用此部门') + '</div></div>' +
-        (enabled ? '<a class="btn btn-sm btn-ghost" href="employees.html">查看员工</a>' : Q.badge('muted', '未启用')) +
-        '</div>';
-    }).join('');
-    document.getElementById('dept-instances').innerHTML = rows;
-  }
-  picker.addEventListener('change', function () { renderInstances(picker.value); });
-  renderInstances(picker.value);
+  var links = Q.ENTITIES.flatMap(function (entity) {
+    return Q.ENTITY_DEPTS[entity.code].map(function (code) { return { entity: entity, dept: Q.dept(code) }; });
+  });
+  pagedRows(links, 'dept-instances', 'relation-pager', function (link) {
+    return '<tr><td>' + esc(link.entity.name) + '</td><td>' + esc(link.dept.name) + '</td><td class="mono">' + esc(link.entity.code + '-' + link.dept.code) + '</td></tr>';
+  });
+  pagedRows(Array.from(new Set(Q.ENTITIES.map(function (e) { return e.city; }))), 'city-rows', 'city-pager', function (city) {
+    return '<tr><td>' + esc(city) + '</td></tr>';
+  });
 })();
 </script>
 </body>

@@ -11,6 +11,7 @@ import {
   Space,
   Steps,
   Table,
+  Tabs,
   Tag,
   Typography,
   message,
@@ -23,6 +24,7 @@ import {
   type PerformanceImportBatch,
 } from "../../shared/api/resources.ts";
 import styles from "./index.module.less";
+import { ImportFailureTable } from "./failure-table.tsx";
 
 const API_BASE = import.meta.env.VITE_API_BASE_URL ?? "/api";
 type MonthlyKind = "attendance" | "performance";
@@ -50,6 +52,7 @@ export function MonthlyImportsPage({ kind }: { kind: MonthlyKind }) {
   const [batchId, setBatchId] = useState<number>();
   const [selected, setSelected] = useState<MonthlyBatch | null>(null);
   const [preview, setPreview] = useState<MonthlyBatch | null>(null);
+  const [readOnly, setReadOnly] = useState(false);
   const client = useQueryClient();
   const company = useQuery({
     queryKey: ["org", "company"],
@@ -89,12 +92,13 @@ export function MonthlyImportsPage({ kind }: { kind: MonthlyKind }) {
         ? await resources.uploadPerformanceImport(chosenBatch.id, file)
         : await resources.uploadAttendanceImport(chosenBatch.id, file),
     onSuccess: (result) => {
+      setReadOnly(false);
       setPreview(result);
       setSelected(result);
       void client.invalidateQueries({ queryKey: [kind, "imports"] });
       void client.invalidateQueries({ queryKey: ["payroll-workbench"] });
       messageApi.success(
-        `已保存 ${result.success_rows} 行，${result.error_rows} 行待修正`,
+        `已保存 ${result.success_rows} 行，${result.error_rows} 行失败`,
       );
     },
     onError: (error: Error) => messageApi.error(error.message),
@@ -109,20 +113,21 @@ export function MonthlyImportsPage({ kind }: { kind: MonthlyKind }) {
   };
   const openBatch = async (id: number) => {
     try {
-      setSelected(
-        performance
-          ? await resources.performanceImport(id)
-          : await resources.attendanceImport(id),
-      );
+      const result = performance
+        ? await resources.performanceImport(id)
+        : await resources.attendanceImport(id);
+      setReadOnly(true);
+      setSelected(result);
     } catch (error) {
       messageApi.error(
         error instanceof Error ? error.message : "读取导入批次失败",
       );
     }
   };
+
   const updateBatch = (result: MonthlyBatch) => {
+    setPreview(result);
     setSelected(result);
-    if (preview?.id === result.id) setPreview(result);
     void client.invalidateQueries({ queryKey: [kind, "imports"] });
     void client.invalidateQueries({ queryKey: ["payroll-workbench"] });
   };
@@ -135,8 +140,8 @@ export function MonthlyImportsPage({ kind }: { kind: MonthlyKind }) {
           <Typography.Title level={2}>月度{label}导入</Typography.Title>
           <Typography.Paragraph type="secondary">
             {performance
-              ? "按工资期间和主体导入绩效系数。试用期不考核绩效；转正当月需填写系数。正确行先保存，错误行可逐行修正。"
-              : "按工资期间和主体导入考勤事实。正确行先保存，错误行修正后重新校验；扣款由试算统一计算。"}
+              ? "按工资期间和主体导入绩效系数。试用期不考核绩效；转正当月需填写系数。正确行先保存，错误行可逐行修正；历史详情只读。"
+              : "按工资期间和主体导入考勤事实。正确行先保存，错误行可逐行修正；历史详情只读，扣款由试算统一计算。"}
           </Typography.Paragraph>
         </div>
         <Tag color="blue">{company.data?.name ?? "目标公司未初始化"}</Tag>
@@ -241,7 +246,7 @@ export function MonthlyImportsPage({ kind }: { kind: MonthlyKind }) {
                 ? "正在上传并校验…"
                 : "把 Excel 拖到这里，或点击选择文件"}
             </strong>
-            <span>支持 .xlsx，单次不超过 20MB；原文件与逐行修正记录会保留</span>
+            <span>支持 .xlsx，单次不超过 20MB；原文件与失败原因会保留</span>
           </button>
           <input
             ref={fileInput}
@@ -262,7 +267,7 @@ export function MonthlyImportsPage({ kind }: { kind: MonthlyKind }) {
             <div className={styles.metrics}>
               <Metric label="总行数" value={preview.total_rows} />
               <Metric label="已保存" value={preview.success_rows} />
-              <Metric label="待修正" value={preview.error_rows} warning />
+              <Metric label="失败行" value={preview.error_rows} warning />
             </div>
             <Alert
               className={styles.notice}
@@ -284,7 +289,12 @@ export function MonthlyImportsPage({ kind }: { kind: MonthlyKind }) {
               columns={rowColumns}
             />
             <div className={styles.previewActions}>
-              <Button onClick={() => setSelected(preview)}>
+              <Button
+                onClick={() => {
+                  setReadOnly(false);
+                  setSelected(preview);
+                }}
+              >
                 查看导入批次详情与纠错
               </Button>
             </div>
@@ -301,7 +311,7 @@ export function MonthlyImportsPage({ kind }: { kind: MonthlyKind }) {
         title="导入历史"
         extra={
           <Typography.Text type="secondary">
-            原文件与修正记录可追溯
+            原文件与失败原因可追溯
           </Typography.Text>
         }
       >
@@ -352,7 +362,12 @@ export function MonthlyImportsPage({ kind }: { kind: MonthlyKind }) {
         width="min(780px, 100vw)"
       >
         {selected && (
-          <MonthlyDetail kind={kind} batch={selected} onUpdated={updateBatch} />
+          <MonthlyDetail
+            kind={kind}
+            batch={selected}
+            readOnly={readOnly}
+            onUpdated={updateBatch}
+          />
         )}
       </Drawer>
     </div>
@@ -391,7 +406,7 @@ function StatusTag({ batch }: { batch: MonthlyBatch }) {
       {batch.error_rows
         ? batch.success_rows
           ? "部分成功"
-          : "全部待修正"
+          : "全部失败"
         : "全部成功"}
     </Tag>
   );
@@ -417,10 +432,12 @@ function Metric({
 function MonthlyDetail({
   kind,
   batch,
+  readOnly,
   onUpdated,
 }: {
   kind: MonthlyKind;
   batch: MonthlyBatch;
+  readOnly: boolean;
   onUpdated: (batch: MonthlyBatch) => void;
 }) {
   const [editing, setEditing] = useState<number | null>(null);
@@ -428,7 +445,7 @@ function MonthlyDetail({
   const [saving, setSaving] = useState(false);
   const [messageApi, contextHolder] = message.useMessage();
   const save = async () => {
-    if (editing === null || !Object.keys(values).length) return;
+    if (readOnly || editing === null || !Object.keys(values).length) return;
     setSaving(true);
     try {
       const result =
@@ -439,7 +456,7 @@ function MonthlyDetail({
       setEditing(null);
       setValues({});
       messageApi.success(
-        result.rows?.find((row) => row.id === editing)?.validation_status ===
+        result.rows?.find((item) => item.id === editing)?.validation_status ===
           "imported"
           ? "修正已入库"
           : "仍有校验错误，请继续修正",
@@ -452,17 +469,19 @@ function MonthlyDetail({
   };
   const invalid =
     batch.rows?.filter((row) => row.validation_status === "invalid") ?? [];
-  const row = invalid.find((item) => item.id === editing);
+  const editingRow = invalid.find((item) => item.id === editing);
   return (
     <div className={styles.detail}>
       {contextHolder}
       <Alert
         type={invalid.length ? "warning" : "success"}
         showIcon
-        message={
-          invalid.length ? `还有 ${invalid.length} 行待修正` : "全部行已保存"
+        message={invalid.length ? `${invalid.length} 行导入失败` : "没有失败行"}
+        description={
+          readOnly
+            ? "历史详情只读，保留原始值、字段位置及全部失败原因。"
+            : "每次修正都会重新校验该行；已保存的其他行不会重复入账。"
         }
-        description="每次修正都会重新校验该行；已保存的其他行不会重复入账。"
       />
       <div className={styles.descriptionGrid}>
         <span>文件</span>
@@ -473,45 +492,71 @@ function MonthlyDetail({
         <strong>{batch.template_version}</strong>
         <span>原文件</span>
         <a href={`${API_BASE}/imports/${kind}/${batch.id}/file`}>下载原文件</a>
-        <span>成功 / 错误</span>
+        <span>成功 / 失败</span>
         <strong>
           {batch.success_rows} / {batch.error_rows}
         </strong>
       </div>
-      <Table<ImportRow>
-        size="small"
-        rowKey="id"
-        dataSource={batch.rows ?? []}
-        scroll={{ x: 760 }}
-        pagination={{ pageSize: 8 }}
-        columns={[
-          ...rowColumns,
-          {
-            title: "操作",
-            render: (_: unknown, item: ImportRow) =>
-              item.validation_status === "invalid" ? (
-                <Button
-                  type="link"
-                  onClick={() => {
-                    setEditing(item.id);
-                    setValues({});
-                  }}
-                >
-                  修正
-                </Button>
-              ) : null,
-          },
-        ]}
-      />
-      {row && (
+      {readOnly ? (
+        <Tabs
+          items={[
+            {
+              key: "failures",
+              label: "失败原因",
+              children: <ImportFailureTable rows={invalid} />,
+            },
+            {
+              key: "all",
+              label: "全部行",
+              children: (
+                <Table<ImportRow>
+                  size="small"
+                  rowKey="id"
+                  dataSource={batch.rows ?? []}
+                  scroll={{ x: 760 }}
+                  pagination={{ pageSize: 8 }}
+                  columns={rowColumns}
+                />
+              ),
+            },
+          ]}
+        />
+      ) : (
+        <Table<ImportRow>
+          size="small"
+          rowKey="id"
+          dataSource={batch.rows ?? []}
+          scroll={{ x: 760 }}
+          pagination={{ pageSize: 8 }}
+          columns={[
+            ...rowColumns,
+            {
+              title: "操作",
+              render: (_, row: ImportRow) =>
+                row.validation_status === "invalid" ? (
+                  <Button
+                    type="link"
+                    onClick={() => {
+                      setEditing(row.id);
+                      setValues({});
+                    }}
+                  >
+                    修正
+                  </Button>
+                ) : null,
+            },
+          ]}
+        />
+      )}
+      {!readOnly && editingRow && (
         <div className={styles.correctionForm}>
           <Typography.Text strong>
-            修正原始行 {row.source_row_number}
+            修正原始行 {editingRow.source_row_number}
           </Typography.Text>
           <Alert
             type="error"
             showIcon
-            message={row.errors
+            message={editingRow.errors
               ?.map((item) => `${item.field}：${item.message}`)
               .join("；")}
           />
@@ -526,8 +571,8 @@ function MonthlyDetail({
                   aria-label={`修正${field}`}
                   value={
                     values[field] ??
-                    row.correction_values?.[field] ??
-                    row.raw_data[field] ??
+                    editingRow.correction_values?.[field] ??
+                    editingRow.raw_data[field] ??
                     ""
                   }
                   onChange={(event) =>

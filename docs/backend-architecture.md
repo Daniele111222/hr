@@ -16,7 +16,7 @@
 - `db/base.py` 的 SQLAlchemy `Base`；
 - `db/session.py` 的 engine、`SessionLocal` 和 `get_session` 生成器；
 - 按组织、员工、月度输入、规则、工资和导出主题拆分的 ORM 模型包；
-- `backend/sql/001_initial_schema.sql` 至 `010_supplement_batches.sql` 及对应 Alembic `0001`—`0010`（head：`0010_supplement_batches`）；
+- `backend/sql/001_initial_schema.sql` 至 `011_duplicate_employee_ids.sql` 及对应 Alembic `0001`—`0011`（head：`0011_duplicate_employee_ids`）；
 - PostgreSQL 约束、日期区间排斥约束、更新时间触发器、部门树防循环触发器和锁定工资结果不可变触发器；
 - 模型约束测试、应用工厂/健康检查测试和 PostgreSQL 集成测试；
 - `import-linter` 开发依赖，以及 CI 中对当前数据库层导入边界的检查。
@@ -49,6 +49,14 @@ domain 不依赖 api、db、excel
 这里的 `domain` 是一个具有小接口和深实现的模块：调用者只提供规范化输入，得到工资项目、汇总和计算步骤。数据库模型、HTTP DTO 和 Excel 行格式都在 seam 外转换，避免让任何一种外部表示渗入算薪规则。
 
 第一阶段仍然是一个进程、一个 FastAPI 应用、一个本机 PostgreSQL。未来如果需要远程部署或多人访问，再单独评估账号、权限、备份和数据边界；不因为“未来可能拆分”而提前拆成微服务。
+
+### 通用分页契约
+
+分页接口复用 `api/pagination.py` 的 `PageParams` 与泛型 `Page[T]`，接收 `page_no`、`page_size`，返回 `items`、`total`、`page_no`、`page_size`。默认第 1 页、每页 10 条，单页最多 100 条；越界页返回空 `items` 并保留真实总数。
+
+查询复用 `services/pagination.py` 的 `paginate()`：调用方选择 DTO 所需列，并提供包含唯一键的稳定排序；辅助函数在数据库中执行总数统计与 offset/limit，不加载全量记录再截取。组织分页与关联名称查询在 `services/organization.py` 中完成，父部门、主体与共用部门名称随当前页返回，不依赖它们恰好出现在其他列表的当前页。
+
+组织维护四个列表使用原有 GET 路径的分页响应；对应 `/options` 路径提供完整表单选项，不能将列表第一页当作完整的主体、城市或部门选择范围。
 
 ## 3. 目录职责
 
@@ -136,7 +144,13 @@ ORM model 只表达 PostgreSQL 表、外键、唯一约束、索引、日期区�
 
 Excel 列映射和解析由 `excel/*_template.py` 完成；导入 service 保存文件哈希、原始文件与行级规范化输入。正确行可以先导入，错误行保留 `raw_data`、列位置和错误码；导入用例返回批次摘要和行级结果，不把行级错误当成整个请求的未捕获异常。绩效缺失、城市规则缺失等会影响正式工资的错误必须在试算和确认门槛中体现。
 
+员工导入在其他行校验及自动建部门前检查证件号码；同公司既有号码、文件内后续重复号码记为内部 `skipped`，接口统一过滤这些行，不返回重复提示或跳过计数，处理行总数只含实际校验的行。纠错同样检查重复号码，跳过后重试不重复写入。重复文件按公司与哈希返回原批次，数据库唯一约束仍保留。`0011_duplicate_employee_ids` 扩展导入行状态并按旧错误码迁移历史员工重复行，保留其原值、错误及修正历史；不改考勤/绩效重复策略。
+
+导入历史详情的只读限制只在前端入口生效，员工、考勤、绩效逐行 `POST .../rows/.../correct` 路由及服务用例保留原有行为。本次上传后的纠错继续调用这些接口；GET 保留原始失败原因及历史修正字段。
+
 `openpyxl` 已处理固定 `.xlsx` 导入与四类导出。税务原始 `.xls` 已真实转换为运行时 `.xlsx`，原件保留；系统不提供任意 `.xls` 上传转换流程。
+
+员工模板通过 `excel/formulas.py` 统一计算允许的公式：openpyxl 分词后由 AST 白名单解释数值、单元格引用、四则运算、括号和 `ROUND`/`EDATE`，金额使用 Decimal，不执行 `eval`，不读取公式缓存。`employee_template.resolve_employee_formulas` 负责同一行日期/薪资列依赖、循环检测和单元格错误定位，上传和错误行纠正共用。原始公式保存于导入行，纠错时重算全部依赖；模板列顺序使用版本定义，不依赖 JSON 字段顺序。公式最多 1024 字符、128 个 AST 节点；ROUND 位数为 -16 至 16 的整数，EDATE 使用整数月数和合法日期。新增函数需在统一函数表中实现并补行为验证；未支持的函数、范围、跨行、跨表或外部引用明确报错。考勤/绩效导入继续使用各自已确认的公式拒绝策略。
 
 ### 试算、确认和失效
 

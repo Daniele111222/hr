@@ -60,7 +60,7 @@ test("规则页面展示版本和固定口径", async () => {
             source: "制度",
           },
         ]);
-      if (path.endsWith("/organization/cities"))
+      if (path.endsWith("/organization/cities/options"))
         return Response.json([{ id: 1, code: "BJ", name: "北京" }]);
       return Response.json([]);
     }),
@@ -80,7 +80,7 @@ test("规则页面新增城市规则并显示后端错误", async () => {
         return Response.json({ detail: "规则有效期重叠" }, { status: 409 });
       if (path.endsWith("/rules/city-rules")) return Response.json([]);
       if (path.endsWith("/rules/attendance")) return Response.json([]);
-      if (path.endsWith("/organization/cities"))
+      if (path.endsWith("/organization/cities/options"))
         return Response.json([{ id: 1, code: "BJ", name: "北京" }]);
       return Response.json([]);
     },

@@ -14,7 +14,7 @@
     <main class="content">
 
       <section data-od-id="import-lead">
-        <p class="page-lead">三类导入均使用固定模板，系统不做自定义字段映射。正确的行先入库，错误的行保留在导入批次中待修正，修正后重新校验即可补入，不会重复导入。</p>
+        <p class="page-lead">三类导入均使用固定模板，系统不做自定义字段映射。正确的行先入库，错误行可逐行修正；历史记录查看详情只读展示失败原因。</p>
       </section>
 
       <section class="card" data-od-id="import-flow">
@@ -82,14 +82,14 @@
         </div>
         <div class="card-body stack" style="gap:14px">
           <div class="metrics" style="grid-template-columns:repeat(3,minmax(0,1fr))">
-            <div class="metric"><div class="metric-label">总行数</div><div class="metric-value" id="c-total">—</div><div class="metric-foot">模板表头下方全部数据行</div></div>
+            <div class="metric"><div class="metric-label">处理行数</div><div class="metric-value" id="c-total">—</div><div class="metric-foot">参与本次校验的数据行</div></div>
             <div class="metric"><div class="metric-label">通过行数</div><div class="metric-value" id="c-ok">—</div><div class="metric-foot">校验通过，可以直接入库</div></div>
-            <div class="metric is-warn"><div class="metric-label">错误行数</div><div class="metric-value" id="c-err">—</div><div class="metric-foot">保留在导入批次中待修正</div></div>
+            <div class="metric is-warn"><div class="metric-label">错误行数</div><div class="metric-value" id="c-err">—</div><div class="metric-foot">保留失败原因，只读查看</div></div>
           </div>
 
           <div class="callout is-warn" id="partial-note">
             <span data-icon="warn"></span>
-            <div><b>正确行先导入、错误行保留待修。</b>错误行不会阻塞其他行的导入，但在修正前，对应员工无法参与工资试算。</div>
+            <div><b>正确行先导入，失败原因只读保留。</b>错误行不会阻塞其他行的导入，但在修正前，对应员工无法参与工资试算。</div>
           </div>
 
           <div class="section-title">数据预览 <span class="meta">（前 8 行 + 全部错误行）</span></div>
@@ -100,7 +100,7 @@
             </table>
           </div>
           <div class="row" style="justify-content:flex-end">
-            <a class="btn btn-sm" href="import-batch.html" data-od-id="link-batch-detail">查看导入批次详情与纠错</a>
+            <a class="btn btn-sm" href="import-batch.html?mode=edit" data-od-id="link-batch-detail">查看导入批次详情与纠错</a>
           </div>
         </div>
       </section>
@@ -159,13 +159,15 @@
   var TYPES = {
     emp: {
       label: '员工资料', tpl: 'TPL-EMP-v3', cols: '27 列',
-      desc: '用于新增员工资料。证件号码是唯一匹配键，既有员工不会被静默覆盖。',
+      desc: '用于新增员工资料。证件号码是唯一匹配键。',
       needPeriod: false,
       help: ['固定 27 列，按证件号码、姓名、主体、部门、岗位、入离职日期、联系信息、薪酬及其他资料的顺序填写。',
         '证件号码、手机号和银行卡号按文本填写，保留前导零与长数字。',
+        '主体须已维护；缺失部门会按层级自动创建并关联所属主体，已有部门直接复用。',
         '员工编号自动生成，默认正式员工；base 城市按公司主体全称匹配，分公司所在地优先。',
         '任职、薪资、base 城市与银行卡的生效日期自动使用本次导入日期。',
-        '转正固定薪资与绩效标准按 80%/20% 填写，试用期底薪相同、绩效为 0。',
+        '转正固定薪资与绩效标准按实际金额填写，不限制比例；试用期底薪相同、绩效为 0。',
+        '日期和薪资列支持本行引用、四则运算、括号、ROUND 和 EDATE；其他公式请先转为实际值。',
         '请勿修改表头、工作表名称与列顺序；原始文件和各列原值保留在导入批次中。']
     },
     att: {
@@ -272,7 +274,7 @@
       n.innerHTML = '<span>' + Q.icon('check') + '</span><div><b>全部行校验通过。</b>' + rows.length + ' 行绩效系数已入库。上一版由 ' + Q.perfErrorRows().map(function (r) { return '第 ' + r.row + ' 行'; }).join('、') + ' 组成的错误行已全部修正并重新校验通过。</div>';
     } else {
       n.className = 'callout is-warn';
-      n.innerHTML = '<span>' + Q.icon('warn') + '</span><div><b>正确行先导入、错误行保留待修。</b>本次上传共 ' + rows.length + ' 行，' + (rows.length - errCount) + ' 行已入库，' + errCount + ' 行未导入。错误行不会阻塞其他行的导入，但在修正前，对应员工无法参与工资试算。</div>';
+      n.innerHTML = '<span>' + Q.icon('warn') + '</span><div><b>正确行先导入，失败原因只读保留。</b>本次上传共 ' + rows.length + ' 行，' + (rows.length - errCount) + ' 行已入库，' + errCount + ' 行未导入。错误行不会阻塞其他行的导入，但在修正前，对应员工无法参与工资试算。</div>';
     }
 
     Q.q('#pv-head').innerHTML = '<tr><th>原始行号</th><th>员工标识</th><th>期间</th><th class="n">绩效系数</th><th>校验结果</th><th style="min-width:150px">说明</th></tr>';
@@ -289,7 +291,7 @@
     }
     Q.q('#pv-body').innerHTML = body;
     Q.q('#preview-actions').innerHTML = errCount
-      ? '<a class="btn btn-sm btn-primary" href="import-batch.html">去修正 ' + errCount + ' 行错误</a>'
+      ? '<a class="btn btn-sm btn-primary" href="import-batch.html?mode=edit">去修正 ' + errCount + ' 行错误</a>'
       : '<button class="btn btn-sm" data-toast="已重新上传修正版并校验通过（原型演示）" data-toast-kind="ok">上传修正版</button>';
   }
 

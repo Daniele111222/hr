@@ -1,8 +1,11 @@
-from fastapi import APIRouter, Depends, HTTPException, status
+from typing import Annotated
+
+from fastapi import APIRouter, Depends, HTTPException, Query, status
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from paylite.api.deps import get_db
+from paylite.api.pagination import Page, PageParams
 from paylite.api.schemas import (
     CityIn,
     CityOut,
@@ -11,9 +14,11 @@ from paylite.api.schemas import (
     CompanyOut,
     CompanyPatch,
     DepartmentIn,
+    DepartmentListOut,
     DepartmentOut,
     DepartmentPatch,
     SubjectDepartmentIn,
+    SubjectDepartmentListOut,
     SubjectDepartmentOut,
     SubjectDepartmentPatch,
     SubjectIn,
@@ -29,6 +34,7 @@ from paylite.db.models import (
     Subject,
     SubjectDepartment,
 )
+from paylite.services import organization as organization_service
 
 router = APIRouter(prefix="/organization", tags=["organization"])
 
@@ -66,9 +72,14 @@ def delete_company(db: Session = Depends(get_db)):
     raise HTTPException(409, "目标公司不能删除")
 
 
-@router.get("/cities", response_model=list[CityOut])
-def list_cities(db: Session = Depends(get_db)):
-    return list(db.scalars(select(City).order_by(City.code)))
+@router.get("/cities", response_model=Page[CityOut])
+def list_cities(page: Annotated[PageParams, Query()], db: Session = Depends(get_db)):
+    return organization_service.city_page(db, page.page_no, page.page_size)
+
+
+@router.get("/cities/options", response_model=list[CityOut])
+def city_options(db: Session = Depends(get_db)):
+    return list(db.scalars(select(City).order_by(City.code, City.id)))
 
 
 @router.post("/cities", response_model=CityOut, status_code=201)
@@ -103,9 +114,14 @@ def delete_city(city_id: int, db: Session = Depends(get_db)):
     db.commit()
 
 
-@router.get("/subjects", response_model=list[SubjectOut])
-def list_subjects(db: Session = Depends(get_db)):
-    return list(db.scalars(select(Subject).order_by(Subject.code)))
+@router.get("/subjects", response_model=Page[SubjectOut])
+def list_subjects(page: Annotated[PageParams, Query()], db: Session = Depends(get_db)):
+    return organization_service.subject_page(db, page.page_no, page.page_size)
+
+
+@router.get("/subjects/options", response_model=list[SubjectOut])
+def subject_options(db: Session = Depends(get_db)):
+    return list(db.scalars(select(Subject).order_by(Subject.code, Subject.id)))
 
 
 @router.post("/subjects", response_model=SubjectOut, status_code=201)
@@ -148,9 +164,14 @@ def delete_subject(subject_id: int, db: Session = Depends(get_db)):
     db.commit()
 
 
-@router.get("/departments", response_model=list[DepartmentOut])
-def list_departments(db: Session = Depends(get_db)):
-    return list(db.scalars(select(Department).order_by(Department.code)))
+@router.get("/departments", response_model=Page[DepartmentListOut])
+def list_departments(page: Annotated[PageParams, Query()], db: Session = Depends(get_db)):
+    return organization_service.department_page(db, page.page_no, page.page_size)
+
+
+@router.get("/departments/options", response_model=list[DepartmentOut])
+def department_options(db: Session = Depends(get_db)):
+    return list(db.scalars(select(Department).order_by(Department.code, Department.id)))
 
 
 @router.post("/departments", response_model=DepartmentOut, status_code=201)
@@ -201,11 +222,18 @@ def delete_department(department_id: int, db: Session = Depends(get_db)):
     db.commit()
 
 
-@router.get("/subject-departments", response_model=list[SubjectDepartmentOut])
-def list_subject_departments(db: Session = Depends(get_db)):
+@router.get("/subject-departments", response_model=Page[SubjectDepartmentListOut])
+def list_subject_departments(page: Annotated[PageParams, Query()], db: Session = Depends(get_db)):
+    return organization_service.subject_department_page(db, page.page_no, page.page_size)
+
+
+@router.get("/subject-departments/options", response_model=list[SubjectDepartmentOut])
+def subject_department_options(db: Session = Depends(get_db)):
     return list(
         db.scalars(
-            select(SubjectDepartment).order_by(SubjectDepartment.subject_id, SubjectDepartment.code)
+            select(SubjectDepartment).order_by(
+                SubjectDepartment.subject_id, SubjectDepartment.code, SubjectDepartment.id
+            )
         )
     )
 

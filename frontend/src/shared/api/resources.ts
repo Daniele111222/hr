@@ -27,6 +27,13 @@ export type AttendanceRule = components["schemas"]["AttendanceRuleOut"];
 export type Subject = components["schemas"]["SubjectOut"];
 export type Department = components["schemas"]["DepartmentOut"];
 export type SubjectDepartment = components["schemas"]["SubjectDepartmentOut"];
+export type DepartmentList = components["schemas"]["DepartmentListOut"];
+export type SubjectDepartmentList =
+  components["schemas"]["SubjectDepartmentListOut"];
+export type Page<T> = Omit<components["schemas"]["Page_CityOut_"], "items"> & {
+  items: T[];
+};
+export type PageParams = Pick<Page<unknown>, "page_no" | "page_size">;
 export type Employee = components["schemas"]["EmployeeOut"];
 
 export type ImportRow = components["schemas"]["ImportRowOut"];
@@ -61,6 +68,11 @@ const json = (method: string, body?: unknown): RequestInit => ({
   method,
   body: body === undefined ? undefined : JSON.stringify(body),
 });
+const pageQuery = (page: PageParams) =>
+  new URLSearchParams({
+    page_no: String(page.page_no),
+    page_size: String(page.page_size),
+  }).toString();
 const upload = async <T>(path: string, form: FormData): Promise<T> => {
   const response = await fetch(`${base}${path}`, {
     method: "POST",
@@ -82,7 +94,9 @@ export const resources = {
     request<Company>("/organization/company", json("POST", v)),
   updateCompany: (v: unknown) =>
     request<Company>("/organization/company", json("PATCH", v)),
-  cities: () => request<City[]>("/organization/cities"),
+  cities: () => request<City[]>("/organization/cities/options"),
+  cityPage: (page: PageParams) =>
+    request<Page<City>>(`/organization/cities?${pageQuery(page)}`),
   cityRules: () => request<CityRule[]>("/rules/city-rules"),
   createCityRule: (v: unknown) =>
     request<CityRule>("/rules/city-rules", json("POST", v)),
@@ -95,14 +109,20 @@ export const resources = {
     request<City>(`/organization/cities/${id}`, json("PATCH", v)),
   deleteCity: (id: number) =>
     request<void>(`/organization/cities/${id}`, json("DELETE")),
-  subjects: () => request<Subject[]>("/organization/subjects"),
+  subjects: () => request<Subject[]>("/organization/subjects/options"),
+  subjectPage: (page: PageParams) =>
+    request<Page<Subject>>(`/organization/subjects?${pageQuery(page)}`),
   createSubject: (v: unknown) =>
     request<Subject>("/organization/subjects", json("POST", v)),
   updateSubject: (id: number, v: unknown) =>
     request<Subject>(`/organization/subjects/${id}`, json("PATCH", v)),
   deleteSubject: (id: number) =>
     request<void>(`/organization/subjects/${id}`, json("DELETE")),
-  departments: () => request<Department[]>("/organization/departments"),
+  departments: () => request<Department[]>("/organization/departments/options"),
+  departmentPage: (page: PageParams) =>
+    request<Page<DepartmentList>>(
+      `/organization/departments?${pageQuery(page)}`,
+    ),
   createDepartment: (v: unknown) =>
     request<Department>("/organization/departments", json("POST", v)),
   updateDepartment: (id: number, v: unknown) =>
@@ -110,7 +130,11 @@ export const resources = {
   deleteDepartment: (id: number) =>
     request<void>(`/organization/departments/${id}`, json("DELETE")),
   subjectDepartments: () =>
-    request<SubjectDepartment[]>("/organization/subject-departments"),
+    request<SubjectDepartment[]>("/organization/subject-departments/options"),
+  subjectDepartmentPage: (page: PageParams) =>
+    request<Page<SubjectDepartmentList>>(
+      `/organization/subject-departments?${pageQuery(page)}`,
+    ),
   createSubjectDepartment: (v: unknown) =>
     request<SubjectDepartment>(
       "/organization/subject-departments",

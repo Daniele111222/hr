@@ -59,6 +59,23 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/organization/cities/options": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** City Options */
+        get: operations["city_options_organization_cities_options_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/organization/cities/{city_id}": {
         parameters: {
             query?: never;
@@ -89,6 +106,23 @@ export interface paths {
         put?: never;
         /** Create Subject */
         post: operations["create_subject_organization_subjects_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/organization/subjects/options": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Subject Options */
+        get: operations["subject_options_organization_subjects_options_get"];
+        put?: never;
+        post?: never;
         delete?: never;
         options?: never;
         head?: never;
@@ -131,6 +165,23 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/organization/departments/options": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Department Options */
+        get: operations["department_options_organization_departments_options_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/organization/departments/{department_id}": {
         parameters: {
             query?: never;
@@ -161,6 +212,23 @@ export interface paths {
         put?: never;
         /** Create Subject Department */
         post: operations["create_subject_department_organization_subject_departments_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/organization/subject-departments/options": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Subject Department Options */
+        get: operations["subject_department_options_organization_subject_departments_options_get"];
+        put?: never;
+        post?: never;
         delete?: never;
         options?: never;
         head?: never;
@@ -1244,6 +1312,21 @@ export interface components {
             /** Parent Id */
             parent_id?: number | null;
         };
+        /** DepartmentListOut */
+        DepartmentListOut: {
+            /** Company Id */
+            company_id: number;
+            /** Code */
+            code: string;
+            /** Name */
+            name: string;
+            /** Parent Id */
+            parent_id?: number | null;
+            /** Id */
+            id: number;
+            /** Parent Name */
+            parent_name: string | null;
+        };
         /** DepartmentOut */
         DepartmentOut: {
             /** Company Id */
@@ -1614,6 +1697,50 @@ export interface components {
             payroll_batch_id: number;
             /** Subject Name */
             subject_name: string;
+        };
+        /** Page[CityOut] */
+        Page_CityOut_: {
+            /** Items */
+            items: components["schemas"]["CityOut"][];
+            /** Total */
+            total: number;
+            /** Page No */
+            page_no: number;
+            /** Page Size */
+            page_size: number;
+        };
+        /** Page[DepartmentListOut] */
+        Page_DepartmentListOut_: {
+            /** Items */
+            items: components["schemas"]["DepartmentListOut"][];
+            /** Total */
+            total: number;
+            /** Page No */
+            page_no: number;
+            /** Page Size */
+            page_size: number;
+        };
+        /** Page[SubjectDepartmentListOut] */
+        Page_SubjectDepartmentListOut_: {
+            /** Items */
+            items: components["schemas"]["SubjectDepartmentListOut"][];
+            /** Total */
+            total: number;
+            /** Page No */
+            page_no: number;
+            /** Page Size */
+            page_size: number;
+        };
+        /** Page[SubjectOut] */
+        Page_SubjectOut_: {
+            /** Items */
+            items: components["schemas"]["SubjectOut"][];
+            /** Total */
+            total: number;
+            /** Page No */
+            page_no: number;
+            /** Page Size */
+            page_size: number;
         };
         /** PayrollBatchCreate */
         PayrollBatchCreate: {
@@ -2241,6 +2368,25 @@ export interface components {
             /** Name */
             name: string;
         };
+        /** SubjectDepartmentListOut */
+        SubjectDepartmentListOut: {
+            /** Company Id */
+            company_id: number;
+            /** Subject Id */
+            subject_id: number;
+            /** Department Id */
+            department_id: number;
+            /** Code */
+            code: string;
+            /** Name */
+            name: string;
+            /** Id */
+            id: number;
+            /** Subject Name */
+            subject_name: string;
+            /** Department Name */
+            department_name: string;
+        };
         /** SubjectDepartmentOut */
         SubjectDepartmentOut: {
             /** Company Id */
@@ -2440,7 +2586,10 @@ export interface operations {
     };
     list_cities_organization_cities_get: {
         parameters: {
-            query?: never;
+            query?: {
+                page_no?: number;
+                page_size?: number;
+            };
             header?: never;
             path?: never;
             cookie?: never;
@@ -2453,7 +2602,16 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["CityOut"][];
+                    "application/json": components["schemas"]["Page_CityOut_"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
                 };
             };
         };
@@ -2487,6 +2645,26 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    city_options_organization_cities_options_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CityOut"][];
                 };
             };
         };
@@ -2557,7 +2735,10 @@ export interface operations {
     };
     list_subjects_organization_subjects_get: {
         parameters: {
-            query?: never;
+            query?: {
+                page_no?: number;
+                page_size?: number;
+            };
             header?: never;
             path?: never;
             cookie?: never;
@@ -2570,7 +2751,16 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["SubjectOut"][];
+                    "application/json": components["schemas"]["Page_SubjectOut_"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
                 };
             };
         };
@@ -2604,6 +2794,26 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    subject_options_organization_subjects_options_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SubjectOut"][];
                 };
             };
         };
@@ -2674,7 +2884,10 @@ export interface operations {
     };
     list_departments_organization_departments_get: {
         parameters: {
-            query?: never;
+            query?: {
+                page_no?: number;
+                page_size?: number;
+            };
             header?: never;
             path?: never;
             cookie?: never;
@@ -2687,7 +2900,16 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["DepartmentOut"][];
+                    "application/json": components["schemas"]["Page_DepartmentListOut_"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
                 };
             };
         };
@@ -2721,6 +2943,26 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    department_options_organization_departments_options_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DepartmentOut"][];
                 };
             };
         };
@@ -2791,7 +3033,10 @@ export interface operations {
     };
     list_subject_departments_organization_subject_departments_get: {
         parameters: {
-            query?: never;
+            query?: {
+                page_no?: number;
+                page_size?: number;
+            };
             header?: never;
             path?: never;
             cookie?: never;
@@ -2804,7 +3049,16 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["SubjectDepartmentOut"][];
+                    "application/json": components["schemas"]["Page_SubjectDepartmentListOut_"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
                 };
             };
         };
@@ -2838,6 +3092,26 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    subject_department_options_organization_subject_departments_options_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SubjectDepartmentOut"][];
                 };
             };
         };

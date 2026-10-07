@@ -5,6 +5,7 @@ import re
 from datetime import date, datetime
 from decimal import Decimal, InvalidOperation
 from typing import Any
+from uuid import uuid4
 from zoneinfo import ZoneInfo
 
 from openpyxl.utils import get_column_letter
@@ -26,6 +27,8 @@ from paylite.db.models import (
     SubjectDepartment,
 )
 from paylite.excel.employee_template import (
+    AMOUNT_FIELDS,
+    DATE_FIELDS,
     HEADERS,
     LEGACY_HEADERS,
     LEGACY_TEMPLATE_VERSION,
@@ -33,6 +36,7 @@ from paylite.excel.employee_template import (
     TEMPLATE_VERSION,
     WorkbookFormatError,
     parse_workbook,
+    resolve_employee_formulas,
 )
 
 ID_PATTERN = re.compile(r"^\d{17}[\dX]$")
@@ -138,15 +142,6 @@ def _validate_values(
     id_number = raw["身份证号"].upper()
     if id_number and not ID_PATTERN.fullmatch(id_number):
         errors.append(_issue("INVALID_ID", "身份证号", "身份证号须为 18 位文本", row_number))
-    if id_number and db.scalar(
-        select(Employee.id).where(
-            Employee.company_id == company_id,
-            Employee.id_number == id_number,
-        )
-    ):
-        errors.append(
-            _issue("EMPLOYEE_EXISTS", "身份证号", "身份证号已存在，请到员工管理核对", row_number)
-        )
     if (
         not auto_number
         and raw["员工编号"]
@@ -185,13 +180,6 @@ def _validate_values(
     performance_base = _money(raw["绩效基数"], "绩效基数", row_number, errors)
     if status == "in_probation" and performance_base not in (None, Decimal("0")):
         errors.append(_issue("PROBATION_PAY", "绩效基数", "试用期绩效基数必须为 0", row_number))
-    if status != "in_probation" and fixed_salary is not None and performance_base is not None:
-        if performance_base * 4 != fixed_salary:
-            errors.append(
-                _issue(
-                    "SALARY_RATIO", "绩效基数", "固定薪资和绩效基数须按 80%/20% 表达", row_number
-                )
-            )
     subject = (
         db.scalar(
             select(Subject).where(
@@ -323,6 +311,9 @@ def _validate(
                     _issue("DEPARTMENT_LEVEL_GAP", field, "部门层级不能跳级填写", row_number)
                 )
             break
+        if len(raw[field]) > 200:
+            errors.append(_issue("TOO_LONG", field, "部门名称不能超过 200 字", row_number))
+            break
         departments = list(
             db.scalars(
                 select(Department).where(
@@ -336,6 +327,16 @@ def _validate(
                 )
             )
         )
+        if not departments and subject and (parent_ids is None or len(parent_ids) == 1):
+            department = Department(
+                company_id=company_id,
+                parent_id=parent_ids[0] if parent_ids else None,
+                code=f"IMP-{uuid4().hex}",
+                name=raw[field],
+            )
+            db.add(department)
+            db.flush()
+            departments = [department]
         if not departments:
             errors.append(
                 _issue("DEPARTMENT_NOT_FOUND", field, "该层级部门名称无法唯一匹配", row_number)
@@ -357,6 +358,16 @@ def _validate(
         else []
     )
     relation = relations[0] if len(relations) == 1 else None
+    if subject and not relations and len(departments) == 1:
+        relation = SubjectDepartment(
+            company_id=company_id,
+            subject_id=subject.id,
+            department_id=departments[0].id,
+            code=f"IMP-{uuid4().hex}",
+            name=departments[0].name,
+        )
+        db.add(relation)
+        db.flush()
     if subject and relation is None:
         errors.append(
             _issue(
@@ -369,21 +380,24 @@ def _validate(
     values["部门编码"] = relation.code if relation else ""
 
     cities = list(db.scalars(select(City)))
-    subject_name = subject.name if subject else raw["公司主体全称"]
-    if subject_name.endswith("分公司"):
-        matches = [
-            city
-            for city in cities
-            if subject_name.endswith(f"{city.name.removesuffix('市')}分公司")
-            or subject_name.endswith(f"{city.name}分公司")
-        ]
-    else:
-        locations = re.findall(r"[（(]([^（）()]+)[）)]", subject_name)
-        matches = [
-            city
-            for city in cities
-            if city.name.removesuffix("市") in locations or city.name in locations
-        ]
+    subject_name = (subject.name if subject else raw["公司主体全称"]).strip()
+    locations = {
+        location.strip().removesuffix("市")
+        for location in re.findall(r"[（(]([^（）()]+)[）)]", subject_name)
+    }
+    matches = []
+    for city in cities:
+        city_name = city.name.strip().removesuffix("市")
+        if not city_name:
+            continue
+        if subject_name.endswith("分公司"):
+            matched = any(
+                subject_name.endswith(f"{name}分公司") for name in (city_name, f"{city_name}市")
+            )
+        else:
+            matched = city_name in locations or subject_name.startswith(city_name)
+        if matched:
+            matches.append(city)
     values["base城市编码"] = matches[0].code if len(matches) == 1 else ""
     if len(matches) != 1:
         errors.append(
@@ -410,15 +424,6 @@ def _validate(
     performance = _money(raw["转正绩效标准"], "绩效基数", row_number, errors)
     if not raw["转正绩效标准"]:
         errors.append(_issue("REQUIRED", "转正绩效标准", "转正绩效标准不能为空", row_number))
-    if fixed is not None and performance is not None and performance * 4 != fixed:
-        errors.append(
-            _issue(
-                "SALARY_RATIO",
-                "转正绩效标准",
-                "转正固定薪资和绩效标准须按 80%/20% 表达",
-                row_number,
-            )
-        )
     probation_fixed = _money(raw["试用期底薪"], "试用期底薪", row_number, errors)
     probation_performance = _money(raw["试用期绩效"], "试用期绩效", row_number, errors)
     if probation_fixed is not None and fixed is not None and probation_fixed != fixed:
@@ -433,7 +438,12 @@ def _validate(
     normalized, validation_errors = _validate_values(
         db, company_id, row_number, values, auto_number=True
     )
-    errors.extend(validation_errors)
+    # base 城市编码是推导值，匹配失败已报 CITY_NOT_FOUND，不能映射成主体名称为空。
+    errors.extend(
+        error
+        for error in validation_errors
+        if not (error["code"] == "REQUIRED" and error["field"] == "base城市编码")
+    )
     for error in errors:
         field = fields.get(error["field"], error["field"])
         # 自动生成的信息没有模板列；相关错误定位到它的实际输入来源。
@@ -546,6 +556,7 @@ def _serialize(batch: ImportBatch, rows: list[ImportRow] | None = None) -> dict[
             "correction_history": row.correction_history,
         }
         for row in rows or []
+        if row.validation_status != "skipped"
     ]
     return {
         "id": batch.id,
@@ -557,7 +568,7 @@ def _serialize(batch: ImportBatch, rows: list[ImportRow] | None = None) -> dict[
         "field_mapping": batch.field_mapping,
         "status": batch.status,
         "uploaded_at": batch.uploaded_at,
-        "total_rows": len(rows or []),
+        "total_rows": len(items),
         "success_rows": sum(row.validation_status == "imported" for row in rows or []),
         "error_rows": sum(row.validation_status == "invalid" for row in rows or []),
         "rows": items if rows is not None else None,
@@ -598,18 +609,51 @@ def list_batches(db: Session, company_id: int) -> list[dict[str, Any]]:
     return [_serialize(batch, _rows(db, batch.id)) | {"rows": None} for batch in batches]
 
 
+def _identity(raw: dict[str, str]) -> str:
+    return raw.get("证件号码", raw.get("身份证号", "")).strip().upper()
+
+
+def _existing_identity(db: Session, company_id: int, identity: str) -> bool:
+    return bool(
+        ID_PATTERN.fullmatch(identity)
+        and db.scalar(
+            select(Employee.id).where(
+                Employee.company_id == company_id,
+                func.upper(func.trim(Employee.id_number)) == identity,
+            )
+        )
+        is not None
+    )
+
+
+def _set_batch_status(db: Session, batch: ImportBatch) -> None:
+    db.flush()
+    invalid, imported = db.execute(
+        select(
+            func.count().filter(ImportRow.validation_status == "invalid"),
+            func.count().filter(ImportRow.validation_status == "imported"),
+        ).where(ImportRow.import_batch_id == batch.id)
+    ).one()
+    batch.status = (
+        "partially_imported" if invalid and imported else "rejected" if invalid else "imported"
+    )
+
+
 def upload_batch(db: Session, company_id: int, filename: str, content: bytes) -> dict[str, Any]:
-    if db.get(Company, company_id) is None:
+    # ponytail: 同公司导入串行，吞吐受限时再细化为部门路径锁。
+    if db.scalar(select(Company.id).where(Company.id == company_id).with_for_update()) is None:
         raise ImportFailure(404, "目标公司不存在")
     digest = hashlib.sha256(content).hexdigest()
-    if db.scalar(
+    existing_batch = db.scalar(
         select(ImportBatch.id).where(
             ImportBatch.company_id == company_id,
             ImportBatch.import_type == "employee_master",
             ImportBatch.file_sha256 == digest,
         )
-    ):
-        raise ImportFailure(409, "同一公司已导入过完全相同的文件")
+    )
+    if existing_batch is not None:
+        db.commit()
+        return get_batch(db, existing_batch)
     try:
         workbook_rows = parse_workbook(content)
     except WorkbookFormatError as exc:
@@ -630,53 +674,59 @@ def upload_batch(db: Session, company_id: int, filename: str, content: bytes) ->
     )
     db.add(batch)
     db.flush()
+    existing_ids = {
+        value.strip().upper()
+        for value in db.scalars(select(Employee.id_number).where(Employee.company_id == company_id))
+    }
     seen_ids: set[str] = set()
     seen_numbers: set[str] = set()
-    successful = 0
     for source in workbook_rows:
-        normalized, errors = _validate(
-            db,
-            company_id,
-            source.number,
-            source.raw,
-            source.errors,
-            imported_on=batch.uploaded_at.astimezone(ZoneInfo("Asia/Shanghai")).date(),
+        id_number = _identity(source.raw)
+        duplicate = bool(ID_PATTERN.fullmatch(id_number)) and (
+            id_number in existing_ids or id_number in seen_ids
         )
-        identity_field = "证件号码" if "证件号码" in source.raw else "身份证号"
-        id_number = source.raw[identity_field].upper()
-        employee_no = source.raw.get("员工编号")
-        if id_number in seen_ids:
-            errors.append(
-                _issue("DUPLICATE_IN_FILE", identity_field, "同一文件中证件号码重复", source.number)
+        if ID_PATTERN.fullmatch(id_number):
+            seen_ids.add(id_number)
+        normalized = None
+        errors = []
+        status = "skipped"
+        if not duplicate:
+            row_transaction = db.begin_nested()
+            normalized, errors = _validate(
+                db,
+                company_id,
+                source.number,
+                source.raw,
+                source.errors,
+                imported_on=batch.uploaded_at.astimezone(ZoneInfo("Asia/Shanghai")).date(),
             )
-        if employee_no and employee_no in seen_numbers:
-            errors.append(
-                _issue("DUPLICATE_IN_FILE", "员工编号", "同一文件中员工编号重复", source.number)
-            )
-        seen_ids.add(id_number)
-        if employee_no:
-            seen_numbers.add(employee_no)
-        if errors:
-            normalized = None
+            employee_no = source.raw.get("员工编号")
+            if employee_no and employee_no in seen_numbers:
+                errors.append(
+                    _issue("DUPLICATE_IN_FILE", "员工编号", "同一文件中员工编号重复", source.number)
+                )
+            if employee_no:
+                seen_numbers.add(employee_no)
+            if errors:
+                row_transaction.rollback()
+                normalized = None
+            else:
+                row_transaction.commit()
+            status = "invalid" if errors else "imported"
         row = ImportRow(
             import_batch_id=batch.id,
             sheet_name=SHEET_NAME,
             source_row_number=source.number,
-            validation_status="invalid" if errors else "imported",
-            raw_data=source.raw,
+            validation_status=status,
+            raw_data={**source.raw, **source.formulas},
             errors=errors or None,
             normalized_data=None,
         )
         db.add(row)
-        if normalized is not None and not errors:
+        if normalized is not None:
             employee_id = _save_employee(db, normalized)
             row.normalized_data = {"employee_id": employee_id, "id_number": normalized["id_number"]}
-            successful += 1
-    batch.status = (
-        "imported"
-        if successful == len(workbook_rows)
-        else ("partially_imported" if successful else "rejected")
-    )
+    _set_batch_status(db, batch)
     db.commit()
     return get_batch(db, batch.id)
 
@@ -688,6 +738,8 @@ def correct_row(
     values: dict[str, str],
 ) -> dict[str, Any]:
     batch = db.get(ImportBatch, batch_id)
+    if batch is not None and batch.import_type == "employee_master":
+        db.scalar(select(Company.id).where(Company.id == batch.company_id).with_for_update())
     row = db.scalar(
         select(ImportRow)
         .where(
@@ -698,45 +750,80 @@ def correct_row(
     )
     if batch is None or batch.import_type != "employee_master" or row is None:
         raise ImportFailure(404, "导入行不存在")
+    if row.validation_status == "skipped":
+        db.commit()
+        return get_batch(db, batch_id)
     if row.validation_status != "invalid":
         raise ImportFailure(409, "该行已入库，不能重复写入")
     if not values or any(field not in batch.field_mapping for field in values):
         raise ImportFailure(400, "只能修正固定模板中的字段")
     corrected = {**row.raw_data, **(row.correction_values or {}), **values}
-    corrected_fields = {
-        field for entry in row.correction_history for field in entry["values"]
-    } | set(values)
-    workbook_errors = [
-        error
-        for error in row.errors or []
-        if error["code"] in {"FORMULA_NOT_ALLOWED", "EXCEL_ERROR", "IDENTIFIER_NOT_TEXT"}
-        and error["field"] not in corrected_fields
-    ]
-    normalized, errors = _validate(
-        db,
-        batch.company_id,
-        row.source_row_number,
-        corrected,
-        workbook_errors,
-        imported_on=batch.uploaded_at.astimezone(ZoneInfo("Asia/Shanghai")).date(),
+    identity = _identity(corrected)
+    duplicate = _existing_identity(db, batch.company_id, identity) or (
+        bool(ID_PATTERN.fullmatch(identity))
+        and any(
+            other.source_row_number < row.source_row_number
+            and _identity({**other.raw_data, **(other.correction_values or {})}) == identity
+            for other in _rows(db, batch.id)
+        )
     )
+    normalized = None
+    errors = []
+    if duplicate:
+        row.validation_status = "skipped"
+    else:
+        corrected_fields = {
+            field for entry in row.correction_history for field in entry["values"]
+        } | set(values)
+        rejected_formula_fields = {
+            error["field"] for error in row.errors or [] if error["code"] == "FORMULA_NOT_ALLOWED"
+        }
+        formula_fields = {
+            field
+            for field, value in corrected.items()
+            if value.startswith("=")
+            and field in DATE_FIELDS | AMOUNT_FIELDS | corrected_fields | rejected_formula_fields
+        }
+        computed, formula_errors = resolve_employee_formulas(
+            corrected,
+            row.source_row_number,
+            HEADERS if batch.template_version == TEMPLATE_VERSION else LEGACY_HEADERS,
+            formula_fields,
+        )
+        workbook_errors = [
+            error
+            for error in row.errors or []
+            if error["code"] in {"FORMULA_NOT_ALLOWED", "EXCEL_ERROR", "IDENTIFIER_NOT_TEXT"}
+            and error["field"] not in corrected_fields
+            and error["field"] not in formula_fields
+        ]
+        row_transaction = db.begin_nested()
+        normalized, errors = _validate(
+            db,
+            batch.company_id,
+            row.source_row_number,
+            computed,
+            [*workbook_errors, *formula_errors],
+            imported_on=batch.uploaded_at.astimezone(ZoneInfo("Asia/Shanghai")).date(),
+        )
+        if errors:
+            row_transaction.rollback()
+        else:
+            row_transaction.commit()
     row.correction_values = corrected
     row.correction_history = [
         *row.correction_history,
-        {"values": values, "result": "invalid" if errors else "imported", "errors": errors},
+        {
+            "values": values,
+            "result": "skipped" if duplicate else "invalid" if errors else "imported",
+            "errors": errors,
+        },
     ]
     row.errors = errors or None
     if normalized is not None:
         employee_id = _save_employee(db, normalized)
         row.normalized_data = {"employee_id": employee_id, "id_number": normalized["id_number"]}
         row.validation_status = "imported"
-    db.flush()
-    remaining = db.scalar(
-        select(ImportRow.id).where(
-            ImportRow.import_batch_id == batch_id,
-            ImportRow.validation_status == "invalid",
-        )
-    )
-    batch.status = "partially_imported" if remaining else "imported"
+    _set_batch_status(db, batch)
     db.commit()
     return get_batch(db, batch_id)

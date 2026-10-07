@@ -162,7 +162,7 @@ class ImportRow(Base):
             "import_batch_id", "sheet_name", "source_row_number", name="uq_import_row_location"
         ),
         CheckConstraint(
-            "validation_status IN ('valid', 'invalid', 'corrected', 'imported')",
+            "validation_status IN ('valid', 'invalid', 'corrected', 'imported', 'skipped')",
             name="ck_import_row_status",
         ),
         Index("ix_import_row_batch_status", "import_batch_id", "validation_status"),
