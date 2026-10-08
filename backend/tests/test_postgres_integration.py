@@ -49,7 +49,15 @@ from paylite.db.models import (
     Subject,
     SubjectDepartment,
 )
-from paylite.excel.attendance_template import make_template as make_attendance_template
+from paylite.excel.attendance_template import (
+    HEADERS as ATTENDANCE_HEADERS,
+)
+from paylite.excel.attendance_template import (
+    LEGACY_HEADERS as ATTENDANCE_LEGACY_HEADERS,
+)
+from paylite.excel.attendance_template import (
+    make_template as make_attendance_template,
+)
 from paylite.excel.employee_template import (
     HEADERS,
     LEGACY_HEADERS,
@@ -1686,12 +1694,15 @@ def test_attendance_import_partial_correction_and_revision(api_client, db_sessio
             "考勤系统导出",
         ]
 
-    workbook = load_workbook(BytesIO(make_attendance_template()))
-    sheet = workbook["月度考勤"]
+    workbook = Workbook()
+    sheet = workbook.active
+    sheet.title = "月度考勤"
+    sheet.append(["TPL-ATT-v1"])
+    sheet.append(ATTENDANCE_LEGACY_HEADERS)
     sheet.append(row(0))
     sheet.append(row(1, days=0))
     sheet.append(row(0))
-    sheet.append(row(2, late="=1+1"))
+    sheet.append(row(2, late="=SUM(1,1)"))
     content = BytesIO()
     workbook.save(content)
     files = {
@@ -1743,7 +1754,10 @@ def test_attendance_import_partial_correction_and_revision(api_client, db_sessio
         ).status_code
         == 409
     )
-    second = load_workbook(BytesIO(make_attendance_template()))
+    second = Workbook()
+    second.active.title = "月度考勤"
+    second.active.append(["TPL-ATT-v1"])
+    second.active.append(ATTENDANCE_LEGACY_HEADERS)
     second["月度考勤"].append(row(0, late=12))
     second["月度考勤"].append(row(2, days="-1"))
     second["月度考勤"].append(row(2, days="29"))
@@ -1774,6 +1788,130 @@ def test_attendance_import_partial_correction_and_revision(api_client, db_sessio
     assert any(
         error["code"] == "PUNCH_OUT_OF_RANGE" for error in duplicate.json()["rows"][4]["errors"]
     )
+
+
+def test_reference_attendance_import_and_correction(api_client, db_session: Session) -> None:
+    company = Company(code="ATTREF", name="考勤参考表测试公司")
+    db_session.add(company)
+    db_session.flush()
+    subject = Subject(company_id=company.id, code="ATTREFSUB", name="考勤参考表主体")
+    department = Department(company_id=company.id, code="ATTREFDEP", name="测试部门")
+    period = PayrollPeriod(
+        year=2028, month=10, period_start=date(2028, 10, 1), period_end=date(2028, 10, 31)
+    )
+    db_session.add_all([subject, department, period])
+    db_session.flush()
+    relation = SubjectDepartment(
+        company_id=company.id,
+        subject_id=subject.id,
+        department_id=department.id,
+        code="ATTREFREL",
+        name="测试部门",
+    )
+    db_session.add(relation)
+    db_session.flush()
+    batch = PayrollBatch(subject_id=subject.id, payroll_period_id=period.id, batch_type="normal")
+    employees = []
+    for index in range(4):
+        employee = Employee(
+            company_id=company.id,
+            id_number=f"1101011990010152{index}X",
+            employee_no=f"ATTREF-{index}",
+            name=f"考勤参考员工{index}",
+            employee_type="employee",
+            hire_date=date(2020, 1, 1),
+        )
+        db_session.add(employee)
+        db_session.flush()
+        db_session.add(
+            EmployeeAssignment(
+                employee_id=employee.id,
+                subject_id=subject.id,
+                subject_department_id=relation.id,
+                position_title="工程师",
+                effective_from=date(2020, 1, 1),
+            )
+        )
+        employees.append(employee)
+    db_session.add(batch)
+    db_session.commit()
+    workbook = load_workbook(BytesIO(make_attendance_template()))
+    sheet = workbook.active
+    for index, employee in enumerate(employees):
+        values = {
+            "身份证号": employee.id_number,
+            "姓名": employee.name,
+            "公司": subject.name,
+            "试用期工作日天数": "0",
+            "转正工作日天数": "0" if index == 1 else "21",
+            "工作日天数合计": "=R2+S2",
+            "实际出勤天数": "6",
+            "请假外未出勤天数（当月入离职）": "15",
+            "迟到时长": "=ROUND(62.0,2)",
+            "早退时长": "8",
+            "缺卡次数": "1",
+            "病假天数": "=1/2",
+            "产假天数": "2",
+            "年假天数": "1",
+            "事假天数": "0.5",
+            "旷工天数": "0.5",
+            "总扣款": "=ROUND(9999.99,2)",
+            "当月固定薪资标准": "12345.67",
+            "转正标记": "转正",
+        }
+        for field, value in list(values.items()):
+            if value.startswith("="):
+                values[field] = value.replace("R2", f"R{index + 2}").replace("S2", f"S{index + 2}")
+        if index == 2:
+            values["公司"] = "错误主体"
+        if index == 3:
+            values["产假天数"] = "=1/0"
+        sheet.append([values.get(field) for field in ATTENDANCE_HEADERS])
+    output = BytesIO()
+    workbook.save(output)
+    response = api_client.post(
+        f"/imports/attendance?payroll_batch_id={batch.id}",
+        files={"file": ("考勤导入模版.xlsx", output.getvalue())},
+    )
+    assert response.status_code == 201, response.text
+    result = response.json()
+    assert (result["success_rows"], result["error_rows"]) == (1, 3)
+    assert result["template_version"] == "TPL-ATT-v2"
+    assert result["field_mapping"]["总扣款"] == "AS"
+    assert result["rows"][0]["source_row_number"] == 2
+    assert result["rows"][1]["errors"][0]["column"] == "T"
+    assert result["rows"][2]["errors"][0]["field"] == "公司"
+    assert any(error["column"] == "AD" for error in result["rows"][3]["errors"])
+    db_session.expire_all()
+    fact = db_session.scalar(
+        select(AttendanceRecord).where(AttendanceRecord.employee_id == employees[0].id)
+    )
+    assert fact.expected_work_days == Decimal("21")
+    assert fact.paid_leave_days == Decimal("3.50")
+    assert fact.unpaid_leave_days == Decimal("1.00")
+    assert (fact.late_minutes, fact.early_leave_minutes, fact.missed_punch_count) == (62, 8, 1)
+    assert fact.raw_values["总扣款"] == "=ROUND(9999.99,2)"
+    assert result["rows"][0]["raw_data"]["工作日天数合计"] == "=R2+S2"
+    assert "总扣款" not in result["rows"][0]["normalized_data"]
+    corrected = api_client.post(
+        f"/imports/attendance/{result['id']}/rows/{result['rows'][1]['id']}/correct",
+        json={"values": {"转正工作日天数": "21"}},
+    )
+    assert corrected.status_code == 200, corrected.text
+    assert corrected.json()["success_rows"] == 2
+    corrected_row = corrected.json()["rows"][1]
+    assert corrected_row["normalized_data"]["expected_work_days"] == "21"
+    assert corrected_row["raw_data"]["工作日天数合计"] == "=R3+S3"
+    assert "工作日天数合计" not in corrected_row["correction_values"]
+    formula_corrected = api_client.post(
+        f"/imports/attendance/{result['id']}/rows/{result['rows'][3]['id']}/correct",
+        json={"values": {"产假天数": "=1+1"}},
+    )
+    assert formula_corrected.status_code == 200, formula_corrected.text
+    assert formula_corrected.json()["success_rows"] == 3
+    assert formula_corrected.json()["rows"][3]["normalized_data"]["paid_leave_days"] == "3.5"
+    db_session.expire_all()
+    assert db_session.get(PayrollPeriod, period.id).attendance_input_revision == 3
 
 
 def test_performance_import_partial_correction_and_probation(

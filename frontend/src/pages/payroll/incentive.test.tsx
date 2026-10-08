@@ -55,10 +55,11 @@ const incentive = {
   input_fingerprint: "abc",
 };
 
-function renderPage() {
-  const client = new QueryClient({
+function renderPage(
+  client = new QueryClient({
     defaultOptions: { queries: { retry: false }, mutations: { retry: false } },
-  });
+  }),
+) {
   return render(
     <AntdApp>
       <QueryClientProvider client={client}>
@@ -113,11 +114,27 @@ test("显示全公司激励池、候选快照并可计算", async () => {
     },
   );
   vi.stubGlobal("fetch", fetchMock);
-  renderPage();
+  const client = new QueryClient({
+    defaultOptions: { queries: { retry: false } },
+  });
+  const dependentKeys = [
+    ["payroll", "confirmation", 2],
+    ["exports", "preview", "payroll", 2],
+  ];
+  dependentKeys.forEach((key) => client.setQueryData(key, {}));
+  renderPage(client);
 
   expect(await screen.findByText("全公司考勤激励")).toBeInTheDocument();
   expect(screen.getByText("¥100.00")).toBeInTheDocument();
   expect(screen.getByText("张三 · E007")).toBeInTheDocument();
+  expect(screen.getByRole("link", { name: "进入核算 #2" })).toHaveAttribute(
+    "href",
+    "/payroll/batches/2?period=2026-09",
+  );
+  expect(screen.getByRole("link", { name: "返回本期核算" })).toHaveAttribute(
+    "href",
+    "/payroll?period=2026-09",
+  );
   await userEvent
     .setup()
     .click(screen.getByRole("button", { name: /计算本期激励/ }));
@@ -127,6 +144,8 @@ test("显示全公司激励池、候选快照并可计算", async () => {
       expect.objectContaining({ method: "POST" }),
     ),
   );
+  for (const key of dependentKeys)
+    expect(client.getQueryState(key)?.isInvalidated).toBe(true);
 });
 
 test("数据未就绪时禁用计算", async () => {
@@ -146,4 +165,8 @@ test("数据未就绪时禁用计算", async () => {
   renderPage();
   expect(await screen.findByText("全公司数据尚未就绪")).toBeInTheDocument();
   expect(screen.getByRole("button", { name: /计算本期激励/ })).toBeDisabled();
+  expect(screen.getByRole("link", { name: "去处理本期批次" })).toHaveAttribute(
+    "href",
+    "/payroll?period=2026-09",
+  );
 });

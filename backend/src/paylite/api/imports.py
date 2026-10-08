@@ -1,5 +1,6 @@
 from datetime import datetime
 from typing import Any
+from urllib.parse import quote
 
 from fastapi import APIRouter, Depends, File, HTTPException, Query, UploadFile
 from fastapi.responses import Response
@@ -7,9 +8,6 @@ from pydantic import BaseModel, Field
 from sqlalchemy.orm import Session
 
 from paylite.api.deps import get_db
-from paylite.excel.attendance_template import (
-    TEMPLATE_VERSION as ATTENDANCE_TEMPLATE_VERSION,
-)
 from paylite.excel.attendance_template import (
     make_template as make_attendance_template,
 )
@@ -140,7 +138,8 @@ def download_attendance_template() -> Response:
         media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
         headers={
             "Content-Disposition": (
-                f'attachment; filename="attendance-template-{ATTENDANCE_TEMPLATE_VERSION}.xlsx"'
+                "attachment; filename=\"attendance-template.xlsx\"; filename*=UTF-8''"
+                + quote("考勤导入模版.xlsx")
             )
         },
     )

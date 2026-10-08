@@ -38,7 +38,16 @@ const navigation: MenuProps["items"] = [
     label: "工资处理",
     children: [
       { key: "/imports", icon: <UploadOutlined />, label: "数据导入" },
-      { key: "/payroll", icon: <CalculatorOutlined />, label: "工资核算" },
+      {
+        key: "payroll-group",
+        icon: <CalculatorOutlined />,
+        label: "工资核算",
+        children: [
+          { key: "/payroll", label: "期间与批次" },
+          { key: "/payroll/incentive", label: "考勤激励" },
+          { key: "/payroll/ledger", label: "工资台账" },
+        ],
+      },
     ],
   },
   {
@@ -147,10 +156,13 @@ export function AppLayout() {
           className={styles.menu}
           mode="inline"
           items={navigation}
+          defaultOpenKeys={["payroll-group"]}
           selectedKeys={[
-            location.pathname.startsWith("/payroll/")
+            location.pathname.startsWith("/payroll/batches/")
               ? "/payroll"
-              : location.pathname,
+              : location.pathname.startsWith("/payroll/ledger")
+                ? "/payroll/ledger"
+                : location.pathname,
           ]}
           onClick={({ key }) =>
             navigate(`${key}${activePeriod ? `?period=${activePeriod}` : ""}`)

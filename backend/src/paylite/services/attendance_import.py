@@ -6,6 +6,7 @@ import re
 from decimal import Decimal, InvalidOperation
 from typing import Any
 
+from openpyxl.utils import get_column_letter
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
@@ -18,7 +19,15 @@ from paylite.db.models import (
     PayrollPeriod,
     Subject,
 )
-from paylite.excel.attendance_template import HEADERS, SHEET_NAME, TEMPLATE_VERSION, parse_workbook
+from paylite.excel.attendance_template import (
+    HEADERS,
+    LEGACY_HEADERS,
+    LEGACY_TEMPLATE_VERSION,
+    SHEET_NAME,
+    TEMPLATE_VERSION,
+    parse_workbook,
+    resolve_attendance_formulas,
+)
 from paylite.excel.employee_template import WorkbookFormatError
 from paylite.services.employee_import import ImportFailure
 from paylite.services.payroll_workbench import employee_scope
@@ -27,7 +36,8 @@ ID_PATTERN = re.compile(r"^\d{17}[\dX]$")
 
 
 def _issue(code: str, field: str, message: str, row: int) -> dict[str, str]:
-    column = chr(65 + HEADERS.index(field))
+    headers = HEADERS if field in HEADERS else LEGACY_HEADERS
+    column = get_column_letter(headers.index(field) + 1)
     return {
         "code": code,
         "field": field,
@@ -71,11 +81,52 @@ def _validate(
     raw: dict[str, str],
 ) -> tuple[dict[str, Any] | None, list[dict[str, str]]]:
     errors: list[dict[str, str]] = []
-    for field in HEADERS:
-        if raw[field].startswith("="):
-            errors.append(_issue("FORMULA_NOT_ALLOWED", field, "导入模板不接受公式", number))
+    reference = "公司" in raw
+    fields = (
+        {
+            "应出勤天数": "工作日天数合计",
+            "迟到分钟": "迟到时长",
+            "早退分钟": "早退时长",
+            "忘打卡次数": "缺卡次数",
+            "无薪请假天数": "事假天数",
+            "有薪请假天数": "病假天数",
+        }
+        if reference
+        else {}
+    )
+    values = dict(raw)
+    if reference:
+        for old, new in fields.items():
+            values[old] = raw[new]
+        for target, sources in (
+            ("无薪请假天数", ("事假天数", "旷工天数")),
+            (
+                "有薪请假天数",
+                (
+                    "病假天数",
+                    "年假天数",
+                    "产假天数",
+                    "产检假天数",
+                    "陪产假天数",
+                    "育儿假天数",
+                    "婚假天数",
+                    "丧假天数",
+                    "其他福利假",
+                    "调休天数",
+                ),
+            ),
+        ):
+            amounts = [_decimal(raw[field], field, number, errors) for field in sources]
+            values[target] = str(sum((value for value in amounts if value is not None), Decimal(0)))
+            fields[target] = next(
+                (field for field in sources if raw[field] not in {"", "0"}), sources[0]
+            )
+        values["补卡次数"] = "0"
+        values["来源说明"] = "考勤导入模版"
     identity = raw["身份证号"].upper()
     subject = db.get(Subject, batch.subject_id)
+    if reference and raw["公司"] != subject.name:
+        errors.append(_issue("SUBJECT_MISMATCH", "公司", "公司须与所选工资批次主体一致", number))
     employee = (
         db.scalar(
             select(Employee).where(
@@ -91,13 +142,13 @@ def _validate(
         )
     if not raw["姓名"] or (employee and raw["姓名"] != employee.name):
         errors.append(_issue("NAME_MISMATCH", "姓名", "姓名必须与员工主档一致", number))
-    days = _decimal(raw["应出勤天数"], "应出勤天数", number, errors, required=True)
-    late = _integer(raw["迟到分钟"], "迟到分钟", number, errors)
-    early = _integer(raw["早退分钟"], "早退分钟", number, errors)
-    paid = _decimal(raw["有薪请假天数"], "有薪请假天数", number, errors)
-    unpaid = _decimal(raw["无薪请假天数"], "无薪请假天数", number, errors)
-    missed = _integer(raw["忘打卡次数"], "忘打卡次数", number, errors)
-    corrected = _integer(raw["补卡次数"], "补卡次数", number, errors)
+    days = _decimal(values["应出勤天数"], "应出勤天数", number, errors, required=True)
+    late = _integer(values["迟到分钟"], "迟到分钟", number, errors)
+    early = _integer(values["早退分钟"], "早退分钟", number, errors)
+    paid = _decimal(values["有薪请假天数"], "有薪请假天数", number, errors)
+    unpaid = _decimal(values["无薪请假天数"], "无薪请假天数", number, errors)
+    missed = _integer(values["忘打卡次数"], "忘打卡次数", number, errors)
+    corrected = _integer(values["补卡次数"], "补卡次数", number, errors)
     month_days = calendar.monthrange(period.year, period.month)[1]
     if days is not None and (days <= 0 or days > month_days):
         errors.append(
@@ -130,7 +181,7 @@ def _validate(
         errors.append(
             _issue("PUNCH_OUT_OF_RANGE", "补卡次数", "补卡次数不能超过忘打卡次数", number)
         )
-    if not raw["来源说明"] or len(raw["来源说明"]) > 500:
+    if not values["来源说明"] or len(values["来源说明"]) > 500:
         errors.append(
             _issue("SOURCE_REQUIRED", "来源说明", "请填写不超过 500 字的来源说明", number)
         )
@@ -144,7 +195,12 @@ def _validate(
             _issue("DUPLICATE_PERIOD", "身份证号", "本员工本期间已有考勤事实，不会覆盖", number)
         )
     if errors:
-        return None, errors
+        return None, [
+            _issue(error["code"], fields[error["field"]], error["message"], number)
+            if error["field"] in fields
+            else error
+            for error in errors
+        ]
     assert employee and days is not None and late is not None and early is not None
     assert paid is not None and unpaid is not None and missed is not None and corrected is not None
     return {
@@ -165,7 +221,7 @@ def _validate(
         "missed_punch_count": missed,
         "corrected_punch_count": corrected,
         "punch_corrected": bool(missed and corrected == missed),
-        "exception_note": raw["来源说明"],
+        "exception_note": values["来源说明"],
     }, []
 
 
@@ -295,6 +351,7 @@ def upload_batch(
     scope = employee_scope(db, period, payroll_batch.subject_id)
     scope_ids = set(scope.employee_ids)
     ambiguous_ids = set(scope.ambiguous_employee_ids)
+    headers = tuple(workbook_rows[0].raw)
     batch = ImportBatch(
         company_id=company_id,
         payroll_period_id=period.id,
@@ -303,8 +360,8 @@ def upload_batch(
         original_filename=filename,
         file_sha256=digest,
         original_file=content,
-        template_version=TEMPLATE_VERSION,
-        field_mapping={field: chr(65 + index) for index, field in enumerate(HEADERS)},
+        template_version=TEMPLATE_VERSION if headers == HEADERS else LEGACY_TEMPLATE_VERSION,
+        field_mapping={field: get_column_letter(index + 1) for index, field in enumerate(headers)},
         status="uploaded",
     )
     db.add(batch)
@@ -333,12 +390,12 @@ def upload_batch(
             sheet_name=SHEET_NAME,
             source_row_number=source.number,
             validation_status="invalid" if errors else "imported",
-            raw_data=source.raw,
+            raw_data={**source.raw, **source.formulas},
             errors=errors or None,
         )
         db.add(row)
         if normalized is not None and not errors:
-            _save(db, batch, period, row, normalized, source.raw)
+            _save(db, batch, period, row, normalized, row.raw_data)
             successful += 1
     batch.status = (
         "imported"
@@ -368,9 +425,14 @@ def correct_row(db: Session, batch_id: int, row_id: int, values: dict[str, str])
         raise ImportFailure(404, "导入行不存在")
     if row.validation_status != "invalid":
         raise ImportFailure(409, "该行已入库，重复修正不会再次入账")
-    if not values or any(field not in HEADERS for field in values):
+    if not values or any(field not in row.raw_data for field in values):
         raise ImportFailure(400, "只能修正固定模板中的字段")
     corrected = {**row.raw_data, **(row.correction_values or {}), **values}
+    computed, formula_errors = resolve_attendance_formulas(
+        corrected,
+        row.source_row_number,
+        HEADERS if batch.template_version == TEMPLATE_VERSION else LEGACY_HEADERS,
+    )
     scope = employee_scope(db, period, payroll_batch.subject_id)
     normalized, errors = _validate(
         db,
@@ -379,8 +441,9 @@ def correct_row(db: Session, batch_id: int, row_id: int, values: dict[str, str])
         set(scope.employee_ids),
         set(scope.ambiguous_employee_ids),
         row.source_row_number,
-        corrected,
+        computed,
     )
+    errors = [*formula_errors, *errors]
     for old_error in row.errors or []:
         if (
             old_error["code"] in {"IDENTIFIER_NOT_TEXT", "EXCEL_ERROR"}

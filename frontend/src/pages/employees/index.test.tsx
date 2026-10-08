@@ -3,6 +3,7 @@ import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { cleanup, render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { afterEach, expect, test, vi } from "vitest";
+import { MemoryRouter } from "react-router-dom";
 import { EmployeesPage } from "./index.tsx";
 
 afterEach(() => {
@@ -11,14 +12,18 @@ afterEach(() => {
   vi.unstubAllGlobals();
 });
 
-function renderPage() {
-  const client = new QueryClient({
+function renderPage(
+  client = new QueryClient({
     defaultOptions: { queries: { retry: false }, mutations: { retry: false } },
-  });
+  }),
+  path = "/employees",
+) {
   return render(
     <AntdApp>
       <QueryClientProvider client={client}>
-        <EmployeesPage />
+        <MemoryRouter initialEntries={[path]}>
+          <EmployeesPage />
+        </MemoryRouter>
       </QueryClientProvider>
     </AntdApp>,
   );
@@ -70,7 +75,12 @@ test("员工页面查询并修改员工资料", async () => {
   );
   vi.stubGlobal("fetch", fetchMock);
   const user = userEvent.setup();
-  renderPage();
+  const client = new QueryClient({
+    defaultOptions: { queries: { retry: false } },
+  });
+  const trialKey = ["payroll", "trial", 12];
+  client.setQueryData(trialKey, { stale: false });
+  renderPage(client);
 
   expect(await screen.findByText("测试员工")).toBeInTheDocument();
   await user.click(screen.getByRole("button", { name: "编辑" }));
@@ -86,6 +96,7 @@ test("员工页面查询并修改员工资料", async () => {
     ),
   );
   expect(await screen.findByText("更新员工")).toBeInTheDocument();
+  expect(client.getQueryState(trialKey)?.isInvalidated).toBe(true);
 });
 
 test("员工页面显示查询错误", async () => {
@@ -244,4 +255,32 @@ test("员工页面普通调薪提交整月生效日期", async () => {
       },
     });
   });
+});
+
+test("从核算核对员工时带入主体，并可返回当前历史批次", async () => {
+  vi.stubGlobal(
+    "fetch",
+    vi.fn(async (input: RequestInfo | URL) => {
+      const path = String(input);
+      if (path.endsWith("/employees"))
+        return Response.json([
+          employee,
+          {
+            ...employee,
+            id: 2,
+            name: "其他主体员工",
+            assignment: { ...employee.assignment, subject_id: 2 },
+          },
+        ]);
+      if (path.endsWith("/organization/company"))
+        return Response.json({ id: 1, name: "测试公司" });
+      return Response.json([]);
+    }),
+  );
+  renderPage(undefined, "/employees?period=2026-07&subject_id=1&batch_id=12");
+  expect(await screen.findByText("测试员工")).toBeInTheDocument();
+  expect(screen.queryByText("其他主体员工")).not.toBeInTheDocument();
+  expect(
+    screen.getByRole("link", { name: "返回当前批次核算" }),
+  ).toHaveAttribute("href", "/payroll/batches/12?period=2026-07&subject_id=1");
 });

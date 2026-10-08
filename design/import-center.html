@@ -13,6 +13,7 @@
     <header class="topbar" id="topbar" data-od-id="topbar"></header>
     <main class="content">
 
+      <!-- 从核算进入时读取期间和批次；切换导入类型保留范围。提供返回当前批次核算入口，导入成功或纠错后刷新核算状态。 -->
       <section data-od-id="import-lead">
         <p class="page-lead">三类导入均使用固定模板，系统不做自定义字段映射。正确的行先入库，错误行可逐行修正；历史记录查看详情只读展示失败原因。</p>
       </section>
@@ -171,14 +172,17 @@
         '请勿修改表头、工作表名称与列顺序；原始文件和各列原值保留在导入批次中。']
     },
     att: {
-      label: '月度考勤', tpl: 'TPL-ATT-v3.2', cols: '12 列',
-      desc: '按工资期间与主体导入月度考勤。应出勤天数与每日标准工时以考勤表为准。',
+      label: '月度考勤', tpl: 'TPL-ATT-v2', cols: '48 列',
+      desc: '首行为 48 列表头，按工资期间与主体导入考勤事实；公司须与所选主体一致，薪资及扣款列仅保留追溯。',
       needPeriod: true,
       help: ['员工标识使用身份证号，须与本期员工名单一致。',
-        '应出勤天数、实际出勤天数按自然月填写；每日标准工时固定 8 小时。',
+        '工作日天数合计为应出勤天数，须大于零且不超过当月自然日天数；每日标准工时固定 8 小时。',
         '迟到、早退填写分钟数，合计后按分钟扣款。',
-        '忘打卡填写次数，每次 30 元；补卡后该次不计。',
-        '请假需区分有薪假与无薪假，无薪假按天数折算固定薪资。']
+        '缺卡次数填写未补卡次数，每次 30 元；旧模板继续支持补卡次数。',
+        '事假和旷工按无薪天数折算；病假、产假及其他假期按有薪保存。',
+        '请假外未出勤天数仅留存，入离职工资按员工主档日期折算；表内薪资与扣款不覆盖主档或作为最终工资结果。',
+        '日期和数值列支持本行引用、四则运算、括号、ROUND 和 EDATE；数值引用空白按 0 计算，SUM、IF、跨行、跨表及外部引用请先转为实际值。',
+        '公式重新计算后仍须通过考勤数值校验；全部原始列值、公式原文和原始文件保留追溯。']
     },
     perf: {
       label: '月度绩效', tpl: 'TPL-PERF-v2.1', cols: '6 列',
@@ -214,7 +218,7 @@
     current = t;
     var T = TYPES[t];
     Q.q('#scope-period-wrap').classList.toggle('hidden', !T.needPeriod);
-    Q.q('#tpl-title').textContent = T.label + '导入模板 · ' + T.tpl;
+    Q.q('#tpl-title').textContent = t === 'att' ? '考勤导入模版' : T.label + '导入模板 · ' + T.tpl;
     Q.q('#tpl-desc').textContent = T.desc;
     Q.q('#tpl-ver').textContent = '模板版本 ' + T.tpl;
     Q.q('#tpl-cols').textContent = T.cols;

@@ -26,6 +26,8 @@ export function AppProviders({ children }: PropsWithChildren) {
           colorError: "#c74343",
           colorText: "#273142",
           colorTextSecondary: "#687386",
+          colorTextDisabled: "#596579",
+          colorBgContainerDisabled: "#edf1f6",
           colorBorderSecondary: "#e4e8ef",
           colorBgLayout: "#f6f7f9",
           borderRadius: 6,
@@ -35,6 +37,7 @@ export function AppProviders({ children }: PropsWithChildren) {
             '-apple-system, BlinkMacSystemFont, "Segoe UI", "PingFang SC", "Microsoft YaHei", sans-serif',
         },
         components: {
+          Button: { borderColorDisabled: "#cbd5e1" },
           Card: { headerHeight: 44, bodyPadding: 16 },
           Table: { cellPaddingBlock: 9, cellPaddingInline: 12 },
           Drawer: { padding: 18 },

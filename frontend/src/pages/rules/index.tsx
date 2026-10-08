@@ -15,10 +15,15 @@ import {
   Typography,
 } from "antd";
 import { useState } from "react";
+import { Link, useSearchParams } from "react-router-dom";
 import { resources, type CityRule } from "../../shared/api/resources";
 import styles from "./index.module.less";
 
 export function RulesPage() {
+  const [params] = useSearchParams();
+  const batchId = Number(params.get("batch_id"));
+  const returnParams = new URLSearchParams(params);
+  returnParams.delete("batch_id");
   const { message } = App.useApp();
   const queryClient = useQueryClient();
   const [cityForm] = Form.useForm();
@@ -38,6 +43,7 @@ export function RulesPage() {
   });
   const refresh = () => {
     queryClient.invalidateQueries({ queryKey: ["rules"] });
+    queryClient.invalidateQueries({ queryKey: ["payroll"] });
     setDrawer(null);
     cityForm.resetFields();
     attendanceForm.resetFields();
@@ -76,6 +82,11 @@ export function RulesPage() {
           社保按员工实际 base
           城市的固定基数计算，公积金按固定薪资计缴；规则按生效期间保留历史版本，新增版本不会覆盖已锁定期间。
         </Typography.Paragraph>
+        {Number.isInteger(batchId) && batchId > 0 && (
+          <Link to={`/payroll/batches/${batchId}?${returnParams}`}>
+            返回当前批次核算
+          </Link>
+        )}
       </section>
       {error ? <Alert type="error" showIcon title={error.message} /> : null}
       <section className={styles.metrics}>

@@ -463,7 +463,7 @@ export function OverviewPage() {
                       to={
                         row.batch
                           ? `/payroll/batches/${row.batch.id}${query}`
-                          : `/payroll${query}&subject_id=${row.subject.id}`
+                          : `/payroll${query}${period ? "&" : "?"}subject_id=${row.subject.id}`
                       }
                     >
                       {row.batch ? "查看核算" : "建立批次"}

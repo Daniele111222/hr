@@ -100,3 +100,9 @@ For responsive web exports, treat these as a modern breakpoint system for one ad
 8. Confirm the production result visually matches the exported design before refactoring internals.
 9. Reject implementation shortcuts that flatten the design into generic cards, generic gradients, placeholder stats, or framework-default typography.
 10. If a detail is ambiguous, keep the exported HTML/CSS/JS behavior rather than inventing a new pattern.
+
+## 工资核算导航交付补充（2026-10-08）
+- 期间页提供本期导入、激励、台账及全公司工资表导出入口；每个批次有明确的进入核算或查看结果操作，缺失主体可直接建立批次。
+- 批次流程步骤只执行导航，不自动试算、确认、锁定或导出；缺员工、缺输入和整期阻断均有对应处理入口。
+- 从核算进入导入、规则和员工页面时保留期间与目标范围，并提供返回当前批次入口；导入类型切换不得清空范围，不可导入的请求批次不得默选其他批次。
+- 输入保存、试算、激励及整期状态变更后刷新受影响的核算和导出状态；导出本期工资表汇总全部主体。

@@ -28,9 +28,11 @@ import styles from "./batch-detail.module.less";
 export function SupplementBatchDetail({
   batch,
   trial,
+  returnTo,
 }: {
   batch: PayrollBatch;
   trial: PayrollTrial | null;
+  returnTo: string;
 }) {
   const { message } = App.useApp();
   const queryClient = useQueryClient();
@@ -134,7 +136,7 @@ export function SupplementBatchDetail({
             {batch.payment_date ?? "未填写"}
           </p>
         </div>
-        <Link className={styles.back} to="/payroll">
+        <Link className={styles.back} to={returnTo}>
           <ArrowLeftOutlined /> 返回工资期间与批次
         </Link>
       </header>

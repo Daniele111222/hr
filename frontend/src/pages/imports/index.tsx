@@ -39,7 +39,12 @@ export function ImportsPage() {
     requested === "attendance" || requested === "performance"
       ? requested
       : "employee";
-  const setType = (value: string) => setParams({ type: value });
+  const setType = (value: string) =>
+    setParams((current) => {
+      const next = new URLSearchParams(current);
+      next.set("type", value);
+      return next;
+    });
   return (
     <>
       <Space wrap>
@@ -94,6 +99,7 @@ function EmployeeImportsPage() {
     void client.invalidateQueries({ queryKey: ["employee-imports"] });
     void client.invalidateQueries({ queryKey: ["org"] });
     void client.invalidateQueries({ queryKey: ["employees"] });
+    void client.invalidateQueries({ queryKey: ["payroll"] });
     client.setQueryData(["employee-import", batch.id], batch);
     setPreviewBatch(batch);
     setSelectedBatch(batch);

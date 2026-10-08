@@ -48,7 +48,7 @@ export function AttendanceIncentivePage() {
     (item) => item.period === period,
   )?.id;
   const incentive = useQuery({
-    queryKey: ["payroll", "attendance-incentive", periodId],
+    queryKey: ["payroll", "incentive", periodId],
     queryFn: () => resources.attendanceIncentive(periodId as number),
     enabled: periodId !== undefined,
   });
@@ -56,12 +56,12 @@ export function AttendanceIncentivePage() {
     mutationFn: () =>
       resources.calculateAttendanceIncentive(periodId as number),
     onSuccess: (value) => {
-      queryClient.setQueryData(
-        ["payroll", "attendance-incentive", periodId],
-        value,
-      );
+      queryClient.setQueryData(["payroll", "incentive", periodId], value);
       queryClient.invalidateQueries({ queryKey: ["payroll", "trial"] });
       queryClient.invalidateQueries({ queryKey: ["payroll", "batch"] });
+      queryClient.invalidateQueries({ queryKey: ["payroll", "workbench"] });
+      queryClient.invalidateQueries({ queryKey: ["payroll", "confirmation"] });
+      queryClient.invalidateQueries({ queryKey: ["exports"] });
       message.success("考勤激励计算完成");
     },
     onError: (error) => message.error(error.message),
@@ -126,6 +126,11 @@ export function AttendanceIncentivePage() {
             data.status === "blocked" ? "全公司数据尚未就绪" : data.message
           }
           description={data.status === "blocked" ? data.message : undefined}
+          action={
+            data.status === "blocked" ? (
+              <Link to={`/payroll?period=${period}`}>去处理本期批次</Link>
+            ) : undefined
+          }
         />
       ) : null}
 
@@ -165,7 +170,16 @@ export function AttendanceIncentivePage() {
               render: (_, row) =>
                 `${text(row, "subject_name")}（${text(row, "subject_code")}）`,
             },
-            { title: "批次", render: (_, row) => `#${text(row, "batch_id")}` },
+            {
+              title: "批次",
+              render: (_, row) => (
+                <Link
+                  to={`/payroll/batches/${text(row, "batch_id")}?period=${period}`}
+                >
+                  进入核算 #{text(row, "batch_id")}
+                </Link>
+              ),
+            },
             {
               title: "试算版本",
               render: (_, row) => `#${text(row, "trial_id")}`,
@@ -278,6 +292,8 @@ export function AttendanceIncentivePage() {
         >
           {run && !run.stale ? "重新计算激励" : "计算本期激励"}
         </Button>
+        <Link to={`/payroll?period=${period}`}>返回本期核算</Link>
+        <Link to={`/payroll/ledger?period_id=${periodId}`}>本期工资台账</Link>
       </footer>
     </div>
   );

@@ -121,6 +121,35 @@ export function PayrollPage() {
     [batchTypeFilter, data?.batches, subjectFilter, statusFilter],
   );
   const subjects = subjectsQuery.data ?? [];
+  const missingSubjects = subjects.filter(
+    (subject) =>
+      !data?.batches.some(
+        (batch) =>
+          batch.subject.id === subject.id &&
+          batch.batch_type === "normal" &&
+          batch.status !== "cancelled" &&
+          batch.is_effective !== false,
+      ),
+  );
+  const openBatch = (subjectId = subjectFilter) => {
+    batchForm.resetFields();
+    batchForm.setFieldsValue({ subject_id: subjectId, batch_type: "normal" });
+    setCreateBatchOpen(true);
+  };
+  const periodParams = new URLSearchParams(params);
+  if (currentPeriod) periodParams.set("period", currentPeriod.period);
+  const batchPath = (row: PayrollBatch) =>
+    `/payroll/batches/${row.id}?${periodParams}`;
+  const importPath = (
+    row: PayrollBatch,
+    kind: "attendance" | "performance",
+  ) => {
+    const next = new URLSearchParams(periodParams);
+    next.set("batch_id", String(row.id));
+    next.set("subject_id", String(row.subject.id));
+    next.set("type", kind);
+    return `/imports?${next}`;
+  };
 
   const refresh = () =>
     queryClient.invalidateQueries({ queryKey: ["payroll", "workbench"] });
@@ -189,7 +218,7 @@ export function PayrollPage() {
             type="primary"
             icon={<PlusOutlined />}
             disabled={!currentPeriod}
-            onClick={() => setCreateBatchOpen(true)}
+            onClick={() => openBatch()}
           >
             建立批次
           </Button>
@@ -234,6 +263,66 @@ export function PayrollPage() {
           <Empty description="暂无工资期间，请先建立期间" />
         )}
       </Card>
+
+      {currentPeriod && (
+        <Card
+          title={`${currentPeriod.period} 本期操作`}
+          className={styles.card}
+        >
+          <Space wrap size="middle">
+            <Link to={`/imports?${periodParams}&type=attendance`}>
+              导入考勤
+            </Link>
+            <Link to={`/imports?${periodParams}&type=performance`}>
+              导入绩效
+            </Link>
+            <Link to={`/payroll/incentive?period=${currentPeriod.period}`}>
+              考勤激励
+            </Link>
+            <Link to={`/payroll/ledger?period=${currentPeriod.period}`}>
+              工资台账
+            </Link>
+            <Link to={`/exports?period_id=${currentPeriod.id}&kind=payroll`}>
+              导出本期工资表
+            </Link>
+          </Space>
+          <Typography.Paragraph type="secondary" className={styles.notice}>
+            按主体核算，整期确认与锁定后，汇总导出一份全公司工资表。
+          </Typography.Paragraph>
+          {subjectsQuery.isError && (
+            <Alert
+              type="error"
+              showIcon
+              title="主体列表加载失败"
+              action={
+                <Button onClick={() => void subjectsQuery.refetch()}>
+                  重试
+                </Button>
+              }
+            />
+          )}
+          {!!missingSubjects.length && (
+            <Alert
+              type="warning"
+              showIcon
+              title={`本期尚缺 ${missingSubjects.length} 个主体的正常工资批次`}
+              description={
+                <Space wrap className={styles.missingSubjects}>
+                  {missingSubjects.map((subject) => (
+                    <Button
+                      type="link"
+                      key={subject.id}
+                      onClick={() => openBatch(subject.id)}
+                    >
+                      {subject.name}：建立批次
+                    </Button>
+                  ))}
+                </Space>
+              }
+            />
+          )}
+        </Card>
+      )}
 
       {currentPeriod ? (
         <Card
@@ -292,10 +381,7 @@ export function PayrollPage() {
                   title: "批次",
                   render: (_, row) => (
                     <>
-                      <Link
-                        className={styles.mono}
-                        to={`/payroll/batches/${row.id}?period=${currentPeriod.period}`}
-                      >
+                      <Link className={styles.mono} to={batchPath(row)}>
                         {row.subject.code}-
                         {row.batch_type === "supplement" ? "S" : "N"}
                         {row.batch_no}
@@ -362,6 +448,36 @@ export function PayrollPage() {
                       </span>
                     ),
                 },
+                {
+                  title: "操作",
+                  fixed: "right",
+                  width: 180,
+                  render: (_, row) => (
+                    <Space direction="vertical" size={4}>
+                      <Link to={batchPath(row)}>
+                        {row.status === "draft" ? "进入核算" : "查看结果"}
+                      </Link>
+                      {row.batch_type === "normal" &&
+                        ["draft", "trial"].includes(row.status) && (
+                          <>
+                            <Link to={importPath(row, "attendance")}>
+                              导入考勤
+                            </Link>
+                            <Link to={importPath(row, "performance")}>
+                              导入绩效
+                            </Link>
+                          </>
+                        )}
+                      {row.scope.employee_count === 0 && (
+                        <Link
+                          to={`/employees?period=${currentPeriod.period}&subject_id=${row.subject.id}&batch_id=${row.id}`}
+                        >
+                          核对员工及生效日期
+                        </Link>
+                      )}
+                    </Space>
+                  ),
+                },
               ]}
             />
           ) : (
@@ -407,6 +523,7 @@ export function PayrollPage() {
       <Modal
         title={`建立 ${currentPeriod?.period ?? ""} 批次`}
         open={createBatchOpen}
+        forceRender
         onCancel={() => setCreateBatchOpen(false)}
         onOk={() => batchForm.submit()}
         confirmLoading={batchMutation.isPending}

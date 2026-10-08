@@ -16,6 +16,7 @@ import {
   Typography,
 } from "antd";
 import { useMemo, useState } from "react";
+import { Link, useSearchParams } from "react-router-dom";
 import { resources, type Employee } from "../../shared/api/resources";
 import styles from "./index.module.less";
 
@@ -32,6 +33,20 @@ function maskIdNumber(value: string) {
 }
 
 export function EmployeesPage() {
+  const [params, setParams] = useSearchParams();
+  const subjectFilter = params.has("subject_id")
+    ? Number(params.get("subject_id"))
+    : undefined;
+  const setSubjectFilter = (value: number | undefined) =>
+    setParams((current) => {
+      const next = new URLSearchParams(current);
+      if (value === undefined) next.delete("subject_id");
+      else next.set("subject_id", String(value));
+      return next;
+    });
+  const batchId = Number(params.get("batch_id"));
+  const returnParams = new URLSearchParams(params);
+  returnParams.delete("batch_id");
   const { message } = App.useApp();
   const queryClient = useQueryClient();
   const [form] = Form.useForm();
@@ -40,7 +55,6 @@ export function EmployeesPage() {
   const [keyword, setKeyword] = useState("");
   const [activeFilter, setActiveFilter] = useState<boolean | undefined>();
   const [probationFilter, setProbationFilter] = useState<string>();
-  const [subjectFilter, setSubjectFilter] = useState<number>();
   const employees = useQuery({
     queryKey: ["employees"],
     queryFn: resources.employees,
@@ -103,6 +117,7 @@ export function EmployeesPage() {
   const refresh = () => {
     close();
     queryClient.invalidateQueries({ queryKey: ["employees"] });
+    queryClient.invalidateQueries({ queryKey: ["payroll"] });
   };
   const create = useMutation({
     mutationFn: resources.createEmployee,
@@ -360,6 +375,11 @@ export function EmployeesPage() {
         </Button>
       </section>
 
+      {Number.isInteger(batchId) && batchId > 0 && (
+        <Link to={`/payroll/batches/${batchId}?${returnParams}`}>
+          返回当前批次核算
+        </Link>
+      )}
       <Card
         className={styles.tableCard}
         title="员工名单"

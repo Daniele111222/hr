@@ -39,6 +39,19 @@
 .formHint {
     margin-bottom: 0;
 }
+.missingSubjects {
+    width: 100%;
+    :global(.ant-space-item) {
+        max-width: 100%;
+    }
+    :global(.ant-btn) {
+        height: auto;
+        padding: 4px 0;
+        white-space: normal;
+        text-align: left;
+        overflow-wrap: anywhere;
+    }
+}
 @media (max-width: 760px) {
     .lead {
         flex-direction: column;

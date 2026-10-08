@@ -27,6 +27,7 @@
         </div>
       </section>
 
+      <!-- 流程步骤是导航：跳转保持期间和批次，不能自动试算、确认或锁定。数据准备入口分别进入考勤、绩效导入并自动带入范围；返回保留筛选。 -->
       <section class="card" data-od-id="batch-steps-card">
         <div class="card-body" style="padding:14px 16px">
           <div class="steps" id="steps"></div>
@@ -226,11 +227,20 @@
     document.getElementById('steps').innerHTML = STEPS.map(function (s, i) {
       var st = stepState(i);
       return (i ? '<span class="step-line"></span>' : '') +
-        '<span class="step ' + (st ? 'is-' + st : '') + '">' +
+        '<button type="button" data-step="' + i + '" class="step ' + (st ? 'is-' + st : '') + '">' +
         '<span class="step-dot">' + (st === 'done' ? Q.icon('check') : i + 1) + '</span>' +
-        '<span class="step-label">' + s + '</span></span>';
+        '<span class="step-label">' + s + '</span></button>';
     }).join('');
   }
+  document.getElementById('steps').addEventListener('click', function (event) {
+    var button = event.target.closest('[data-step]');
+    if (!button) return;
+    var index = Number(button.dataset.step);
+    if (index === 2) { window.location.href = 'incentive.html'; return; }
+    if (index === 5) { window.location.href = 'export-center.html'; return; }
+    document.querySelector('[data-tab="' + (index === 0 ? 'prepare' : index === 1 ? 'trial' : 'verify') + '"]').click();
+  });
+
   function renderGate() {
     var el = document.getElementById('gate-callout');
     var s = Q.state(), r = gateReason();

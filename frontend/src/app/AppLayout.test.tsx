@@ -57,8 +57,21 @@ test("台账期间 ID 转成菜单年月，跨页导航不会跳到最新期间"
 test("直接打开旧员工快照时顶栏和导航跟随记录期间", async () => {
   setup("/payroll/ledger/records/5");
   expect(await screen.findByText("2026-07")).toBeInTheDocument();
-  await userEvent.click(screen.getByRole("menuitem", { name: /工资核算/ }));
+  await userEvent.click(screen.getByRole("menuitem", { name: /期间与批次/ }));
   expect(
     await screen.findByText("/payroll?period=2026-07"),
+  ).toBeInTheDocument();
+});
+
+test("工资核算二级入口保持当前期间", async () => {
+  setup("/payroll/batches/5");
+  expect(await screen.findByText("2026-08")).toBeInTheDocument();
+  await userEvent.click(screen.getByRole("menuitem", { name: "考勤激励" }));
+  expect(
+    await screen.findByText("/payroll/incentive?period=2026-08"),
+  ).toBeInTheDocument();
+  await userEvent.click(screen.getByRole("menuitem", { name: "工资台账" }));
+  expect(
+    await screen.findByText("/payroll/ledger?period=2026-08"),
   ).toBeInTheDocument();
 });

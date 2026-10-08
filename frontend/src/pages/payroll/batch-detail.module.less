@@ -46,6 +46,13 @@
     color: var(--color-muted);
     font-size: 12px;
     white-space: nowrap;
+    padding: 0;
+    border: 0;
+    background: transparent;
+    cursor: pointer;
+}
+.step:hover {
+    color: var(--color-accent);
 }
 .step span {
     display: grid;
@@ -127,7 +134,7 @@
     background: var(--color-surface);
     box-shadow: 0 -3px 16px #0000000a;
 }
-.actionbar span {
+.actionbar > span {
     margin-right: auto;
     color: var(--color-muted);
     font-size: 12px;

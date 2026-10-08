@@ -90,14 +90,16 @@ const trial = {
   confirmation_blockers: ["尚未计算全公司考勤激励"],
 };
 
-function renderPage() {
-  const client = new QueryClient({
+function renderPage(
+  path = "/payroll/batches/10",
+  client = new QueryClient({
     defaultOptions: { queries: { retry: false }, mutations: { retry: false } },
-  });
+  }),
+) {
   render(
     <AntdApp>
       <QueryClientProvider client={client}>
-        <MemoryRouter initialEntries={["/payroll/batches/10"]}>
+        <MemoryRouter initialEntries={[path]}>
           <Routes>
             <Route
               path="/payroll/batches/:batchId"
@@ -109,6 +111,70 @@ function renderPage() {
     </AntdApp>,
   );
 }
+
+test("批次详情可导航各阶段，返回保留历史月份与筛选，导航不执行业务操作", async () => {
+  const fetcher = vi.fn(
+    async (input: RequestInfo | URL, _init?: RequestInit) => {
+      const url = String(input);
+      if (url.includes("/workbench"))
+        return Response.json({
+          period: { id: 9, period: "2026-09" },
+          periods: [
+            { id: 9, period: "2026-09" },
+            { id: 1, period: "2026-07" },
+          ],
+          batches: [],
+        });
+      if (url.endsWith("/batches/10")) return Response.json(batch);
+      if (url.endsWith("/confirmation"))
+        return Response.json({
+          blockers: ["其他主体缺少正常工资批次"],
+          can_confirm: false,
+          can_lock: false,
+        });
+      return Response.json(trial);
+    },
+  );
+  vi.stubGlobal("fetch", fetcher);
+  renderPage("/payroll/batches/10?period=2026-07&subject_id=2&status=draft");
+  expect(
+    await screen.findByRole("link", { name: /返回工资期间与批次/ }),
+  ).toHaveAttribute(
+    "href",
+    "/payroll?period=2026-07&subject_id=2&status=draft",
+  );
+  expect(screen.getByRole("link", { name: "导入考勤" })).toHaveAttribute(
+    "href",
+    "/imports?period=2026-07&subject_id=2&status=draft&type=attendance&batch_id=10",
+  );
+  expect(screen.getByRole("link", { name: "导出" })).toHaveAttribute(
+    "href",
+    "/exports?period_id=1&kind=payroll",
+  );
+  expect(
+    await screen.findByRole("link", { name: "去处理本期批次" }),
+  ).toHaveAttribute("href", "/payroll?period=2026-07");
+  const user = userEvent.setup();
+  await user.click(screen.getByRole("button", { name: "普通试算" }));
+  expect(screen.getByRole("tab", { name: /试算结果/ })).toHaveAttribute(
+    "aria-selected",
+    "true",
+  );
+  await user.click(screen.getByRole("button", { name: "锁定" }));
+  expect(screen.getByRole("tab", { name: /校验与异常/ })).toHaveAttribute(
+    "aria-selected",
+    "true",
+  );
+  expect(screen.getByRole("button", { name: "锁定本期批次" })).toBeDisabled();
+  expect(
+    fetcher.mock.calls.every(([url]) => !String(url).endsWith("/trial/viewed")),
+  ).toBe(true);
+  expect(
+    fetcher.mock.calls.every(
+      ([, init]) => !init?.method || init.method === "GET",
+    ),
+  ).toBe(true);
+});
 
 afterEach(() => {
   cleanup();
@@ -126,7 +192,15 @@ test("未试算时展示数据准备，并可发起普通试算查看计算明�
     },
   );
   vi.stubGlobal("fetch", fetchMock);
-  renderPage();
+  const client = new QueryClient({
+    defaultOptions: { queries: { retry: false } },
+  });
+  const dependentKeys = [
+    ["payroll", "incentive", 1],
+    ["exports", "preview", "payroll", 1],
+  ];
+  dependentKeys.forEach((key) => client.setQueryData(key, {}));
+  renderPage("/payroll/batches/10", client);
   const user = userEvent.setup();
   expect(await screen.findByText("员工名册")).toBeInTheDocument();
   expect(screen.getByRole("link", { name: "查看考勤激励" })).toHaveAttribute(
@@ -140,6 +214,8 @@ test("未试算时展示数据准备，并可发起普通试算查看计算明�
       expect.objectContaining({ method: "POST" }),
     ),
   );
+  for (const key of dependentKeys)
+    expect(client.getQueryState(key)?.isInvalidated).toBe(true);
   await user.click(screen.getByRole("tab", { name: /试算结果/ }));
   expect(await screen.findByText("张三")).toBeInTheDocument();
   expect(screen.getAllByText("¥9,000.00").length).toBeGreaterThan(0);
@@ -357,7 +433,15 @@ test("替代版本锁定后自动生效，无需单独应用", async () => {
     return Response.json(replacement);
   });
   vi.stubGlobal("fetch", fetchMock);
-  renderPage();
+  const client = new QueryClient({
+    defaultOptions: { queries: { retry: false } },
+  });
+  const dependentKeys = [
+    ["payroll", "batch", 11],
+    ["exports", "preview", "payroll", 1],
+  ];
+  dependentKeys.forEach((key) => client.setQueryData(key, {}));
+  renderPage("/payroll/batches/10", client);
   await userEvent
     .setup()
     .click(await screen.findByRole("button", { name: "锁定本期批次" }));
@@ -370,6 +454,8 @@ test("替代版本锁定后自动生效，无需单独应用", async () => {
   expect(
     screen.queryByRole("button", { name: "使替代版本生效" }),
   ).not.toBeInTheDocument();
+  for (const key of dependentKeys)
+    expect(client.getQueryState(key)?.isInvalidated).toBe(true);
 });
 
 test("独立补发校验金额并在保存后重新试算", async () => {

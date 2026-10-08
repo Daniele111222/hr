@@ -3,6 +3,7 @@ import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { cleanup, fireEvent, render, screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { afterEach, expect, test, vi } from "vitest";
+import { MemoryRouter } from "react-router-dom";
 import { RulesPage } from "./index.tsx";
 
 afterEach(() => {
@@ -11,14 +12,17 @@ afterEach(() => {
   vi.unstubAllGlobals();
 });
 
-function renderPage() {
-  const client = new QueryClient({
+function renderPage(
+  client = new QueryClient({
     defaultOptions: { queries: { retry: false }, mutations: { retry: false } },
-  });
+  }),
+) {
   return render(
     <AntdApp>
       <QueryClientProvider client={client}>
-        <RulesPage />
+        <MemoryRouter initialEntries={["/rules?period=2026-07&batch_id=12"]}>
+          <RulesPage />
+        </MemoryRouter>
       </QueryClientProvider>
     </AntdApp>,
   );
@@ -70,38 +74,61 @@ test("规则页面展示版本和固定口径", async () => {
   expect(screen.getByText("当前有效")).toBeInTheDocument();
   expect(screen.getByText("固定薪资 · 5%/5%")).toBeInTheDocument();
   expect(screen.getByText("补卡免扣 · P7+")).toBeInTheDocument();
+  expect(
+    screen.getByRole("link", { name: "返回当前批次核算" }),
+  ).toHaveAttribute("href", "/payroll/batches/12?period=2026-07");
 });
 
-test("规则页面新增城市规则并显示后端错误", async () => {
-  const fetchMock = vi.fn(
-    async (input: RequestInfo | URL, init?: RequestInit) => {
-      const path = String(input);
-      if (path.endsWith("/rules/city-rules") && init?.method === "POST")
-        return Response.json({ detail: "规则有效期重叠" }, { status: 409 });
-      if (path.endsWith("/rules/city-rules")) return Response.json([]);
-      if (path.endsWith("/rules/attendance")) return Response.json([]);
-      if (path.endsWith("/organization/cities/options"))
-        return Response.json([{ id: 1, code: "BJ", name: "北京" }]);
-      return Response.json([]);
-    },
-  );
-  vi.stubGlobal("fetch", fetchMock);
-  const user = userEvent.setup();
-  renderPage();
-  await user.click(await screen.findByRole("button", { name: /新增城市规则/ }));
-  await user.selectOptions(screen.getByRole("combobox", { name: "城市" }), "1");
-  await user.type(screen.getByRole("textbox", { name: "版本号" }), "v2026.1");
-  await user.type(
-    screen.getByRole("spinbutton", { name: "社保固定缴费基数" }),
-    "6821",
-  );
-  fireEvent.change(document.querySelector('input[type="date"]')!, {
-    target: { value: "2026-01-01" },
-  });
-  await user.type(screen.getByPlaceholderText("代码"), "pension");
-  await user.type(screen.getByPlaceholderText("险种名称"), "养老");
-  await user.type(screen.getByPlaceholderText("个人比例"), "0.08");
-  await user.type(screen.getByPlaceholderText("公司比例"), "0.16");
-  await user.click(screen.getByRole("button", { name: /保\s*存/ }));
-  expect(await screen.findByText("规则有效期重叠")).toBeInTheDocument();
-});
+test.each([false, true])(
+  "规则新增成功刷新核算缓存，失败保留错误 %s",
+  async (success) => {
+    const fetchMock = vi.fn(
+      async (input: RequestInfo | URL, init?: RequestInit) => {
+        const path = String(input);
+        if (path.endsWith("/rules/city-rules") && init?.method === "POST")
+          return success
+            ? Response.json({ id: 1, version: "v2026.1" }, { status: 201 })
+            : Response.json({ detail: "规则有效期重叠" }, { status: 409 });
+        if (path.endsWith("/rules/city-rules")) return Response.json([]);
+        if (path.endsWith("/rules/attendance")) return Response.json([]);
+        if (path.endsWith("/organization/cities/options"))
+          return Response.json([{ id: 1, code: "BJ", name: "北京" }]);
+        return Response.json([]);
+      },
+    );
+    vi.stubGlobal("fetch", fetchMock);
+    const user = userEvent.setup();
+    const client = new QueryClient({
+      defaultOptions: { queries: { retry: false } },
+    });
+    const trialKey = ["payroll", "trial", 12];
+    client.setQueryData(trialKey, { stale: false });
+    renderPage(client);
+    await user.click(
+      await screen.findByRole("button", { name: /新增城市规则/ }),
+    );
+    await user.selectOptions(
+      screen.getByRole("combobox", { name: "城市" }),
+      "1",
+    );
+    await user.type(screen.getByRole("textbox", { name: "版本号" }), "v2026.1");
+    await user.type(
+      screen.getByRole("spinbutton", { name: "社保固定缴费基数" }),
+      "6821",
+    );
+    fireEvent.change(document.querySelector('input[type="date"]')!, {
+      target: { value: "2026-01-01" },
+    });
+    await user.type(screen.getByPlaceholderText("代码"), "pension");
+    await user.type(screen.getByPlaceholderText("险种名称"), "养老");
+    await user.type(screen.getByPlaceholderText("个人比例"), "0.08");
+    await user.type(screen.getByPlaceholderText("公司比例"), "0.16");
+    await user.click(screen.getByRole("button", { name: /保\s*存/ }));
+    expect(
+      await screen.findByText(
+        success ? "城市规则版本已保存" : "规则有效期重叠",
+      ),
+    ).toBeInTheDocument();
+    expect(client.getQueryState(trialKey)?.isInvalidated).toBe(success);
+  },
+);

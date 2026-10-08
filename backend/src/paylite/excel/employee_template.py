@@ -3,17 +3,14 @@
 from dataclasses import dataclass
 from dataclasses import field as dataclass_field
 from datetime import date, datetime
-from decimal import Decimal, DecimalException
 from io import BytesIO
 from typing import Any
 
 from openpyxl import Workbook, load_workbook
 from openpyxl.cell.cell import Cell
 from openpyxl.styles import Alignment, Font, PatternFill
-from openpyxl.utils import get_column_letter
-from openpyxl.utils.cell import column_index_from_string, coordinate_from_string
 
-from paylite.excel.formulas import FormulaValue, UnsupportedFormula, evaluate_formula
+from paylite.excel.formulas import resolve_row_formulas
 
 TEMPLATE_VERSION = "TPL-EMP-v3"
 SHEET_NAME = "员工资料"
@@ -163,77 +160,15 @@ def resolve_employee_formulas(
     headers: tuple[str, ...],
     formula_fields: set[str] | None = None,
 ) -> tuple[dict[str, str], list[dict[str, str]]]:
-    """Resolve one employee row, also used when correcting persisted import errors."""
-    fields = (
-        formula_fields
-        if formula_fields is not None
-        else {
-            field
-            for field, value in raw.items()
-            if field in DATE_FIELDS | AMOUNT_FIELDS and value.startswith("=")
-        }
+    return resolve_row_formulas(
+        raw,
+        number,
+        headers,
+        DATE_FIELDS,
+        AMOUNT_FIELDS,
+        formula_fields=formula_fields,
+        number_error_code="INVALID_AMOUNT",
     )
-    resolved = dict(raw)
-    results: dict[str, FormulaValue] = {}
-    visiting: set[str] = set()
-
-    def resolve(field: str) -> FormulaValue:
-        if field not in DATE_FIELDS | AMOUNT_FIELDS:
-            raise UnsupportedFormula("公式只能引用本行日期或薪资列")
-        if field in results:
-            return results[field]
-        if field in visiting:
-            raise ValueError("公式存在循环引用")
-        visiting.add(field)
-        try:
-            if field in fields:
-                value = evaluate_formula(raw[field], reference)
-            elif field in DATE_FIELDS:
-                value = date.fromisoformat(raw[field])
-            else:
-                value = Decimal(raw[field])
-            if field in DATE_FIELDS:
-                if not isinstance(value, date):
-                    raise ValueError("公式结果须为日期")
-            elif not isinstance(value, Decimal) or not value.is_finite() or value < 0:
-                raise ValueError("公式来源和结果须为非负有效金额")
-            results[field] = value
-            return value
-        finally:
-            visiting.remove(field)
-
-    def reference(coordinate: str) -> FormulaValue:
-        column, row = coordinate_from_string(coordinate)
-        index = column_index_from_string(column) - 1
-        if row != number or index >= len(headers):
-            raise UnsupportedFormula("公式只能引用同一行的模板单元格")
-        return resolve(headers[index])
-
-    errors = []
-    for field in headers:
-        if field not in fields:
-            continue
-        try:
-            result = resolve(field)
-            resolved[field] = result.isoformat() if isinstance(result, date) else str(result)
-        except (ValueError, DecimalException, OverflowError) as exc:
-            letter = get_column_letter(headers.index(field) + 1)
-            errors.append(
-                {
-                    "code": "FORMULA_NOT_ALLOWED"
-                    if isinstance(exc, UnsupportedFormula)
-                    else "INVALID_DATE"
-                    if field in DATE_FIELDS
-                    else "INVALID_AMOUNT",
-                    "field": field,
-                    "column": letter,
-                    "cell": f"{letter}{number}",
-                    "message": "公式无法计算：来源不是有效数值、除数为零或数值超出范围"
-                    if isinstance(exc, DecimalException)
-                    else f"公式无法计算：{exc}",
-                }
-            )
-    return resolved, errors
 
 
 def parse_workbook(content: bytes) -> list[WorkbookRow]:

@@ -19,7 +19,7 @@ import {
   Typography,
 } from "antd";
 import { useState } from "react";
-import { Link, useParams } from "react-router-dom";
+import { Link, useParams, useSearchParams } from "react-router-dom";
 import {
   resources,
   type PayrollCorrectionInput,
@@ -40,6 +40,12 @@ const statusLabels = {
 
 export function PayrollBatchDetailPage() {
   const batchId = Number(useParams().batchId);
+  const [params] = useSearchParams();
+  const [activeTab, setActiveTab] = useState("prepare");
+  const workbench = useQuery({
+    queryKey: ["payroll", "workbench", undefined],
+    queryFn: () => resources.payrollWorkbench(),
+  });
   const { message } = App.useApp();
   const queryClient = useQueryClient();
   const [selected, setSelected] = useState<PayrollTrialRow>();
@@ -94,6 +100,8 @@ export function PayrollBatchDetailPage() {
         queryKey: ["payroll", "confirmation", batch.data?.period_id],
       });
       queryClient.invalidateQueries({ queryKey: ["payroll", "workbench"] });
+      queryClient.invalidateQueries({ queryKey: ["payroll", "incentive"] });
+      queryClient.invalidateQueries({ queryKey: ["exports"] });
       message.success("普通工资试算完成");
     },
     onError: (error) => message.error(error.message),
@@ -106,9 +114,10 @@ export function PayrollBatchDetailPage() {
         value,
       );
       queryClient.invalidateQueries({
-        queryKey: ["payroll", "batch", batchId],
+        queryKey: ["payroll", "batch"],
       });
       queryClient.invalidateQueries({ queryKey: ["payroll", "workbench"] });
+      queryClient.invalidateQueries({ queryKey: ["exports"] });
       message.success("本期正常工资已整批确认");
     },
     onError: (error) => message.error(error.message),
@@ -121,9 +130,10 @@ export function PayrollBatchDetailPage() {
         value,
       );
       queryClient.invalidateQueries({
-        queryKey: ["payroll", "batch", batchId],
+        queryKey: ["payroll", "batch"],
       });
       queryClient.invalidateQueries({ queryKey: ["payroll", "workbench"] });
+      queryClient.invalidateQueries({ queryKey: ["exports"] });
       queryClient.invalidateQueries({
         queryKey: ["payroll", "corrections", batchId],
       });
@@ -233,14 +243,39 @@ export function PayrollBatchDetailPage() {
   if (!batch.data) return <Empty description="工资批次不存在" />;
 
   const detail = batch.data;
+  const period =
+    workbench.data?.periods?.find((item) => item.id === detail.period_id)
+      ?.period ??
+    params.get("period") ??
+    undefined;
+  const navigationParams = new URLSearchParams(params);
+  if (period) navigationParams.set("period", period);
+  const returnTo = `/payroll?${navigationParams}`;
   if (detail.batch_type === "supplement")
-    return <SupplementBatchDetail batch={detail} trial={trial.data ?? null} />;
+    return (
+      <SupplementBatchDetail
+        batch={detail}
+        trial={trial.data ?? null}
+        returnTo={returnTo}
+      />
+    );
   const pendingCorrection = corrections.data?.find(
     (item) => item.status === "requested",
   );
   const result = trial.data;
   const confirmationState = confirmation.data;
   const preparation = detail.data_preparation;
+  const currentStep = ["locked", "exported"].includes(detail.status)
+    ? 5
+    : detail.status === "confirmed"
+      ? 4
+      : result?.ready_for_confirmation
+        ? 3
+        : result && !result.stale && result.error_count === 0
+          ? 2
+          : result
+            ? 1
+            : 0;
   const inputChanged = editingInput
     ? Object.entries(inputValues).some(([key, value]) =>
         key === "performance_coefficient"
@@ -283,19 +318,22 @@ export function PayrollBatchDetailPage() {
       key: "attendance",
       label: "考勤记录",
       value: preparation.attendance,
-      path: "/imports",
+      path: `/imports?${navigationParams}&type=attendance&batch_id=${detail.id}`,
+      action: "导入考勤",
     },
     {
       key: "performance",
       label: "绩效记录",
       value: preparation.performance,
-      path: "/imports",
+      path: `/imports?${navigationParams}&type=performance&batch_id=${detail.id}`,
+      action: "导入绩效",
     },
     {
       key: "city_rules",
       label: "城市规则",
       value: preparation.city_rules,
-      path: "/rules",
+      path: `/rules?${navigationParams}&batch_id=${detail.id}`,
+      action: "维护规则",
     },
   ];
   const issues =
@@ -339,23 +377,48 @@ export function PayrollBatchDetailPage() {
             {detail.scope.employee_count} 人
           </p>
         </div>
-        <Link to="/payroll" className={styles.back}>
+        <Link to={returnTo} className={styles.back}>
           <ArrowLeftOutlined /> 返回工资期间与批次
         </Link>
       </header>
 
       <Card className={styles.flow}>
-        <div className={styles.steps}>
-          {steps.map((label, index) => (
-            <div
-              className={`${styles.step} ${index === (result ? 1 : 0) ? styles.current : ""}`}
-              key={label}
-            >
-              <span>{index + 1}</span>
-              {label}
-            </div>
-          ))}
-        </div>
+        <nav aria-label="工资核算流程" className={styles.steps}>
+          {steps.map((label, index) =>
+            index === 2 || index === 5 ? (
+              <Link
+                key={label}
+                aria-label={label}
+                aria-current={index === currentStep ? "step" : undefined}
+                className={`${styles.step} ${index === currentStep ? styles.current : ""}`}
+                to={
+                  index === 2
+                    ? `/payroll/incentive?period_id=${detail.period_id}`
+                    : `/exports?period_id=${detail.period_id}&kind=payroll`
+                }
+              >
+                <span>{index + 1}</span>
+                {label}
+              </Link>
+            ) : (
+              <button
+                type="button"
+                key={label}
+                aria-label={label}
+                aria-current={index === currentStep ? "step" : undefined}
+                className={`${styles.step} ${index === currentStep ? styles.current : ""}`}
+                onClick={() =>
+                  setActiveTab(
+                    index === 0 ? "prepare" : index === 1 ? "trial" : "verify",
+                  )
+                }
+              >
+                <span>{index + 1}</span>
+                {label}
+              </button>
+            ),
+          )}
+        </nav>
       </Card>
       {result?.stale ? (
         <Alert
@@ -380,6 +443,9 @@ export function PayrollBatchDetailPage() {
           showIcon
           title="整批确认仍有阻断项"
           description={confirmationState.blockers.join("；")}
+          action={
+            <Link to={`/payroll?period=${period ?? ""}`}>去处理本期批次</Link>
+          }
         />
       ) : null}
       {confirmation.error ? (
@@ -435,6 +501,8 @@ export function PayrollBatchDetailPage() {
 
       <Card className={styles.content}>
         <Tabs
+          activeKey={activeTab}
+          onChange={setActiveTab}
           items={[
             {
               key: "prepare",
@@ -517,6 +585,20 @@ export function PayrollBatchDetailPage() {
                       },
                     ]}
                   />
+                  {detail.scope.employee_count === 0 && (
+                    <Alert
+                      type="info"
+                      showIcon
+                      title="本期员工范围为 0，请核对任职关系与生效日期"
+                      action={
+                        <Link
+                          to={`/employees?${navigationParams}&subject_id=${detail.subject.id}&batch_id=${detail.id}`}
+                        >
+                          核对员工及生效日期
+                        </Link>
+                      }
+                    />
+                  )}
                   <Table
                     rowKey="key"
                     size="small"
@@ -549,7 +631,9 @@ export function PayrollBatchDetailPage() {
                       },
                       {
                         title: "操作",
-                        render: (_, row) => <Link to={row.path}>查看</Link>,
+                        render: (_, row) => (
+                          <Link to={row.path}>{row.action}</Link>
+                        ),
                       },
                     ]}
                   />

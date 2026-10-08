@@ -16,11 +16,12 @@ function renderPage(
   client = new QueryClient({
     defaultOptions: { queries: { retry: false }, mutations: { retry: false } },
   }),
+  path = "/imports",
 ) {
   return render(
     <AntdApp>
       <QueryClientProvider client={client}>
-        <MemoryRouter>
+        <MemoryRouter initialEntries={[path]}>
           <ImportsPage />
         </MemoryRouter>
       </QueryClientProvider>
@@ -56,6 +57,107 @@ test("员工导入页面显示固定模板说明并限制 xlsx 文件", async ()
     ".xlsx",
   );
 });
+
+test.each([22, 999])(
+  "核算导入保持历史期间与主体，不默选其他批次 %s",
+  async (requestedBatch) => {
+    const oldPeriod = { id: 7, period: "2026-07" };
+    const latestPeriod = { id: 9, period: "2026-09" };
+    const oldBatch = {
+      id: 22,
+      subject: { id: 2, name: "旧主体" },
+      batch_type: "normal",
+      status: "draft",
+    };
+    const latestBatch = {
+      ...oldBatch,
+      id: 99,
+      subject: { id: 1, name: "最新主体" },
+    };
+    const fetcher = vi.fn(
+      async (input: RequestInfo | URL, init?: RequestInit) => {
+        const url = String(input);
+        if (url.endsWith("/organization/company"))
+          return Response.json({ id: 1, name: "测试公司" });
+        if (url.includes("/payroll/workbench"))
+          return Response.json({
+            period: url.includes("period=2026-07") ? oldPeriod : latestPeriod,
+            periods: [latestPeriod, oldPeriod],
+            batches: url.includes("period=2026-07")
+              ? [oldBatch]
+              : [latestBatch],
+          });
+        if (init?.method === "POST")
+          return Response.json({
+            id: 12,
+            payroll_batch_id: 22,
+            payroll_period_id: 7,
+            template_version: "TPL-PERF-v1",
+            rows: [],
+            success_rows: 1,
+            error_rows: 0,
+            total_rows: 1,
+            file_sha256: "test",
+          });
+        return Response.json([]);
+      },
+    );
+    vi.stubGlobal("fetch", fetcher);
+    const client = new QueryClient({
+      defaultOptions: { queries: { retry: false } },
+    });
+    const cachedKeys = [
+      ["payroll", "batch", 22],
+      ["payroll", "trial", 22],
+      ["payroll", "confirmation", 7],
+    ];
+    cachedKeys.forEach((key) => client.setQueryData(key, {}));
+    renderPage(
+      client,
+      `/imports?type=attendance&period=2026-07&subject_id=2&batch_id=${requestedBatch}`,
+    );
+    const user = userEvent.setup();
+    if (requestedBatch === 999) {
+      expect(
+        await screen.findByText(
+          "所选主体或批次不可导入，请选择本期间可导入的正常工资批次",
+        ),
+      ).toBeInTheDocument();
+      expect(
+        screen.getByRole("button", { name: /把 Excel 拖到这里/ }),
+      ).toBeDisabled();
+      expect(
+        fetcher.mock.calls.some(([, init]) => init?.method === "POST"),
+      ).toBe(false);
+      return;
+    }
+    expect(await screen.findByText("旧主体 · 批次 #22")).toBeInTheDocument();
+    expect(
+      screen.getByRole("link", { name: "返回当前批次核算" }),
+    ).toHaveAttribute(
+      "href",
+      "/payroll/batches/22?period=2026-07&subject_id=2",
+    );
+    await user.click(screen.getByRole("button", { name: "月度绩效" }));
+    expect(await screen.findByText("旧主体 · 批次 #22")).toBeInTheDocument();
+    await user.upload(
+      document.querySelector('input[type="file"]')!,
+      new File(["xlsx"], "performance.xlsx"),
+    );
+    expect(
+      await screen.findByText("全部行已保存为绩效事实"),
+    ).toBeInTheDocument();
+    expect(
+      fetcher.mock.calls.some(
+        ([url, init]) =>
+          String(url).endsWith("/imports/performance?payroll_batch_id=22") &&
+          init?.method === "POST",
+      ),
+    ).toBe(true);
+    for (const key of cachedKeys)
+      expect(client.getQueryState(key)?.isInvalidated).toBe(true);
+  },
+);
 
 test("员工本次上传可纠错，历史详情只读且不会改变预览入口", async () => {
   const batch = {
@@ -397,124 +499,164 @@ test.each([
   },
 );
 
-test("考勤本次上传保留逐行修正功能", async () => {
-  const batch = {
-    id: 12,
-    company_id: 1,
-    payroll_period_id: 3,
-    payroll_batch_id: 9,
-    import_type: "attendance",
-    original_filename: "attendance.xlsx",
-    file_sha256: "b".repeat(64),
-    template_version: "TPL-ATT-v1",
-    field_mapping: {},
-    status: "partially_imported",
-    total_rows: 2,
-    success_rows: 1,
-    error_rows: 1,
-    rows: [
-      {
-        id: 1,
-        sheet_name: "月度考勤",
-        source_row_number: 3,
-        validation_status: "imported",
-        raw_data: { 身份证号: "11010119900101123X", 姓名: "张三" },
-        correction_values: null,
-        normalized_data: {},
-        errors: null,
-        correction_history: [],
+test.each(["TPL-ATT-v1", "TPL-ATT-v2"])(
+  "考勤本次上传保留逐行修正功能 %s",
+  async (version) => {
+    const daysField =
+      version === "TPL-ATT-v2" ? "工作日天数合计" : "应出勤天数";
+    const batch = {
+      id: 12,
+      company_id: 1,
+      payroll_period_id: 3,
+      payroll_batch_id: 9,
+      import_type: "attendance",
+      original_filename: "attendance.xlsx",
+      file_sha256: "b".repeat(64),
+      template_version: version,
+      field_mapping: {
+        身份证号: "A",
+        姓名: "B",
+        [daysField]: version === "TPL-ATT-v2" ? "T" : "C",
+        旷工天数: "Z",
+        病假天数: "AB",
       },
-      {
-        id: 2,
-        sheet_name: "月度考勤",
-        source_row_number: 4,
-        validation_status: "invalid",
-        raw_data: {
-          身份证号: "11010119900101124X",
-          姓名: "李四",
-          应出勤天数: "0",
+      status: "partially_imported",
+      total_rows: 2,
+      success_rows: 1,
+      error_rows: 1,
+      rows: [
+        {
+          id: 1,
+          sheet_name: "月度考勤",
+          source_row_number: 3,
+          validation_status: "imported",
+          raw_data: { 身份证号: "11010119900101123X", 姓名: "张三" },
+          correction_values: null,
+          normalized_data: {},
+          errors: null,
+          correction_history: [],
         },
-        correction_values: null,
-        normalized_data: null,
-        errors: [
-          {
-            code: "WORK_DAYS_OUT_OF_RANGE",
-            field: "应出勤天数",
-            column: "C",
-            message: "须大于 0 且不超过当月自然日天数",
+        {
+          id: 2,
+          sheet_name: "月度考勤",
+          source_row_number: 4,
+          validation_status: "invalid",
+          raw_data: {
+            ...(version === "TPL-ATT-v2"
+              ? { 病假天数: "0.5", 旷工天数: "0" }
+              : {}),
+            [daysField]: "0",
+            身份证号: "11010119900101124X",
+            姓名: "李四",
           },
-        ],
-        correction_history: [],
-      },
-    ],
-  };
-  const fetchMock = vi.fn(
-    async (input: RequestInfo | URL, init?: RequestInit) => {
-      const path = String(input);
-      if (path.endsWith("/organization/company"))
-        return Response.json({ id: 1, name: "测试公司" });
-      if (path.endsWith("/payroll/workbench"))
-        return Response.json({
-          period: { id: 3, period: "2027-02" },
-          periods: [{ id: 3, period: "2027-02" }],
-          batches: [
+          correction_values: null,
+          normalized_data: null,
+          errors: [
             {
-              id: 9,
-              batch_type: "normal",
-              status: "draft",
-              subject: { name: "上海主体" },
+              code: "WORK_DAYS_OUT_OF_RANGE",
+              field: daysField,
+              column: version === "TPL-ATT-v2" ? "T" : "C",
+              message: "须大于 0 且不超过当月自然日天数",
             },
           ],
-        });
-      if (path.endsWith("/imports/attendance?company_id=1"))
-        return Response.json([]);
-      if (
-        path.endsWith("/imports/attendance?payroll_batch_id=9") &&
-        init?.method === "POST"
-      )
+          correction_history: [],
+        },
+      ],
+    };
+    const fetchMock = vi.fn(
+      async (input: RequestInfo | URL, init?: RequestInit) => {
+        const path = String(input);
+        if (path.endsWith("/organization/company"))
+          return Response.json({ id: 1, name: "测试公司" });
+        if (path.endsWith("/payroll/workbench"))
+          return Response.json({
+            period: { id: 3, period: "2027-02" },
+            periods: [{ id: 3, period: "2027-02" }],
+            batches: [
+              {
+                id: 9,
+                batch_type: "normal",
+                status: "draft",
+                subject: { name: "上海主体" },
+              },
+            ],
+          });
+        if (path.endsWith("/imports/attendance?company_id=1"))
+          return Response.json([]);
+        if (
+          path.endsWith("/imports/attendance?payroll_batch_id=9") &&
+          init?.method === "POST"
+        )
+          return Response.json(batch);
+        if (path.endsWith("/imports/attendance/12/rows/2/correct"))
+          return Response.json({
+            ...batch,
+            success_rows: 2,
+            error_rows: 0,
+            rows: batch.rows.map((row) => ({
+              ...row,
+              validation_status: "imported",
+              errors: null,
+            })),
+          });
         return Response.json(batch);
-      if (path.endsWith("/imports/attendance/12/rows/2/correct"))
-        return Response.json({
-          ...batch,
-          success_rows: 2,
-          error_rows: 0,
-          rows: batch.rows.map((row) => ({
-            ...row,
-            validation_status: "imported",
-            errors: null,
-          })),
-        });
-      return Response.json(batch);
-    },
-  );
-  vi.stubGlobal("fetch", fetchMock);
-  const user = userEvent.setup();
-  renderPage();
-  await user.click(screen.getByRole("button", { name: "月度考勤" }));
-  expect(await screen.findByText("固定模板 TPL-ATT-v1")).toBeInTheDocument();
-  expect(await screen.findByText("上海主体 · 批次 #9")).toBeInTheDocument();
-  await user.upload(
-    document.querySelector('input[type="file"]')!,
-    new File(["xlsx"], "attendance.xlsx"),
-  );
-  expect(
-    await screen.findByText("正确行已保存，错误行未进入有效考勤"),
-  ).toBeInTheDocument();
-  expect(
-    (await screen.findAllByText("须大于 0 且不超过当月自然日天数")).length,
-  ).toBeGreaterThan(0);
-  await user.click(await screen.findByRole("button", { name: "修正" }));
-  await user.clear(screen.getByRole("textbox", { name: "修正应出勤天数" }));
-  await user.type(
-    screen.getByRole("textbox", { name: "修正应出勤天数" }),
-    "20",
-  );
-  await user.click(screen.getByRole("button", { name: "保存并重新校验" }));
-  expect(await screen.findByText("没有失败行")).toBeInTheDocument();
-  expect(
-    fetchMock.mock.calls.filter(([, init]) => init?.method === "POST"),
-  ).toHaveLength(2);
-});
+      },
+    );
+    vi.stubGlobal("fetch", fetchMock);
+    const user = userEvent.setup();
+    renderPage();
+    await user.click(screen.getByRole("button", { name: "月度考勤" }));
+    expect(await screen.findByText("考勤导入模版")).toBeInTheDocument();
+    expect(screen.getByText(/日期和数值列支持本行引用/)).toBeInTheDocument();
+    expect(screen.getByRole("link", { name: /下载模板/ })).toHaveAttribute(
+      "href",
+      "/api/imports/attendance-template",
+    );
+    expect(await screen.findByText("上海主体 · 批次 #9")).toBeInTheDocument();
+    await user.upload(
+      document.querySelector('input[type="file"]')!,
+      new File(["xlsx"], "attendance.xlsx"),
+    );
+    expect(
+      await screen.findByText("正确行已保存，错误行未进入有效考勤"),
+    ).toBeInTheDocument();
+    expect(
+      (await screen.findAllByText("须大于 0 且不超过当月自然日天数")).length,
+    ).toBeGreaterThan(0);
+    await user.click(await screen.findByRole("button", { name: "修正" }));
+    expect(
+      screen
+        .getAllByRole("textbox")
+        .map((input) => input.getAttribute("aria-label")),
+    ).toEqual(
+      version === "TPL-ATT-v2"
+        ? [
+            "修正身份证号",
+            "修正姓名",
+            `修正${daysField}`,
+            "修正旷工天数",
+            "修正病假天数",
+          ]
+        : ["修正身份证号", "修正姓名", `修正${daysField}`],
+    );
+    await user.clear(screen.getByRole("textbox", { name: `修正${daysField}` }));
+    await user.type(
+      screen.getByRole("textbox", { name: `修正${daysField}` }),
+      "=10+10",
+    );
+    await user.click(screen.getByRole("button", { name: "保存并重新校验" }));
+    expect(await screen.findByText("没有失败行")).toBeInTheDocument();
+    expect(
+      fetchMock.mock.calls.filter(([, init]) => init?.method === "POST"),
+    ).toHaveLength(2);
+    const correctionRequest = fetchMock.mock.calls.find(([url]) =>
+      String(url).endsWith("/imports/attendance/12/rows/2/correct"),
+    );
+    expect(JSON.parse(String(correctionRequest?.[1]?.body))).toEqual({
+      values: { [daysField]: "=10+10" },
+    });
+  },
+);
 
 test("考勤导入在未建立工资批次时禁用上传并提示范围", async () => {
   vi.stubGlobal(

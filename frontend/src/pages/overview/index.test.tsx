@@ -1,6 +1,9 @@
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { cleanup, render, screen, waitFor } from "@testing-library/react";
-import { MemoryRouter } from "react-router-dom";
+import { MemoryRouter, Route, Routes } from "react-router-dom";
+import userEvent from "@testing-library/user-event";
+import { App as AntdApp } from "antd";
+import { PayrollPage } from "../payroll/index";
 import { afterEach, expect, test, vi } from "vitest";
 import { OverviewPage } from "./index";
 
@@ -127,3 +130,80 @@ test("首页加载期间不显示假进度", async () => {
   expect(screen.getByText("整体进度 — / 7")).toBeInTheDocument();
   expect(screen.queryByText("当前没有待处理事项")).not.toBeInTheDocument();
 });
+
+test.each([false, true])(
+  "首页建立批次入口正确跳转，已有期间：%s",
+  async (hasPeriod) => {
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async (input: RequestInfo | URL) => {
+        const url = input instanceof Request ? input.url : String(input);
+        if (url.includes("/health")) return Response.json({ status: "ok" });
+        if (url.includes("/company"))
+          return Response.json({ id: 1, name: "本机公司" });
+        if (url.includes("/subjects")) return Response.json([subject]);
+        if (url.includes("/workbench"))
+          return Response.json({
+            period: hasPeriod ? period : null,
+            periods: hasPeriod ? [period] : [],
+            batches: [],
+          });
+        if (url.includes("/confirmation"))
+          return Response.json({
+            locked: false,
+            confirmed: false,
+            blockers: [],
+          });
+        if (url.includes("/ledger"))
+          return Response.json({
+            record_count: 0,
+            totals: { untaxed_amount: "0.00" },
+          });
+        return Response.json([]);
+      }),
+    );
+    const user = userEvent.setup();
+    render(
+      <AntdApp>
+        <QueryClientProvider
+          client={
+            new QueryClient({ defaultOptions: { queries: { retry: false } } })
+          }
+        >
+          <MemoryRouter initialEntries={["/"]}>
+            <Routes>
+              <Route path="/" element={<OverviewPage />} />
+              <Route path="/payroll" element={<PayrollPage />} />
+              <Route path="*" element={<div>无效地址</div>} />
+            </Routes>
+          </MemoryRouter>
+        </QueryClientProvider>
+      </AntdApp>,
+    );
+    const link = await screen.findByRole("link", { name: "建立批次" });
+    expect(link).toHaveAttribute(
+      "href",
+      hasPeriod
+        ? "/payroll?period=2026-09&subject_id=2"
+        : "/payroll?subject_id=2",
+    );
+    await user.click(link);
+    expect(await screen.findByText("工资期间与批次")).toBeInTheDocument();
+    if (hasPeriod) {
+      await user.click(
+        screen.getByRole("button", { name: /^(plus )?建立批次$/ }),
+      );
+      expect(
+        await screen.findByRole("combobox", { name: "工资主体" }),
+      ).toBeInTheDocument();
+    } else {
+      expect(
+        screen.getByRole("button", { name: /^(plus )?建立批次$/ }),
+      ).toBeDisabled();
+      await user.click(screen.getByRole("button", { name: /建立工资期间/ }));
+      expect(
+        await screen.findByRole("textbox", { name: "工资期间" }),
+      ).toBeInTheDocument();
+    }
+  },
+);

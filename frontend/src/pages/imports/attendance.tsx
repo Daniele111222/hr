@@ -17,6 +17,7 @@ import {
   message,
 } from "antd";
 import { useRef, useState } from "react";
+import { Link, useSearchParams } from "react-router-dom";
 import {
   resources,
   type AttendanceImportBatch,
@@ -29,18 +30,6 @@ import { ImportFailureTable } from "./failure-table.tsx";
 const API_BASE = import.meta.env.VITE_API_BASE_URL ?? "/api";
 type MonthlyKind = "attendance" | "performance";
 type MonthlyBatch = AttendanceImportBatch | PerformanceImportBatch;
-const attendanceFields = [
-  "身份证号",
-  "姓名",
-  "应出勤天数",
-  "迟到分钟",
-  "早退分钟",
-  "有薪请假天数",
-  "无薪请假天数",
-  "忘打卡次数",
-  "补卡次数",
-  "来源说明",
-];
 const performanceFields = ["身份证号", "姓名", "绩效系数", "来源说明"];
 
 export function MonthlyImportsPage({ kind }: { kind: MonthlyKind }) {
@@ -48,8 +37,23 @@ export function MonthlyImportsPage({ kind }: { kind: MonthlyKind }) {
   const label = performance ? "绩效" : "考勤";
   const [messageApi, contextHolder] = message.useMessage();
   const fileInput = useRef<HTMLInputElement>(null);
-  const [period, setPeriod] = useState<string>();
-  const [batchId, setBatchId] = useState<number>();
+  const [params, setParams] = useSearchParams();
+  const period = params.get("period") ?? undefined;
+  const batchId = params.has("batch_id")
+    ? Number(params.get("batch_id"))
+    : undefined;
+  const subjectId = params.has("subject_id")
+    ? Number(params.get("subject_id"))
+    : undefined;
+  const updateScope = (values: Record<string, string | undefined>) =>
+    setParams((current) => {
+      const next = new URLSearchParams(current);
+      for (const [key, value] of Object.entries(values)) {
+        if (value === undefined) next.delete(key);
+        else next.set(key, value);
+      }
+      return next;
+    });
   const [selected, setSelected] = useState<MonthlyBatch | null>(null);
   const [preview, setPreview] = useState<MonthlyBatch | null>(null);
   const [readOnly, setReadOnly] = useState(false);
@@ -59,11 +63,11 @@ export function MonthlyImportsPage({ kind }: { kind: MonthlyKind }) {
     queryFn: resources.company,
   });
   const workbench = useQuery({
-    queryKey: ["payroll-workbench"],
+    queryKey: ["payroll", "workbench", undefined],
     queryFn: () => resources.payrollWorkbench(),
   });
   const otherPeriod = useQuery({
-    queryKey: ["payroll-workbench", period],
+    queryKey: ["payroll", "workbench", period],
     queryFn: () => resources.payrollWorkbench(period),
     enabled: !!period && period !== workbench.data?.period?.period,
   });
@@ -85,18 +89,36 @@ export function MonthlyImportsPage({ kind }: { kind: MonthlyKind }) {
         item.batch_type === "normal" &&
         ["draft", "trial"].includes(item.status),
     ) ?? [];
-  const chosenBatch = batches.find((item) => item.id === batchId) ?? batches[0];
+  const chosenBatch =
+    batchId !== undefined
+      ? batches.find(
+          (item) =>
+            item.id === batchId &&
+            (subjectId === undefined || item.subject.id === subjectId),
+        )
+      : subjectId !== undefined
+        ? batches.find((item) => item.subject.id === subjectId)
+        : batches[0];
+  const returnParams = new URLSearchParams(params);
+  returnParams.delete("type");
+  returnParams.delete("batch_id");
+  if (current?.period?.period)
+    returnParams.set("period", current.period.period);
+  const returnBatchId =
+    chosenBatch?.id ?? current?.batches.find((item) => item.id === batchId)?.id;
   const upload = useMutation<MonthlyBatch, Error, File>({
-    mutationFn: async (file: File) =>
-      performance
+    mutationFn: async (file: File) => {
+      if (!chosenBatch) throw new Error("请选择本期间可导入的正常工资批次");
+      return performance
         ? await resources.uploadPerformanceImport(chosenBatch.id, file)
-        : await resources.uploadAttendanceImport(chosenBatch.id, file),
+        : await resources.uploadAttendanceImport(chosenBatch.id, file);
+    },
     onSuccess: (result) => {
       setReadOnly(false);
       setPreview(result);
       setSelected(result);
       void client.invalidateQueries({ queryKey: [kind, "imports"] });
-      void client.invalidateQueries({ queryKey: ["payroll-workbench"] });
+      void client.invalidateQueries({ queryKey: ["payroll"] });
       messageApi.success(
         `已保存 ${result.success_rows} 行，${result.error_rows} 行失败`,
       );
@@ -129,7 +151,7 @@ export function MonthlyImportsPage({ kind }: { kind: MonthlyKind }) {
     setPreview(result);
     setSelected(result);
     void client.invalidateQueries({ queryKey: [kind, "imports"] });
-    void client.invalidateQueries({ queryKey: ["payroll-workbench"] });
+    void client.invalidateQueries({ queryKey: ["payroll"] });
   };
 
   return (
@@ -144,7 +166,15 @@ export function MonthlyImportsPage({ kind }: { kind: MonthlyKind }) {
               : "按工资期间和主体导入考勤事实。正确行先保存，错误行可逐行修正；历史详情只读，扣款由试算统一计算。"}
           </Typography.Paragraph>
         </div>
-        <Tag color="blue">{company.data?.name ?? "目标公司未初始化"}</Tag>
+        <Space wrap>
+          {returnBatchId && (
+            <Link to={`/payroll/batches/${returnBatchId}?${returnParams}`}>
+              返回当前批次核算
+            </Link>
+          )}
+          <Link to={`/payroll?${returnParams}`}>返回本期工资核算</Link>
+          <Tag color="blue">{company.data?.name ?? "目标公司未初始化"}</Tag>
+        </Space>
       </div>
 
       <Card title="导入流程">
@@ -172,8 +202,7 @@ export function MonthlyImportsPage({ kind }: { kind: MonthlyKind }) {
                 value={period ?? workbench.data?.period?.period}
                 loading={workbench.isLoading}
                 onChange={(value) => {
-                  setPeriod(value);
-                  setBatchId(undefined);
+                  updateScope({ period: value, batch_id: undefined });
                 }}
                 options={
                   workbench.data?.periods.map((item) => ({
@@ -190,7 +219,15 @@ export function MonthlyImportsPage({ kind }: { kind: MonthlyKind }) {
                 aria-label="主体与批次"
                 style={{ minWidth: 230 }}
                 value={chosenBatch?.id}
-                onChange={setBatchId}
+                onChange={(value) =>
+                  updateScope({
+                    batch_id: String(value),
+                    subject_id: String(
+                      batches.find((item) => item.id === value)!.subject.id,
+                    ),
+                    period: current?.period?.period,
+                  })
+                }
                 loading={otherPeriod.isLoading}
                 options={batches.map((item) => ({
                   label: `${item.subject.name} · 批次 #${item.id}`,
@@ -207,17 +244,22 @@ export function MonthlyImportsPage({ kind }: { kind: MonthlyKind }) {
             <Alert
               type="info"
               showIcon
-              message="请先在工资核算中建立本期间的正常工资批次"
+              message={
+                current?.batches.some((item) => item.batch_type === "normal")
+                  ? "所选主体或批次不可导入，请选择本期间可导入的正常工资批次"
+                  : "请先在工资核算中建立本期间的正常工资批次"
+              }
+              action={<Link to={`/payroll?${returnParams}`}>去建立批次</Link>}
             />
           )}
           <Alert
             type="info"
             showIcon
-            message={`固定模板 ${performance ? "TPL-PERF-v1" : "TPL-ATT-v1"}`}
+            message={performance ? "固定模板 TPL-PERF-v1" : "考勤导入模版"}
             description={
               performance
                 ? "身份证号按文本填写；系数须为非负数，不设固定上限。缺失和零值不同；公式按行报错。"
-                : "身份证号按文本填写；应出勤天数须大于零且不超过当月自然日天数。异常数值和公式按行报错。"
+                : "固定 48 列，首行为表头；公司须与所选主体一致，身份证号按文本填写。工作日天数合计为应出勤天数，须大于零且不超过当月自然日天数；迟到、早退时长按分钟填写，缺卡次数为未补卡次数。事假、旷工按无薪天数折算，病假、产假及其他假期按有薪保存。入离职未出勤天数仅留存，工资按员工主档入离职日期折算；薪资与扣款列仅供追溯，不覆盖主档或直接采用总扣款。日期和数值列支持本行引用、四则运算、括号、ROUND 和 EDATE，数值引用空白按 0 计算；SUM、IF、跨行、跨表及外部引用请先转为实际值。计算结果仍须通过考勤数值校验，公式原文保留追溯。"
             }
             action={
               <Button
@@ -563,7 +605,11 @@ function MonthlyDetail({
           <div className={styles.correctionGrid}>
             {(kind === "performance"
               ? performanceFields
-              : attendanceFields
+              : Object.keys(editingRow.raw_data).sort((left, right) => {
+                  const a = batch.field_mapping[left] ?? "";
+                  const b = batch.field_mapping[right] ?? "";
+                  return a.length - b.length || a.localeCompare(b);
+                })
             ).map((field) => (
               <label key={field}>
                 {field}

@@ -137,7 +137,7 @@ test("工资工作台可以幂等创建期间并刷新当前期间", async () =>
   renderPage();
   await user.click(await screen.findByText("建立工资期间"));
   await user.type(screen.getByRole("textbox", { name: "工资期间" }), "2026-09");
-  await user.click(screen.getByText("OK"));
+  await user.click(screen.getByRole("button", { name: "OK" }));
 
   await waitFor(() =>
     expect(fetchMock).toHaveBeenCalledWith(
@@ -170,7 +170,7 @@ test("没有现有批次时仍可选择主体建立首个批次", async () => {
   await user.click(await screen.findByText("建立批次"));
   await user.click(screen.getByRole("combobox", { name: "工资主体" }));
   await user.click(await screen.findByText("主主体（MAIN）"));
-  await user.click(screen.getByText("OK"));
+  await user.click(screen.getByRole("button", { name: "OK" }));
 
   await waitFor(() =>
     expect(fetchMock).toHaveBeenCalledWith(
@@ -204,7 +204,7 @@ test("重复正常批次显示后端冲突", async () => {
   await user.click(await screen.findByText("建立批次"));
   await user.click(screen.getByRole("combobox", { name: "工资主体" }));
   await user.click(await screen.findByText("主主体（MAIN）"));
-  await user.click(screen.getByText("OK"));
+  await user.click(screen.getByRole("button", { name: "OK" }));
 
   expect(
     await screen.findByText("该主体在此工资期间已有正常批次"),
@@ -235,7 +235,7 @@ test("可建立独立补发批次且必须填写原因", async () => {
   await user.click(await screen.findByText("主主体（MAIN）"));
   await user.click(screen.getByRole("combobox", { name: "批次类型" }));
   await user.click(await screen.findByText("独立补发"));
-  await user.click(screen.getByText("OK"));
+  await user.click(screen.getByRole("button", { name: "OK" }));
   expect(await screen.findByText("请填写补发原因")).toBeInTheDocument();
   expect(
     fetchMock.mock.calls.some(
@@ -248,7 +248,7 @@ test("可建立独立补发批次且必须填写原因", async () => {
     screen.getByRole("textbox", { name: "补发原因" }),
     "补发差额",
   );
-  await user.click(screen.getByText("OK"));
+  await user.click(screen.getByRole("button", { name: "OK" }));
   await waitFor(() =>
     expect(fetchMock).toHaveBeenCalledWith(
       "/api/payroll/periods/1/batches",
@@ -276,4 +276,69 @@ test("工作台从 URL 恢复期间、主体与状态筛选", async () => {
       String(input).includes("period=2026-09"),
     ),
   ).toBe(true);
+});
+
+test("本期操作与批次入口保留月份，工资表导出汇总全部主体", async () => {
+  vi.stubGlobal(
+    "fetch",
+    vi.fn(async (input: RequestInfo | URL) =>
+      String(input).includes("/subjects")
+        ? Response.json([
+            batch.subject,
+            { id: 3, code: "OTHER", name: "另一主体" },
+          ])
+        : Response.json({ period, periods: [period], batches: [batch] }),
+    ),
+  );
+  renderPage("/payroll?period=2026-09&subject_id=2&status=draft");
+  expect(await screen.findByRole("link", { name: "进入核算" })).toHaveAttribute(
+    "href",
+    "/payroll/batches/10?period=2026-09&subject_id=2&status=draft",
+  );
+  expect(screen.getByRole("link", { name: "导出本期工资表" })).toHaveAttribute(
+    "href",
+    "/exports?period_id=1&kind=payroll",
+  );
+  expect(screen.getByRole("link", { name: "工资台账" })).toHaveAttribute(
+    "href",
+    "/payroll/ledger?period=2026-09",
+  );
+  expect(
+    screen
+      .getAllByRole("link", { name: "导入考勤" })
+      .some(
+        (link) =>
+          link.getAttribute("href") ===
+          "/imports?period=2026-09&subject_id=2&status=draft&batch_id=10&type=attendance",
+      ),
+  ).toBe(true);
+});
+
+test("缺失批次可从本期提示建立，并自动选中对应主体", async () => {
+  const fetcher = vi.fn(
+    async (input: RequestInfo | URL, init?: RequestInit) => {
+      if (String(input).includes("/subjects"))
+        return Response.json([batch.subject]);
+      if (init?.method === "POST") return Response.json(batch, { status: 201 });
+      return Response.json({ period, periods: [period], batches: [] });
+    },
+  );
+  vi.stubGlobal("fetch", fetcher);
+  const user = userEvent.setup();
+  renderPage();
+  await user.click(
+    await screen.findByRole("button", { name: "主主体：建立批次" }),
+  );
+  expect(await screen.findByText("主主体（MAIN）")).toBeInTheDocument();
+  await user.click(screen.getByRole("button", { name: "OK" }));
+  await waitFor(() =>
+    expect(
+      fetcher.mock.calls.some(
+        ([url, init]) =>
+          String(url).endsWith("/payroll/periods/1/batches") &&
+          init?.method === "POST" &&
+          JSON.parse(String(init.body)).subject_id === 2,
+      ),
+    ).toBe(true),
+  );
 });
