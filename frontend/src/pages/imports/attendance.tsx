@@ -39,21 +39,6 @@ export function MonthlyImportsPage({ kind }: { kind: MonthlyKind }) {
   const fileInput = useRef<HTMLInputElement>(null);
   const [params, setParams] = useSearchParams();
   const period = params.get("period") ?? undefined;
-  const batchId = params.has("batch_id")
-    ? Number(params.get("batch_id"))
-    : undefined;
-  const subjectId = params.has("subject_id")
-    ? Number(params.get("subject_id"))
-    : undefined;
-  const updateScope = (values: Record<string, string | undefined>) =>
-    setParams((current) => {
-      const next = new URLSearchParams(current);
-      for (const [key, value] of Object.entries(values)) {
-        if (value === undefined) next.delete(key);
-        else next.set(key, value);
-      }
-      return next;
-    });
   const [selected, setSelected] = useState<MonthlyBatch | null>(null);
   const [preview, setPreview] = useState<MonthlyBatch | null>(null);
   const [readOnly, setReadOnly] = useState(false);
@@ -83,35 +68,29 @@ export function MonthlyImportsPage({ kind }: { kind: MonthlyKind }) {
     period && period !== workbench.data?.period?.period
       ? otherPeriod.data
       : workbench.data;
-  const batches =
-    current?.batches.filter(
-      (item) =>
-        item.batch_type === "normal" &&
-        ["draft", "trial"].includes(item.status),
-    ) ?? [];
-  const chosenBatch =
-    batchId !== undefined
-      ? batches.find(
-          (item) =>
-            item.id === batchId &&
-            (subjectId === undefined || item.subject.id === subjectId),
-        )
-      : subjectId !== undefined
-        ? batches.find((item) => item.subject.id === subjectId)
-        : batches[0];
-  const returnParams = new URLSearchParams(params);
-  returnParams.delete("type");
-  returnParams.delete("batch_id");
-  if (current?.period?.period)
-    returnParams.set("period", current.period.period);
-  const returnBatchId =
-    chosenBatch?.id ?? current?.batches.find((item) => item.id === batchId)?.id;
+  const selectedPeriod = current?.period;
+  const sourceBatchId = Number(
+    params.get("source_batch_id") ?? params.get("batch_id"),
+  );
+  const sourceBatch = current?.batches.find(
+    (item) => item.id === sourceBatchId,
+  );
+  const periodQuery = selectedPeriod ? `period=${selectedPeriod.period}` : "";
   const upload = useMutation<MonthlyBatch, Error, File>({
     mutationFn: async (file: File) => {
-      if (!chosenBatch) throw new Error("请选择本期间可导入的正常工资批次");
+      if (!company.data || !selectedPeriod)
+        throw new Error("请选择已建立的工资期间");
       return performance
-        ? await resources.uploadPerformanceImport(chosenBatch.id, file)
-        : await resources.uploadAttendanceImport(chosenBatch.id, file);
+        ? await resources.uploadPerformanceImport(
+            company.data.id,
+            selectedPeriod.id,
+            file,
+          )
+        : await resources.uploadAttendanceImport(
+            company.data.id,
+            selectedPeriod.id,
+            file,
+          );
     },
     onSuccess: (result) => {
       setReadOnly(false);
@@ -126,10 +105,10 @@ export function MonthlyImportsPage({ kind }: { kind: MonthlyKind }) {
     onError: (error: Error) => messageApi.error(error.message),
   });
   const chooseFile = (file?: File) => {
-    if (!file || !chosenBatch || upload.isPending) return;
+    if (!file || !company.data || !selectedPeriod || upload.isPending) return;
     if (!file.name.toLowerCase().endsWith(".xlsx")) {
       messageApi.error(`${label}导入仅支持 .xlsx 固定模板`);
-    } else if (chosenBatch) {
+    } else {
       upload.mutate(file);
     }
   };
@@ -162,17 +141,19 @@ export function MonthlyImportsPage({ kind }: { kind: MonthlyKind }) {
           <Typography.Title level={2}>月度{label}导入</Typography.Title>
           <Typography.Paragraph type="secondary">
             {performance
-              ? "按工资期间和主体导入绩效系数。试用期不考核绩效；转正当月需填写系数。正确行先保存，错误行可逐行修正；历史详情只读。"
-              : "按工资期间和主体导入考勤事实。正确行先保存，错误行可逐行修正；历史详情只读，扣款由试算统一计算。"}
+              ? "按工资期间导入全公司绩效系数，有效行按当期任职归集并自动补齐草稿正常批次。试用期不考核绩效；转正当月需填写系数。正确行先保存，错误行可逐行修正；历史详情只读。"
+              : "按工资期间导入全公司考勤事实，有效行按当期任职归集并自动补齐草稿正常批次。正确行先保存，错误行可逐行修正；历史详情只读，扣款由试算统一计算。"}
           </Typography.Paragraph>
         </div>
         <Space wrap>
-          {returnBatchId && (
-            <Link to={`/payroll/batches/${returnBatchId}?${returnParams}`}>
-              返回当前批次核算
+          {sourceBatch && (
+            <Link
+              to={`/payroll/batches/${sourceBatch.id}?${periodQuery}&subject_id=${sourceBatch.subject.id}`}
+            >
+              返回来源批次核算
             </Link>
           )}
-          <Link to={`/payroll?${returnParams}`}>返回本期工资核算</Link>
+          <Link to={`/payroll?${periodQuery}`}>返回本期工资核算</Link>
           <Tag color="blue">{company.data?.name ?? "目标公司未初始化"}</Tag>
         </Space>
       </div>
@@ -202,7 +183,14 @@ export function MonthlyImportsPage({ kind }: { kind: MonthlyKind }) {
                 value={period ?? workbench.data?.period?.period}
                 loading={workbench.isLoading}
                 onChange={(value) => {
-                  updateScope({ period: value, batch_id: undefined });
+                  setParams((current) => {
+                    const next = new URLSearchParams(current);
+                    next.set("period", value);
+                    next.delete("batch_id");
+                    next.delete("source_batch_id");
+                    next.delete("subject_id");
+                    return next;
+                  });
                 }}
                 options={
                   workbench.data?.periods.map((item) => ({
@@ -213,45 +201,21 @@ export function MonthlyImportsPage({ kind }: { kind: MonthlyKind }) {
                 placeholder="选择期间"
               />
             </label>
-            <label>
-              主体与批次{" "}
-              <Select
-                aria-label="主体与批次"
-                style={{ minWidth: 230 }}
-                value={chosenBatch?.id}
-                onChange={(value) =>
-                  updateScope({
-                    batch_id: String(value),
-                    subject_id: String(
-                      batches.find((item) => item.id === value)!.subject.id,
-                    ),
-                    period: current?.period?.period,
-                  })
-                }
-                loading={otherPeriod.isLoading}
-                options={batches.map((item) => ({
-                  label: `${item.subject.name} · 批次 #${item.id}`,
-                  value: item.id,
-                }))}
-                placeholder="选择正常工资批次"
-              />
-            </label>
+            <Tag color="blue">全公司所有主体</Tag>
           </Space>
           {(workbench.isError || otherPeriod.isError) && (
-            <Alert type="error" showIcon message="工资期间或批次读取失败" />
+            <Alert type="error" showIcon message="工资期间读取失败" />
           )}
-          {!workbench.isLoading && !otherPeriod.isLoading && !chosenBatch && (
-            <Alert
-              type="info"
-              showIcon
-              message={
-                current?.batches.some((item) => item.batch_type === "normal")
-                  ? "所选主体或批次不可导入，请选择本期间可导入的正常工资批次"
-                  : "请先在工资核算中建立本期间的正常工资批次"
-              }
-              action={<Link to={`/payroll?${returnParams}`}>去建立批次</Link>}
-            />
-          )}
+          {!workbench.isLoading &&
+            !otherPeriod.isLoading &&
+            !selectedPeriod && (
+              <Alert
+                type="info"
+                showIcon
+                message="请先建立并选择工资期间，无需提前建立主体批次"
+                action={<Link to="/payroll">去建立工资期间</Link>}
+              />
+            )}
           <Alert
             type="info"
             showIcon
@@ -259,7 +223,7 @@ export function MonthlyImportsPage({ kind }: { kind: MonthlyKind }) {
             description={
               performance
                 ? "身份证号按文本填写；系数须为非负数，不设固定上限。缺失和零值不同；公式按行报错。"
-                : "固定 48 列，首行为表头；公司须与所选主体一致，身份证号按文本填写。工作日天数合计为应出勤天数，须大于零且不超过当月自然日天数；迟到、早退时长按分钟填写，缺卡次数为未补卡次数。事假、旷工按无薪天数折算，病假、产假及其他假期按有薪保存。入离职未出勤天数仅留存，工资按员工主档入离职日期折算；薪资与扣款列仅供追溯，不覆盖主档或直接采用总扣款。日期和数值列支持本行引用、四则运算、括号、ROUND 和 EDATE，数值引用空白按 0 计算；SUM、IF、跨行、跨表及外部引用请先转为实际值。计算结果仍须通过考勤数值校验，公式原文保留追溯。"
+                : "固定 48 列，首行为表头；公司须与员工当期归属主体一致，身份证号按文本填写。工作日天数合计为应出勤天数，须大于零且不超过当月自然日天数；迟到、早退时长按分钟填写，缺卡次数为未补卡次数。事假、旷工按无薪天数折算，病假、产假及其他假期按有薪保存。入离职未出勤天数仅留存，工资按员工主档入离职日期折算；薪资与扣款列仅供追溯，不覆盖主档或直接采用总扣款。日期和数值列支持本行引用、四则运算、括号、ROUND 和 EDATE，数值引用空白按 0 计算；SUM、IF、跨行、跨表及外部引用请先转为实际值。计算结果仍须通过考勤数值校验，公式原文保留追溯。"
             }
             action={
               <Button
@@ -274,7 +238,7 @@ export function MonthlyImportsPage({ kind }: { kind: MonthlyKind }) {
           <button
             type="button"
             className={styles.dropzone}
-            disabled={!chosenBatch || upload.isPending}
+            disabled={!company.data || !selectedPeriod || upload.isPending}
             onClick={() => fileInput.current?.click()}
             onDragOver={(event) => event.preventDefault()}
             onDrop={(event) => {
@@ -322,13 +286,14 @@ export function MonthlyImportsPage({ kind }: { kind: MonthlyKind }) {
               }
               description={`${label}变化会使旧试算失效，后续需要重新试算并核对。`}
             />
+            <SubjectSummary batch={preview} />
             <Table<ImportRow>
               size="small"
               rowKey="id"
               pagination={false}
               scroll={{ x: 760 }}
               dataSource={preview.rows?.slice(0, 8)}
-              columns={rowColumns}
+              columns={rowColumns(preview)}
             />
             <div className={styles.previewActions}>
               <Button
@@ -376,8 +341,13 @@ export function MonthlyImportsPage({ kind }: { kind: MonthlyKind }) {
                   (p) => p.id === item.payroll_period_id,
                 )?.period ?? item.payroll_period_id,
             },
-            { title: "主体", dataIndex: "subject_name" },
-            { title: "批次", dataIndex: "payroll_batch_id" },
+            {
+              title: "范围",
+              render: (_, item) =>
+                item.payroll_batch_id
+                  ? `历史单主体：${item.subject_name}`
+                  : `全公司 · ${item.subjects?.length ?? 0} 个已识别主体`,
+            },
             { title: "文件名", dataIndex: "original_filename" },
             { title: "成功行", dataIndex: "success_rows", align: "right" },
             { title: "错误行", dataIndex: "error_rows", align: "right" },
@@ -416,7 +386,7 @@ export function MonthlyImportsPage({ kind }: { kind: MonthlyKind }) {
   );
 }
 
-const rowColumns = [
+const rowColumns = (batch: MonthlyBatch) => [
   { title: "原始行", dataIndex: "source_row_number" },
   {
     title: "身份证号",
@@ -425,6 +395,12 @@ const rowColumns = [
   {
     title: "姓名",
     render: (_: unknown, row: ImportRow) => row.raw_data["姓名"],
+  },
+  {
+    title: "归属主体",
+    render: (_: unknown, row: ImportRow) =>
+      batch.subjects?.find((item) => item.subject_id === row.subject_id)
+        ?.subject_name ?? "待核对",
   },
   {
     title: "状态",
@@ -441,6 +417,44 @@ const rowColumns = [
       row.errors?.map((item) => item.message).join("；") ?? "—",
   },
 ];
+
+function SubjectSummary({ batch }: { batch: MonthlyBatch }) {
+  if (!batch.subjects?.length) return null;
+  return (
+    <Table
+      size="small"
+      rowKey="subject_id"
+      pagination={false}
+      scroll={{ x: 580 }}
+      dataSource={batch.subjects}
+      columns={[
+        { title: "归属主体", dataIndex: "subject_name" },
+        { title: "通过行", dataIndex: "success_rows", align: "right" },
+        { title: "失败行", dataIndex: "error_rows", align: "right" },
+        {
+          title: "工资批次",
+          render: (_, row) =>
+            row.payroll_batch_id ? (
+              <Link to={`/payroll/batches/${row.payroll_batch_id}`}>
+                查看核算 #{row.payroll_batch_id}
+              </Link>
+            ) : (
+              "未建立"
+            ),
+        },
+        {
+          title: "批次处理",
+          render: (_, row) =>
+            row.batch_created
+              ? "自动补齐草稿"
+              : row.payroll_batch_id
+                ? "沿用已有批次"
+                : "行校验通过后补齐",
+        },
+      ]}
+    />
+  );
+}
 
 function StatusTag({ batch }: { batch: MonthlyBatch }) {
   return (
@@ -539,6 +553,7 @@ function MonthlyDetail({
           {batch.success_rows} / {batch.error_rows}
         </strong>
       </div>
+      <SubjectSummary batch={batch} />
       {readOnly ? (
         <Tabs
           items={[
@@ -557,7 +572,7 @@ function MonthlyDetail({
                   dataSource={batch.rows ?? []}
                   scroll={{ x: 760 }}
                   pagination={{ pageSize: 8 }}
-                  columns={rowColumns}
+                  columns={rowColumns(batch)}
                 />
               ),
             },
@@ -571,7 +586,7 @@ function MonthlyDetail({
           scroll={{ x: 760 }}
           pagination={{ pageSize: 8 }}
           columns={[
-            ...rowColumns,
+            ...rowColumns(batch),
             {
               title: "操作",
               render: (_, row: ImportRow) =>

@@ -1431,8 +1431,59 @@ def test_employee_duplicate_migration_hides_historical_errors(
         )
     )
     db_session.commit()
+    legacy_subject = Subject(company_id=company.id, code="MIG-MONTHLY", name="历史导入主体")
+    legacy_period = PayrollPeriod(
+        year=2033, month=1, period_start=date(2033, 1, 1), period_end=date(2033, 1, 31)
+    )
+    db_session.add_all([legacy_subject, legacy_period])
+    db_session.flush()
+    legacy_payroll = PayrollBatch(
+        subject_id=legacy_subject.id, payroll_period_id=legacy_period.id, batch_type="normal"
+    )
+    db_session.add(legacy_payroll)
+    db_session.flush()
+    legacy_monthly = ImportBatch(
+        company_id=company.id,
+        payroll_period_id=legacy_period.id,
+        payroll_batch_id=legacy_payroll.id,
+        import_type="attendance",
+        original_filename="old-attendance.xlsx",
+        original_file=b"old monthly source",
+        file_sha256="m" * 64,
+        template_version="TPL-ATT-v1",
+        status="rejected",
+    )
+    db_session.add(legacy_monthly)
+    db_session.flush()
+    legacy_monthly_row = ImportRow(
+        import_batch_id=legacy_monthly.id,
+        sheet_name="月度考勤",
+        source_row_number=3,
+        validation_status="invalid",
+        raw_data={"身份证号": "11010119900101123X"},
+        errors=[{"code": "INVALID", "field": "身份证号", "message": "原始月度错误"}],
+    )
+    db_session.add(legacy_monthly_row)
+    db_session.flush()
+    legacy_row_id, legacy_subject_id, legacy_payroll_id = (
+        legacy_monthly_row.id,
+        legacy_subject.id,
+        legacy_payroll.id,
+    )
+    db_session.commit()
+    legacy_trial = api_client.post(f"/payroll/batches/{legacy_payroll_id}/trial")
+    assert legacy_trial.status_code == 200, legacy_trial.text
+    assert api_client.get(f"/payroll/batches/{legacy_payroll_id}/trial").json()["stale"] is False
     command.downgrade(config, "0010_supplement_batches")
     command.upgrade(config, "head")
+    db_session.expire_all()
+    migrated_monthly_row = db_session.get(ImportRow, legacy_row_id)
+    assert (migrated_monthly_row.subject_id, migrated_monthly_row.payroll_batch_id) == (
+        legacy_subject_id,
+        legacy_payroll_id,
+    )
+    assert migrated_monthly_row.errors[0]["message"] == "原始月度错误"
+    assert api_client.get(f"/payroll/batches/{legacy_payroll_id}/trial").json()["stale"] is False
     migrated = api_client.get(f"/imports/{batch_id}")
     assert migrated.status_code == 200
     assert migrated.json()["rows"] == []
@@ -1712,7 +1763,9 @@ def test_attendance_import_partial_correction_and_revision(api_client, db_sessio
             "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
         )
     }
-    response = api_client.post(f"/imports/attendance?payroll_batch_id={batch.id}", files=files)
+    response = api_client.post(
+        f"/imports/attendance?company_id={company.id}&payroll_period_id={period.id}", files=files
+    )
     assert response.status_code == 201, response.text
     imported = response.json()
     assert (imported["success_rows"], imported["error_rows"]) == (1, 3)
@@ -1731,8 +1784,11 @@ def test_attendance_import_partial_correction_and_revision(api_client, db_sessio
     )
     assert fact.leave_type == "mixed"
     assert (
-        api_client.post(f"/imports/attendance?payroll_batch_id={batch.id}", files=files).status_code
-        == 409
+        api_client.post(
+            f"/imports/attendance?company_id={company.id}&payroll_period_id={period.id}",
+            files=files,
+        ).status_code
+        == 201
     )
     assert (
         api_client.get(f"/imports/attendance/{imported['id']}/file").content == content.getvalue()
@@ -1766,7 +1822,7 @@ def test_attendance_import_partial_correction_and_revision(api_client, db_sessio
     second_content = BytesIO()
     second.save(second_content)
     duplicate = api_client.post(
-        f"/imports/attendance?payroll_batch_id={batch.id}",
+        f"/imports/attendance?company_id={company.id}&payroll_period_id={period.id}",
         files={
             "file": (
                 "again.xlsx",
@@ -1870,7 +1926,7 @@ def test_reference_attendance_import_and_correction(api_client, db_session: Sess
     output = BytesIO()
     workbook.save(output)
     response = api_client.post(
-        f"/imports/attendance?payroll_batch_id={batch.id}",
+        f"/imports/attendance?company_id={company.id}&payroll_period_id={period.id}",
         files={"file": ("考勤导入模版.xlsx", output.getvalue())},
     )
     assert response.status_code == 201, response.text
@@ -1985,7 +2041,9 @@ def test_performance_import_partial_correction_and_probation(
             "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
         )
     }
-    response = api_client.post(f"/imports/performance?payroll_batch_id={batch.id}", files=files)
+    response = api_client.post(
+        f"/imports/performance?company_id={company.id}&payroll_period_id={period.id}", files=files
+    )
     assert response.status_code == 201, response.text
     imported = response.json()
     assert (imported["success_rows"], imported["error_rows"]) == (3, 5)
@@ -2008,9 +2066,10 @@ def test_performance_import_partial_correction_and_probation(
     )
     assert (
         api_client.post(
-            f"/imports/performance?payroll_batch_id={batch.id}", files=files
+            f"/imports/performance?company_id={company.id}&payroll_period_id={period.id}",
+            files=files,
         ).status_code
-        == 409
+        == 201
     )
 
     for index, value in [(1, "0.8"), (3, "1.5"), (6, "1")]:
@@ -2041,7 +2100,7 @@ def test_performance_import_partial_correction_and_probation(
     second_content = BytesIO()
     another.save(second_content)
     duplicate = api_client.post(
-        f"/imports/performance?payroll_batch_id={batch.id}",
+        f"/imports/performance?company_id={company.id}&payroll_period_id={period.id}",
         files={"file": ("again.xlsx", second_content.getvalue(), files["file"][2])},
     )
     assert duplicate.status_code == 201
@@ -2236,7 +2295,16 @@ def test_ordinary_trial_is_partial_versioned_and_outside_ledger(
         with pytest.raises(RuntimeError, match="calculation aborted"):
             api_client.post(f"/payroll/batches/{batch.id}/trial")
     db_session.expire_all()
-    assert len(list(db_session.scalars(select(PayrollTrialRun)))) == 1
+    assert (
+        len(
+            list(
+                db_session.scalars(
+                    select(PayrollTrialRun).where(PayrollTrialRun.payroll_batch_id == batch.id)
+                )
+            )
+        )
+        == 1
+    )
     rerun = api_client.post(f"/payroll/batches/{batch.id}/trial")
     assert rerun.status_code == 200, rerun.text
     assert rerun.json()["id"] != trial["id"]
@@ -2946,6 +3014,8 @@ def test_correction_switches_effective_version_without_rewriting_ledger(
     source_snapshot = db_session.get(PayrollTrialRun, correction_trial.json()["id"]).input_snapshot
     assert source_snapshot["imports"][0]["payroll_batch_id"] == original.id
     assert source_snapshot["import_rows"][0]["raw_data"]["姓名"] == "测试员工"
+    assert "subject_id" not in source_snapshot["import_rows"][0]
+    assert "payroll_batch_id" not in source_snapshot["import_rows"][0]
     assert (
         source_snapshot["correction"]["input_overrides"]["attendance"][str(employee.id)][
             "source_note"
@@ -3834,3 +3904,214 @@ def test_formal_detail_separates_incentive_income_from_attendance_deduction(
         api_client.get(f"/payroll/ledger?period_id={period_id}").json()["totals"]["untaxed_amount"]
         == "905.00"
     )
+
+
+@pytest.mark.parametrize("kind", ["attendance", "performance"])
+def test_company_monthly_import_groups_and_creates_batches(api_client, db_session, kind):
+    company = Company(code=f"GLOBAL-{kind}", name=f"全公司{kind}测试")
+    db_session.add(company)
+    db_session.flush()
+    year = 2030 if kind == "attendance" else 2031
+    period = PayrollPeriod(
+        year=year, month=1, period_start=date(year, 1, 1), period_end=date(year, 1, 31)
+    )
+    later = PayrollPeriod(
+        year=year, month=2, period_start=date(year, 2, 1), period_end=date(year, 2, 28)
+    )
+    db_session.add_all([period, later])
+    employees, subjects = [], []
+    for index in range(4):
+        subject = Subject(
+            company_id=company.id, code=f"G-{kind}-{index}", name=f"主体{index}-{kind}"
+        )
+        department = Department(
+            company_id=company.id, code=f"GD-{kind}-{index}", name=f"部门{index}"
+        )
+        db_session.add_all([subject, department])
+        db_session.flush()
+        relation = SubjectDepartment(
+            company_id=company.id,
+            subject_id=subject.id,
+            department_id=department.id,
+            code=f"GR-{kind}-{index}",
+            name=f"部门{index}",
+        )
+        employee = Employee(
+            company_id=company.id,
+            employee_no=f"GE-{kind}-{index}",
+            id_number=f"110101199001017{index:02d}X",
+            name=f"员工{index}",
+            employee_type="employee",
+            probation_status="confirmed",
+            hire_date=date(2020, 1, 1),
+        )
+        db_session.add_all([relation, employee])
+        db_session.flush()
+        db_session.add(
+            EmployeeAssignment(
+                employee_id=employee.id,
+                subject_id=subject.id,
+                subject_department_id=relation.id,
+                position_title="员工",
+                effective_from=date(2020, 1, 1),
+            )
+        )
+        employees.append(employee)
+        subjects.append(subject)
+    db_session.commit()
+    book = load_workbook(
+        BytesIO(make_attendance_template() if kind == "attendance" else make_performance_template())
+    )
+    for index, employee in enumerate(employees):
+        name = employee.name if index != 3 else "错误姓名"
+        if kind == "attendance":
+            values = {
+                "身份证号": employee.id_number,
+                "姓名": name,
+                "公司": subjects[index].name,
+                "工作日天数合计": "0" if index == 2 else "20",
+            }
+            book.active.append([values.get(field) for field in ATTENDANCE_HEADERS])
+        else:
+            book.active.append([employee.id_number, name, "-1" if index == 2 else "1", "绩效总表"])
+    stream = BytesIO()
+    book.save(stream)
+    files = {"file": (f"{kind}.xlsx", stream.getvalue())}
+    url = f"/imports/{kind}?company_id={company.id}&payroll_period_id={period.id}"
+    with ThreadPoolExecutor(max_workers=2) as executor:
+        simultaneous = list(executor.map(lambda _: api_client.post(url, files=files), range(2)))
+    assert all(response.status_code == 201 for response in simultaneous), [
+        response.text for response in simultaneous
+    ]
+    assert simultaneous[0].json()["id"] == simultaneous[1].json()["id"]
+    result = simultaneous[0].json()
+    assert (result["success_rows"], result["error_rows"]) == (2, 2)
+    assert result["payroll_batch_id"] is None
+    assert len(result["subjects"]) == 4
+    assert sum(item["batch_created"] for item in result["subjects"]) == 2
+    assert all(row["subject_id"] == subjects[index].id for index, row in enumerate(result["rows"]))
+    batches = list(
+        db_session.scalars(select(PayrollBatch).where(PayrollBatch.payroll_period_id == period.id))
+    )
+    assert len(batches) == 2
+    assert all(item.batch_no == 1 and item.status == "draft" for item in batches)
+    repeated = api_client.post(url, files=files)
+    assert repeated.status_code == 201 and repeated.json()["id"] == result["id"]
+    next_month = api_client.post(
+        f"/imports/{kind}?company_id={company.id}&payroll_period_id={later.id}", files=files
+    )
+    assert next_month.status_code == 201, next_month.text
+    assert next_month.json()["id"] != result["id"]
+    correction = api_client.post(
+        f"/imports/{kind}/{result['id']}/rows/{result['rows'][2]['id']}/correct",
+        json={"values": {"工作日天数合计": "20"} if kind == "attendance" else {"绩效系数": "1"}},
+    )
+    assert correction.status_code == 200, correction.text
+    assert correction.json()["success_rows"] == 3
+    corrected_row = correction.json()["rows"][2]
+    assert (
+        corrected_row["correction_history"][-1]["payroll_batch_id"]
+        == corrected_row["payroll_batch_id"]
+    )
+    assert sum(item["batch_created"] for item in correction.json()["subjects"]) == 3
+    for index in (0, 2):
+        row = correction.json()["rows"][index]
+        trial = api_client.post(f"/payroll/batches/{row['payroll_batch_id']}/trial")
+        assert trial.status_code == 200, trial.text
+        db_session.expire_all()
+        snapshot = db_session.get(PayrollTrialRun, trial.json()["id"]).input_snapshot
+        assert [item["id"] for item in snapshot["imports"]] == [result["id"]]
+        assert [item["id"] for item in snapshot["import_rows"]] == [row["id"]]
+        assert snapshot["import_rows"][0]["subject_id"] == subjects[index].id
+        assert snapshot["import_rows"][0]["raw_data"] == row["raw_data"]
+        assert snapshot["import_rows"][0]["correction_history"] == row["correction_history"]
+    db_session.expire_all()
+    protected = db_session.scalar(
+        select(PayrollBatch).where(
+            PayrollBatch.payroll_period_id == period.id, PayrollBatch.subject_id == subjects[0].id
+        )
+    )
+    protected.status = "confirmed"
+    db_session.commit()
+    denied = api_client.post(
+        f"/imports/{kind}/{result['id']}/rows/{result['rows'][3]['id']}/correct",
+        json={"values": {"姓名": employees[3].name}},
+    )
+    assert denied.status_code == 200, denied.text
+    assert denied.json()["success_rows"] == 3
+    assert any(
+        error["code"] == "BATCH_NOT_EDITABLE" for error in denied.json()["rows"][3]["errors"]
+    )
+    assert not db_session.scalar(
+        select(PayrollBatch.id).where(
+            PayrollBatch.payroll_period_id == period.id, PayrollBatch.subject_id == subjects[3].id
+        )
+    )
+    assert api_client.get(f"/imports/{kind}/{result['id']}/file").content == stream.getvalue()
+
+
+def test_company_monthly_import_downgrade_refuses_loss(api_client, db_session):
+    from sqlalchemy.exc import DBAPIError
+
+    company = Company(code="GLOBAL-MIG", name="导入迁移测试")
+    db_session.add(company)
+    db_session.flush()
+    subject = Subject(company_id=company.id, code="GM-SUB", name="历史主体")
+    period = PayrollPeriod(
+        year=2032, month=1, period_start=date(2032, 1, 1), period_end=date(2032, 1, 31)
+    )
+    db_session.add_all([subject, period])
+    db_session.flush()
+    payroll = PayrollBatch(subject_id=subject.id, payroll_period_id=period.id, batch_type="normal")
+    db_session.add(payroll)
+    db_session.flush()
+    batch = ImportBatch(
+        company_id=company.id,
+        payroll_period_id=period.id,
+        payroll_batch_id=payroll.id,
+        import_type="attendance",
+        original_filename="legacy.xlsx",
+        original_file=b"original file",
+        file_sha256="9" * 64,
+        template_version="TPL-ATT-v1",
+        status="rejected",
+    )
+    db_session.add(batch)
+    db_session.flush()
+    row = ImportRow(
+        import_batch_id=batch.id,
+        sheet_name="月度考勤",
+        source_row_number=3,
+        validation_status="invalid",
+        subject_id=subject.id,
+        payroll_batch_id=payroll.id,
+        raw_data={"身份证号": "11010119900101123X"},
+        errors=[{"code": "INVALID", "field": "身份证号", "message": "历史错误"}],
+    )
+    db_session.add(row)
+    db_session.commit()
+    batch_id, row_id, payroll_id, subject_id = batch.id, row.id, payroll.id, subject.id
+    config = Config(str(Path(__file__).parents[1] / "alembic.ini"))
+    db_session.expire_all()
+    migrated_row = db_session.get(ImportRow, row_id)
+    assert (migrated_row.subject_id, migrated_row.payroll_batch_id) == (subject_id, payroll_id)
+    assert migrated_row.errors[0]["message"] == "历史错误"
+    assert api_client.get(f"/imports/attendance/{batch_id}/file").content == b"original file"
+    db_session.add(
+        ImportBatch(
+            company_id=company.id,
+            payroll_period_id=period.id,
+            import_type="performance",
+            original_filename="global.xlsx",
+            file_sha256="8" * 64,
+            original_file=b"global original",
+            template_version="TPL-PERF-v1",
+            status="rejected",
+        )
+    )
+    db_session.commit()
+    with pytest.raises(DBAPIError, match="全公司月度导入数据无法回退"):
+        command.downgrade(config, "0011_duplicate_employee_ids")
+    db_session.expire_all()
+    assert db_session.get(ImportRow, row_id).payroll_batch_id == payroll_id
+    assert api_client.get(f"/imports/attendance/{batch_id}/file").content == b"original file"

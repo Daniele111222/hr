@@ -45,12 +45,23 @@ class ImportBatch(Base):
             name="uq_import_batch_period_type_file",
         ),
         Index(
-            "uq_import_batch_company_type_file",
+            "uq_import_batch_employee_file",
             "company_id",
             "import_type",
             "file_sha256",
             unique=True,
-            postgresql_where=text("company_id IS NOT NULL"),
+            postgresql_where=text("company_id IS NOT NULL AND import_type = 'employee_master'"),
+        ),
+        Index(
+            "uq_import_batch_monthly_file",
+            "company_id",
+            "payroll_period_id",
+            "import_type",
+            "file_sha256",
+            unique=True,
+            postgresql_where=text(
+                "company_id IS NOT NULL AND import_type IN ('attendance', 'performance')"
+            ),
         ),
         Index("ix_import_batch_period_type", "payroll_period_id", "import_type"),
     )
@@ -169,6 +180,10 @@ class ImportRow(Base):
     )
 
     id: Mapped[int] = primary_key()
+    subject_id: Mapped[int | None] = mapped_column(ForeignKey("subject.id", ondelete="RESTRICT"))
+    payroll_batch_id: Mapped[int | None] = mapped_column(
+        ForeignKey("payroll_batch.id", ondelete="RESTRICT")
+    )
     import_batch_id: Mapped[int] = mapped_column(
         ForeignKey("import_batch.id", ondelete="CASCADE"), nullable=False
     )

@@ -318,14 +318,14 @@ export function PayrollBatchDetailPage() {
       key: "attendance",
       label: "考勤记录",
       value: preparation.attendance,
-      path: `/imports?${navigationParams}&type=attendance&batch_id=${detail.id}`,
+      path: `/imports?${navigationParams}&type=attendance&source_batch_id=${detail.id}`,
       action: "导入考勤",
     },
     {
       key: "performance",
       label: "绩效记录",
       value: preparation.performance,
-      path: `/imports?${navigationParams}&type=performance&batch_id=${detail.id}`,
+      path: `/imports?${navigationParams}&type=performance&source_batch_id=${detail.id}`,
       action: "导入绩效",
     },
     {

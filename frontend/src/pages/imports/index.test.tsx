@@ -1,7 +1,14 @@
 import { MemoryRouter } from "react-router-dom";
 import { App as AntdApp } from "antd";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import { act, cleanup, render, screen } from "@testing-library/react";
+import {
+  act,
+  cleanup,
+  render,
+  screen,
+  waitFor,
+  within,
+} from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { afterEach, expect, test, vi } from "vitest";
 import { ImportsPage } from "./index.tsx";
@@ -59,7 +66,7 @@ test("员工导入页面显示固定模板说明并限制 xlsx 文件", async ()
 });
 
 test.each([22, 999])(
-  "核算导入保持历史期间与主体，不默选其他批次 %s",
+  "全公司导入只绑定历史期间，来源批次不限制数据 %s",
   async (requestedBatch) => {
     const oldPeriod = { id: 7, period: "2026-07" };
     const latestPeriod = { id: 9, period: "2026-09" };
@@ -117,29 +124,28 @@ test.each([22, 999])(
       `/imports?type=attendance&period=2026-07&subject_id=2&batch_id=${requestedBatch}`,
     );
     const user = userEvent.setup();
-    if (requestedBatch === 999) {
-      expect(
-        await screen.findByText(
-          "所选主体或批次不可导入，请选择本期间可导入的正常工资批次",
-        ),
-      ).toBeInTheDocument();
+    expect(await screen.findByText("全公司所有主体")).toBeInTheDocument();
+    expect(
+      screen.queryByRole("combobox", { name: "主体与批次" }),
+    ).not.toBeInTheDocument();
+    await waitFor(() =>
       expect(
         screen.getByRole("button", { name: /把 Excel 拖到这里/ }),
-      ).toBeDisabled();
-      expect(
-        fetcher.mock.calls.some(([, init]) => init?.method === "POST"),
-      ).toBe(false);
-      return;
-    }
-    expect(await screen.findByText("旧主体 · 批次 #22")).toBeInTheDocument();
-    expect(
-      screen.getByRole("link", { name: "返回当前批次核算" }),
-    ).toHaveAttribute(
-      "href",
-      "/payroll/batches/22?period=2026-07&subject_id=2",
+      ).toBeEnabled(),
     );
+    if (requestedBatch === 22)
+      expect(
+        screen.getByRole("link", { name: "返回来源批次核算" }),
+      ).toHaveAttribute(
+        "href",
+        "/payroll/batches/22?period=2026-07&subject_id=2",
+      );
+    else
+      expect(
+        screen.queryByRole("link", { name: "返回来源批次核算" }),
+      ).not.toBeInTheDocument();
     await user.click(screen.getByRole("button", { name: "月度绩效" }));
-    expect(await screen.findByText("旧主体 · 批次 #22")).toBeInTheDocument();
+    expect(await screen.findByText("2026-07")).toBeInTheDocument();
     await user.upload(
       document.querySelector('input[type="file"]')!,
       new File(["xlsx"], "performance.xlsx"),
@@ -150,8 +156,9 @@ test.each([22, 999])(
     expect(
       fetcher.mock.calls.some(
         ([url, init]) =>
-          String(url).endsWith("/imports/performance?payroll_batch_id=22") &&
-          init?.method === "POST",
+          String(url).endsWith(
+            "/imports/performance?company_id=1&payroll_period_id=7",
+          ) && init?.method === "POST",
       ),
     ).toBe(true);
     for (const key of cachedKeys)
@@ -584,7 +591,9 @@ test.each(["TPL-ATT-v1", "TPL-ATT-v2"])(
         if (path.endsWith("/imports/attendance?company_id=1"))
           return Response.json([]);
         if (
-          path.endsWith("/imports/attendance?payroll_batch_id=9") &&
+          path.endsWith(
+            "/imports/attendance?company_id=1&payroll_period_id=3",
+          ) &&
           init?.method === "POST"
         )
           return Response.json(batch);
@@ -612,7 +621,7 @@ test.each(["TPL-ATT-v1", "TPL-ATT-v2"])(
       "href",
       "/api/imports/attendance-template",
     );
-    expect(await screen.findByText("上海主体 · 批次 #9")).toBeInTheDocument();
+    expect(screen.getByText("全公司所有主体")).toBeInTheDocument();
     await user.upload(
       document.querySelector('input[type="file"]')!,
       new File(["xlsx"], "attendance.xlsx"),
@@ -658,7 +667,7 @@ test.each(["TPL-ATT-v1", "TPL-ATT-v2"])(
   },
 );
 
-test("考勤导入在未建立工资批次时禁用上传并提示范围", async () => {
+test("考勤导入在未建立工资期间时禁用上传并提示范围", async () => {
   vi.stubGlobal(
     "fetch",
     vi.fn(async (input: RequestInfo | URL) => {
@@ -674,7 +683,7 @@ test("考勤导入在未建立工资批次时禁用上传并提示范围", async
   renderPage();
   await user.click(screen.getByRole("button", { name: "月度考勤" }));
   expect(
-    await screen.findByText("请先在工资核算中建立本期间的正常工资批次"),
+    await screen.findByText("请先建立并选择工资期间，无需提前建立主体批次"),
   ).toBeInTheDocument();
   expect(
     screen.getByRole("button", { name: /把 Excel 拖到这里/ }),
@@ -760,7 +769,9 @@ test("绩效本次上传保留逐行修正功能", async () => {
       if (path.endsWith("/imports/attendance?company_id=1"))
         return Response.json([]);
       if (
-        path.endsWith("/imports/performance?payroll_batch_id=9") &&
+        path.endsWith(
+          "/imports/performance?company_id=1&payroll_period_id=3",
+        ) &&
         init?.method === "POST"
       )
         return Response.json(batch);
@@ -805,4 +816,87 @@ test("绩效本次上传保留逐行修正功能", async () => {
   expect(
     screen.getByText("上传月度考勤模板后显示校验结果"),
   ).toBeInTheDocument();
+});
+
+test("全公司月度输入无需预建批次，展示按主体归集及自动补齐结果", async () => {
+  const result = {
+    id: 30,
+    company_id: 1,
+    payroll_period_id: 7,
+    payroll_batch_id: null,
+    subject_name: "全公司",
+    subjects: [
+      {
+        subject_id: 1,
+        subject_name: "主体甲",
+        payroll_batch_id: 101,
+        success_rows: 1,
+        error_rows: 0,
+        batch_created: true,
+      },
+      {
+        subject_id: 2,
+        subject_name: "主体乙",
+        payroll_batch_id: 102,
+        success_rows: 1,
+        error_rows: 0,
+        batch_created: true,
+      },
+    ],
+    rows: [],
+    success_rows: 2,
+    error_rows: 0,
+    total_rows: 2,
+    template_version: "TPL-ATT-v2",
+    file_sha256: "test",
+    status: "imported",
+  };
+  const fetcher = vi.fn(
+    async (input: RequestInfo | URL, init?: RequestInit) => {
+      const url = String(input);
+      if (url.endsWith("/organization/company"))
+        return Response.json({ id: 1, name: "测试公司" });
+      if (url.includes("/workbench"))
+        return Response.json({
+          period: { id: 7, period: "2026-07" },
+          periods: [{ id: 7, period: "2026-07" }],
+          batches: [],
+        });
+      if (init?.method === "POST") return Response.json(result);
+      return Response.json([]);
+    },
+  );
+  vi.stubGlobal("fetch", fetcher);
+  renderPage(
+    undefined,
+    "/imports?type=attendance&period=2026-07&subject_id=999&batch_id=999",
+  );
+  const user = userEvent.setup();
+  expect(await screen.findByText("全公司所有主体")).toBeInTheDocument();
+  await waitFor(() =>
+    expect(
+      screen.getByRole("button", { name: /把 Excel 拖到这里/ }),
+    ).toBeEnabled(),
+  );
+  await user.upload(
+    document.querySelector('input[type="file"]')!,
+    new File(["xlsx"], "company.xlsx"),
+  );
+  const dialog = within(await screen.findByRole("dialog"));
+  expect(
+    await dialog.findByRole("link", { name: "查看核算 #101" }),
+  ).toHaveAttribute("href", "/payroll/batches/101");
+  expect(dialog.getByRole("link", { name: "查看核算 #102" })).toHaveAttribute(
+    "href",
+    "/payroll/batches/102",
+  );
+  expect(dialog.getAllByText("自动补齐草稿")).toHaveLength(2);
+  expect(
+    fetcher.mock.calls.some(
+      ([url, init]) =>
+        String(url).endsWith(
+          "/imports/attendance?company_id=1&payroll_period_id=7",
+        ) && init?.method === "POST",
+    ),
+  ).toBe(true);
 });

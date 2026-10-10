@@ -1657,6 +1657,10 @@ export interface components {
             correction_history: {
                 [key: string]: unknown;
             }[];
+            /** Subject Id */
+            subject_id?: number | null;
+            /** Payroll Batch Id */
+            payroll_batch_id?: number | null;
         };
         /** MonthlyImportBatchOut */
         MonthlyImportBatchOut: {
@@ -1694,9 +1698,11 @@ export interface components {
             /** Payroll Period Id */
             payroll_period_id: number;
             /** Payroll Batch Id */
-            payroll_batch_id: number;
+            payroll_batch_id: number | null;
             /** Subject Name */
             subject_name: string;
+            /** Subjects */
+            subjects?: components["schemas"]["SubjectImportOut"][];
         };
         /** Page[CityOut] */
         Page_CityOut_: {
@@ -2408,6 +2414,21 @@ export interface components {
             code?: string | null;
             /** Name */
             name?: string | null;
+        };
+        /** SubjectImportOut */
+        SubjectImportOut: {
+            /** Subject Id */
+            subject_id: number;
+            /** Subject Name */
+            subject_name: string;
+            /** Payroll Batch Id */
+            payroll_batch_id: number | null;
+            /** Success Rows */
+            success_rows: number;
+            /** Error Rows */
+            error_rows: number;
+            /** Batch Created */
+            batch_created: boolean;
         };
         /** SubjectIn */
         SubjectIn: {
@@ -3470,7 +3491,8 @@ export interface operations {
     upload_performance_imports_performance_post: {
         parameters: {
             query: {
-                payroll_batch_id: number;
+                company_id: number;
+                payroll_period_id: number;
             };
             header?: never;
             path?: never;
@@ -3654,7 +3676,8 @@ export interface operations {
     upload_attendance_imports_attendance_post: {
         parameters: {
             query: {
-                payroll_batch_id: number;
+                company_id: number;
+                payroll_period_id: number;
             };
             header?: never;
             path?: never;

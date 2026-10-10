@@ -13,7 +13,7 @@
     <header class="topbar" id="topbar" data-od-id="topbar"></header>
     <main class="content">
 
-      <!-- 从核算进入时读取期间和批次；切换导入类型保留范围。提供返回当前批次核算入口，导入成功或纠错后刷新核算状态。 -->
+      <!-- 月度输入按期间接收全公司数据；来源批次只用于返回，不限制导入范围。切换类型保留期间，提供返回本期核算入口，导入成功或纠错后刷新核算状态。 -->
       <section data-od-id="import-lead">
         <p class="page-lead">三类导入均使用固定模板，系统不做自定义字段映射。正确的行先入库，错误行可逐行修正；历史记录查看详情只读展示失败原因。</p>
       </section>
@@ -47,9 +47,9 @@
         </div>
         <div class="card-body stack" style="gap:16px">
           <div class="filters" style="border:0; padding:0; background:transparent">
-            <div class="filter" id="scope-entity-wrap"><label>主体<span class="req" style="color:var(--danger)">*</span></label><select class="select" id="scope-entity"></select></div>
+            <div class="filter" id="scope-entity-wrap"><label>导入范围</label><span class="tag">全公司所有主体</span></div>
             <div class="filter" id="scope-period-wrap"><label>工资期间<span class="req" style="color:var(--danger)">*</span></label><select class="select" id="scope-period"></select></div>
-            <div class="filter is-wide"><label>批次（导入结果将关联到该批次）</label><input class="input" id="scope-batch" disabled></div>
+            <div class="filter is-wide"><label>批次处理</label><input class="input" id="scope-batch" disabled></div>
           </div>
 
           <div class="callout is-info">
@@ -69,12 +69,13 @@
           <div class="drop" data-od-id="import-dropzone" data-toast="已选择文件 星澜上海_2026-08_绩效.xlsx（原型演示：校验结果见下方预览）">
             <span data-icon="upload"></span>
             <strong>把 Excel 拖到这里，或点击选择文件</strong>
-            <span class="meta">支持 .xlsx / .xls，单次不超过 5,000 行；必须使用上方对应版本的模板</span>
+            <span class="meta">支持 .xlsx，单次不超过 5,000 行；必须使用上方对应版本的模板</span>
           </div>
         </div>
       </section>
 
       <section class="card" data-od-id="import-result-preview" id="preview-card">
+        <p class="page-lead">上传后按主体显示成功、失败行数及关联工资批次；仅有效行创建草稿，未通过校验的行不会补建批次。</p>
         <div class="card-head">
           <h2>校验预览</h2>
           <span class="sub" id="preview-sub"></span>
@@ -93,6 +94,13 @@
             <div><b>正确行先导入，失败原因只读保留。</b>错误行不会阻塞其他行的导入，但在修正前，对应员工无法参与工资试算。</div>
           </div>
 
+          <div id="subject-summary">
+            <div class="section-title">主体处理结果</div>
+            <div class="tbl-wrap"><table class="tbl">
+              <thead><tr><th>归属主体</th><th class="n">已保存</th><th class="n">失败行</th><th>工资批次</th><th>操作</th></tr></thead>
+              <tbody id="subject-summary-body"></tbody>
+            </table></div>
+          </div>
           <div class="section-title">数据预览 <span class="meta">（前 8 行 + 全部错误行）</span></div>
           <div class="tbl-wrap">
             <table class="tbl">
@@ -173,7 +181,7 @@
     },
     att: {
       label: '月度考勤', tpl: 'TPL-ATT-v2', cols: '48 列',
-      desc: '首行为 48 列表头，按工资期间与主体导入考勤事实；公司须与所选主体一致，薪资及扣款列仅保留追溯。',
+      desc: '首行为 48 列表头，按工资期间导入全公司考勤；公司须与员工当期归属一致，薪资及扣款列仅保留追溯。',
       needPeriod: true,
       help: ['员工标识使用身份证号，须与本期员工名单一致。',
         '工作日天数合计为应出勤天数，须大于零且不超过当月自然日天数；每日标准工时固定 8 小时。',
@@ -185,8 +193,8 @@
         '公式重新计算后仍须通过考勤数值校验；全部原始列值、公式原文和原始文件保留追溯。']
     },
     perf: {
-      label: '月度绩效', tpl: 'TPL-PERF-v2.1', cols: '6 列',
-      desc: '按工资期间与主体导入绩效系数。系数必须为非负数且不设固定上限，绩效金额 = 绩效基数 × 系数。',
+      label: '月度绩效', tpl: 'TPL-PERF-v1', cols: '4 列',
+      desc: '按工资期间导入全公司绩效系数。系数必须为非负数且不设固定上限，绩效金额 = 绩效基数 × 系数。',
       needPeriod: true,
       help: ['员工标识使用身份证号，须与本期员工名单一致，否则提示「员工无法匹配」。',
         '绩效系数为必填项，留空会提示「必填值缺失」，该员工无法完成试算。',
@@ -199,19 +207,14 @@
   var current = 'perf';
 
   function fill() {
-    Q.q('#scope-entity').innerHTML = Q.ENTITIES.map(function (e) {
-      return '<option value="' + e.code + '"' + (e.code === 'SH01' ? ' selected' : '') + '>' + esc(e.short) + ' · ' + e.headcount + ' 人</option>';
-    }).join('');
     Q.q('#scope-period').innerHTML = Q.PERIODS.map(function (p) {
       return '<option value="' + p.code + '"' + (p.code === P ? ' selected' : '') + '>' + p.label + '</option>';
     }).join('');
   }
   fill();
 
-  function batchNo(entity, period) { return 'PAY-' + period.replace('-', '') + '-' + entity + '-V1'; }
   function syncBatch() {
-    var e = Q.q('#scope-entity').value, p = Q.q('#scope-period').value;
-    Q.q('#scope-batch').value = TYPES[current].needPeriod ? batchNo(e, p) : '（员工资料不关联批次）';
+    Q.q('#scope-batch').value = TYPES[current].needPeriod ? '有效行按当期任职归集，自动补齐草稿正常批次' : '员工资料不关联工资批次';
   }
 
   function setType(t) {
@@ -235,26 +238,34 @@
     Array.prototype.forEach.call(this.children, function (x) { x.classList.toggle('is-on', x === b); });
     setType(b.getAttribute('data-type'));
   });
-  ['scope-entity', 'scope-period'].forEach(function (id) {
+  ['scope-period'].forEach(function (id) {
     Q.q('#' + id).addEventListener('change', function () { syncBatch(); renderHistory(); renderPreview(); });
   });
 
   /* ── 校验预览 ───────────────────────────────────────────── */
   function renderPreview() {
-    var entity = Q.q('#scope-entity').value, period = Q.q('#scope-period').value;
+    var period = Q.q('#scope-period').value;
     var card = Q.q('#preview-card');
     var T = TYPES[current];
+    Q.q('#subject-summary').classList.toggle('hidden', !T.needPeriod);
+    Q.q('#subject-summary-body').innerHTML = Q.ENTITIES.map(function (e) {
+      var count = Q.scope(period, e.code).length;
+      var errors = current === 'perf' && e.code === 'SH01' && !Q.state().perfFixed ? 3 : 0;
+      return '<tr><td>' + esc(e.short) + '</td><td class="n mono">' + (count - errors) + '</td>' +
+        '<td class="n mono">' + errors + '</td><td>复用草稿正常批次（演示）</td>' +
+        '<td><a class="btn btn-sm btn-ghost" href="batch-detail.html">查看核算</a></td></tr>';
+    }).join('');
 
     if (current !== 'perf') {
-      var total = Q.scope(period, entity).length;
-      Q.q('#preview-sub').textContent = T.label + ' · ' + Q.ent(entity).short + ' · ' + (T.needPeriod ? period : '全部期间');
+      var total = Q.scope(period).length;
+      Q.q('#preview-sub').textContent = T.label + ' · ' + '全公司所有主体' + ' · ' + (T.needPeriod ? period : '全部期间');
       Q.q('#c-total').textContent = total;
       Q.q('#c-ok').textContent = total;
       Q.q('#c-err').textContent = '0';
       Q.q('#partial-note').className = 'callout is-ok';
       Q.q('#partial-note').innerHTML = '<span>' + Q.icon('check') + '</span><div><b>全部行校验通过。</b>本次将导入 ' + total + ' 行，导入完成后对应工资批次的试算会自动标记为失效，请重新试算。</div>';
       Q.q('#pv-head').innerHTML = '<tr><th>原始行号</th><th>员工标识</th><th>主体</th><th>部门</th><th>校验结果</th></tr>';
-      Q.q('#pv-body').innerHTML = Q.scope(period, entity).slice(0, 8).map(function (e, i) {
+      Q.q('#pv-body').innerHTML = Q.scope(period).slice(0, 8).map(function (e, i) {
         return '<tr><td class="mono">' + (i + 2) + '</td><td class="mono">' + Q.maskId(e.idcard) + '</td>' +
           '<td>' + esc(Q.ent(e.entity).short) + '</td><td>' + esc(Q.dept(e.dept).name) + '</td>' +
           '<td>' + Q.badge('ok', '通过') + '</td></tr>';
@@ -263,11 +274,11 @@
       return;
     }
 
-    var rows = Q.scope(period, 'SH01');
+    var rows = Q.scope(period);
     var errs = Q.perfErrorRows();
     var fixed = Q.state().perfFixed;
     var errCount = fixed ? 0 : 3;
-    Q.q('#preview-sub').textContent = '月度绩效 · 上海 · ' + period + ' · 星澜上海_2026-08_绩效.xlsx';
+    Q.q('#preview-sub').textContent = '月度绩效 · 全公司所有主体 · ' + period;
     Q.q('#c-total').textContent = rows.length;
     Q.q('#c-ok').textContent = rows.length - errCount;
     Q.q('#c-err').textContent = errCount;
@@ -304,12 +315,11 @@
     var map = { emp: '员工资料', att: '月度考勤', perf: '月度绩效' };
     var want = map[current];
     var rows = Q.IMPORTS.filter(function (r) { return r.type === want; });
-    var entity = Q.q('#scope-entity').value;
-    var scoped = rows.filter(function (r) { return r.entity === entity; });
-    Q.q('#hist-sub').textContent = '筛选：' + want + ' · ' + Q.ent(entity).short + '，共 ' + scoped.length + ' 条';
+    var scoped = rows;
+    Q.q('#hist-sub').textContent = '筛选：' + want + ' · ' + '全公司所有主体，共 ' + scoped.length + ' 条';
     if (!scoped.length) {
       Q.q('#hist-body').innerHTML = '<tr><td colspan="10"><div class="empty">' + Q.ICONS.inbox +
-        '<h3>该范围暂无导入记录</h3><p>' + esc(Q.ent(entity).short) + '主体还没有「' + esc(want) + '」的导入记录。从上面的模板开始，上传第一份文件即可。</p>' +
+        '<h3>该范围暂无导入记录</h3><p>' + '全公司还没有「' + esc(want) + '」的导入记录。从上面的模板开始，上传第一份文件即可。</p>' +
         '<button class="btn btn-sm" data-toast="模板已开始下载（原型演示）">下载模板</button></div></td></tr>';
       return;
     }

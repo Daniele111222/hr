@@ -16,7 +16,7 @@
 - `db/base.py` 的 SQLAlchemy `Base`；
 - `db/session.py` 的 engine、`SessionLocal` 和 `get_session` 生成器；
 - 按组织、员工、月度输入、规则、工资和导出主题拆分的 ORM 模型包；
-- `backend/sql/001_initial_schema.sql` 至 `011_duplicate_employee_ids.sql` 及对应 Alembic `0001`—`0011`（head：`0011_duplicate_employee_ids`）；
+- `backend/sql/001_initial_schema.sql` 至 `012_company_monthly_import.sql` 及对应 Alembic `0001`—`0012`（head：`0012_company_monthly_import`）；
 - PostgreSQL 约束、日期区间排斥约束、更新时间触发器、部门树防循环触发器和锁定工资结果不可变触发器；
 - 模型约束测试、应用工厂/健康检查测试和 PostgreSQL 集成测试；
 - `import-linter` 开发依赖，以及 CI 中对当前数据库层导入边界的检查。

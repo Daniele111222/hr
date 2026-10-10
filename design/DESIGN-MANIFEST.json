@@ -74,12 +74,12 @@
     {
       "file": "import-batch.html",
       "role": "screen",
-      "implementationNote": "History details are read-only by default and show failure reasons, original values and field locations. Current-upload correction mode uses mode=edit and preserves existing edit/save/revalidation behavior; backend correction APIs are unchanged."
+      "implementationNote": "History details are read-only by default and show failure reasons, original values and field locations. Current-upload correction mode uses mode=edit and preserves edit/save/revalidation behavior. Monthly rows retain subject and payroll batch destinations; show per-subject counts and calculation links."
     },
     {
       "file": "import-center.html",
       "role": "screen",
-      "implementationNote": "Preserve visual hierarchy, responsive behavior and interactive states. Employee salary/date formulas use a shared local evaluator; duplicate identities are silently skipped. History detail views display every failure reason without editing. Current-upload preview and row correction remain available and separate from history selection."
+      "implementationNote": "Preserve visual hierarchy, responsive behavior and interactive states. Employee salary/date formulas use a shared local evaluator; duplicate identities are silently skipped. History detail views display every failure reason without editing. Current-upload preview and row correction remain available and separate from history selection. Attendance and performance select only a period across all company subjects; valid rows create missing draft normal batches. Source batch context is for return navigation only."
     },
     {
       "file": "incentive.html",

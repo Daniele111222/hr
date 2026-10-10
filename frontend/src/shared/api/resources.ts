@@ -170,11 +170,11 @@ export const resources = {
     ),
   attendanceImport: (id: number) =>
     request<AttendanceImportBatch>(`/imports/attendance/${id}`),
-  uploadAttendanceImport: (batchId: number, file: File) => {
+  uploadAttendanceImport: (companyId: number, periodId: number, file: File) => {
     const form = new FormData();
     form.set("file", file);
     return upload<AttendanceImportBatch>(
-      `/imports/attendance?payroll_batch_id=${batchId}`,
+      `/imports/attendance?company_id=${companyId}&payroll_period_id=${periodId}`,
       form,
     );
   },
@@ -193,11 +193,15 @@ export const resources = {
     ),
   performanceImport: (id: number) =>
     request<PerformanceImportBatch>(`/imports/performance/${id}`),
-  uploadPerformanceImport: (batchId: number, file: File) => {
+  uploadPerformanceImport: (
+    companyId: number,
+    periodId: number,
+    file: File,
+  ) => {
     const form = new FormData();
     form.set("file", file);
     return upload<PerformanceImportBatch>(
-      `/imports/performance?payroll_batch_id=${batchId}`,
+      `/imports/performance?company_id=${companyId}&payroll_period_id=${periodId}`,
       form,
     );
   },

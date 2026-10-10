@@ -145,7 +145,7 @@ test("批次详情可导航各阶段，返回保留历史月份与筛选，导�
   );
   expect(screen.getByRole("link", { name: "导入考勤" })).toHaveAttribute(
     "href",
-    "/imports?period=2026-07&subject_id=2&status=draft&type=attendance&batch_id=10",
+    "/imports?period=2026-07&subject_id=2&status=draft&type=attendance&source_batch_id=10",
   );
   expect(screen.getByRole("link", { name: "导出" })).toHaveAttribute(
     "href",

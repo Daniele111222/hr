@@ -145,8 +145,9 @@ export function PayrollPage() {
     kind: "attendance" | "performance",
   ) => {
     const next = new URLSearchParams(periodParams);
-    next.set("batch_id", String(row.id));
-    next.set("subject_id", String(row.subject.id));
+    next.delete("subject_id");
+    next.delete("batch_id");
+    next.set("source_batch_id", String(row.id));
     next.set("type", kind);
     return `/imports?${next}`;
   };

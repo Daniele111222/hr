@@ -309,7 +309,7 @@ test("本期操作与批次入口保留月份，工资表导出汇总全部主�
       .some(
         (link) =>
           link.getAttribute("href") ===
-          "/imports?period=2026-09&subject_id=2&status=draft&batch_id=10&type=attendance",
+          "/imports?period=2026-09&status=draft&source_batch_id=10&type=attendance",
       ),
   ).toBe(true);
 });

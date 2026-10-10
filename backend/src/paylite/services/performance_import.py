@@ -15,12 +15,12 @@ from paylite.db.models import (
     PayrollBatch,
     PayrollPeriod,
     PerformanceRecord,
-    Subject,
 )
 from paylite.excel.employee_template import WorkbookFormatError
 from paylite.excel.performance_template import HEADERS, SHEET_NAME, TEMPLATE_VERSION, parse_workbook
+from paylite.services import monthly_import
 from paylite.services.employee_import import ImportFailure
-from paylite.services.payroll_workbench import employee_scope, requires_performance
+from paylite.services.payroll_workbench import requires_performance
 
 ID_PATTERN = re.compile(r"^\d{17}[\dX]$")
 
@@ -63,7 +63,12 @@ def _validate(
     )
     if employee is None or employee.id not in scope_ids or employee.id in ambiguous_ids:
         errors.append(
-            _issue("EMPLOYEE_NOT_IN_SCOPE", "身份证号", "员工不在本主体本期间的确定名单中", number)
+            _issue(
+                "EMPLOYEE_NOT_IN_SCOPE",
+                "身份证号",
+                "员工不在本公司本期间的确定名单中，或存在跨主体归属",
+                number,
+            )
         )
     if not raw["姓名"] or (employee and raw["姓名"] != employee.name):
         errors.append(_issue("NAME_MISMATCH", "姓名", "姓名必须与员工主档一致", number))
@@ -106,77 +111,15 @@ def _validate(
 
 
 def _rows(db: Session, batch_id: int) -> list[ImportRow]:
-    return list(
-        db.scalars(
-            select(ImportRow)
-            .where(ImportRow.import_batch_id == batch_id)
-            .order_by(ImportRow.source_row_number)
-        )
-    )
-
-
-def _serialize(batch: ImportBatch, rows: list[ImportRow] | None = None) -> dict[str, Any]:
-    items = [
-        {
-            "id": row.id,
-            "sheet_name": row.sheet_name,
-            "source_row_number": row.source_row_number,
-            "validation_status": row.validation_status,
-            "raw_data": row.raw_data,
-            "correction_values": row.correction_values,
-            "normalized_data": row.normalized_data,
-            "errors": row.errors,
-            "correction_history": row.correction_history,
-        }
-        for row in rows or []
-    ]
-    return {
-        "id": batch.id,
-        "company_id": batch.company_id,
-        "payroll_period_id": batch.payroll_period_id,
-        "payroll_batch_id": batch.payroll_batch_id,
-        "import_type": batch.import_type,
-        "original_filename": batch.original_filename,
-        "file_sha256": batch.file_sha256,
-        "template_version": batch.template_version,
-        "field_mapping": batch.field_mapping,
-        "status": batch.status,
-        "uploaded_at": batch.uploaded_at,
-        "total_rows": len(rows or []),
-        "success_rows": sum(row.validation_status == "imported" for row in rows or []),
-        "error_rows": sum(row.validation_status == "invalid" for row in rows or []),
-        "rows": items if rows is not None else None,
-    }
+    return monthly_import.rows(db, batch_id)
 
 
 def get_batch(db: Session, batch_id: int, *, include_file: bool = False) -> dict[str, Any]:
-    batch = db.get(ImportBatch, batch_id)
-    if batch is None or batch.import_type != "performance":
-        raise ImportFailure(404, "绩效导入批次不存在")
-    payroll_batch = db.get(PayrollBatch, batch.payroll_batch_id)
-    result = _serialize(batch, _rows(db, batch_id))
-    result["subject_name"] = db.get(Subject, payroll_batch.subject_id).name
-    if include_file:
-        result["original_file"] = batch.original_file
-    return result
+    return monthly_import.get_batch(db, batch_id, "performance", include_file=include_file)
 
 
 def list_batches(db: Session, company_id: int) -> list[dict[str, Any]]:
-    batches = db.scalars(
-        select(ImportBatch)
-        .where(ImportBatch.company_id == company_id, ImportBatch.import_type == "performance")
-        .order_by(ImportBatch.uploaded_at.desc(), ImportBatch.id.desc())
-    )
-    return [
-        _serialize(batch, _rows(db, batch.id))
-        | {
-            "rows": None,
-            "subject_name": db.get(
-                Subject, db.get(PayrollBatch, batch.payroll_batch_id).subject_id
-            ).name,
-        }
-        for batch in batches
-    ]
+    return monthly_import.list_batches(db, company_id, "performance")
 
 
 def _save(
@@ -206,35 +149,24 @@ def _save(
 
 
 def upload_batch(
-    db: Session, payroll_batch_id: int, filename: str, content: bytes
+    db: Session, company_id: int, payroll_period_id: int, filename: str, content: bytes
 ) -> dict[str, Any]:
-    payroll_batch = db.get(PayrollBatch, payroll_batch_id)
-    if payroll_batch is None or payroll_batch.batch_type != "normal":
-        raise ImportFailure(404, "正常工资批次不存在")
-    period = db.get(PayrollPeriod, payroll_batch.payroll_period_id, with_for_update=True)
-    if payroll_batch.status not in {"draft", "trial"}:
-        raise ImportFailure(409, "已确认或锁定的工资批次不能导入绩效")
-    company_id = db.get(Subject, payroll_batch.subject_id).company_id
+    scope = monthly_import.load_scope(db, company_id, payroll_period_id)
+    period = scope.period
     digest = hashlib.sha256(content).hexdigest()
-    if db.scalar(
-        select(ImportBatch.id).where(
-            ImportBatch.company_id == company_id,
-            ImportBatch.import_type == "performance",
-            ImportBatch.file_sha256 == digest,
-        )
-    ):
-        raise ImportFailure(409, "本公司已导入过完全相同的绩效文件")
+    previous = monthly_import.existing_file(db, company_id, period.id, "performance", digest)
+    if previous is not None:
+        db.commit()
+        return get_batch(db, previous.id)
     try:
         workbook_rows = parse_workbook(content)
     except WorkbookFormatError as exc:
         raise ImportFailure(400, str(exc)) from exc
-    scope = employee_scope(db, period, payroll_batch.subject_id)
-    scope_ids = set(scope.employee_ids)
-    ambiguous_ids = set(scope.ambiguous_employee_ids)
+    scope_ids = set(scope.scope_ids)
+    ambiguous_ids = set(scope.ambiguous_ids)
     batch = ImportBatch(
         company_id=company_id,
         payroll_period_id=period.id,
-        payroll_batch_id=payroll_batch.id,
         import_type="performance",
         original_filename=filename,
         file_sha256=digest,
@@ -248,9 +180,13 @@ def upload_batch(
     seen: set[str] = set()
     successful = 0
     for source in workbook_rows:
+        subject = scope.subject_for(source.raw["身份证号"])
         normalized, errors = _validate(
             db, period, company_id, scope_ids, ambiguous_ids, source.number, source.raw
         )
+        batch_error = scope.batch_error(subject)
+        if batch_error:
+            errors.insert(0, _issue("BATCH_NOT_EDITABLE", "身份证号", batch_error, source.number))
         errors = [*source.errors, *errors]
         identity = source.raw["身份证号"].upper()
         if identity in seen:
@@ -260,6 +196,10 @@ def upload_batch(
         seen.add(identity)
         row = ImportRow(
             import_batch_id=batch.id,
+            subject_id=subject.id if subject else None,
+            payroll_batch_id=scope.batches[subject.id].id
+            if subject and subject.id in scope.batches
+            else None,
             sheet_name=SHEET_NAME,
             source_row_number=source.number,
             validation_status="invalid" if errors else "imported",
@@ -268,7 +208,11 @@ def upload_batch(
         )
         db.add(row)
         if normalized is not None and not errors:
+            assert subject is not None
+            payroll_batch, created = scope.ensure_batch(db, subject)
+            row.payroll_batch_id = payroll_batch.id
             _save(db, batch, period, row, normalized, source.raw)
+            row.normalized_data = {**row.normalized_data, "batch_created": created}
             successful += 1
     batch.status = (
         "imported"
@@ -285,10 +229,11 @@ def correct_row(db: Session, batch_id: int, row_id: int, values: dict[str, str])
     batch = db.get(ImportBatch, batch_id)
     if batch is None or batch.import_type != "performance":
         raise ImportFailure(404, "绩效导入批次不存在")
-    period = db.get(PayrollPeriod, batch.payroll_period_id, with_for_update=True)
-    payroll_batch = db.get(PayrollBatch, batch.payroll_batch_id)
-    if payroll_batch.status not in {"draft", "trial"}:
-        raise ImportFailure(409, "已确认或锁定的工资批次不能修正绩效")
+    scope = monthly_import.load_scope(db, batch.company_id, batch.payroll_period_id)
+    period = scope.period
+    legacy_batch = db.get(PayrollBatch, batch.payroll_batch_id) if batch.payroll_batch_id else None
+    if legacy_batch and legacy_batch.status not in {"draft", "trial"}:
+        raise ImportFailure(409, "已确认或锁定的历史工资批次不能修正绩效")
     row = db.scalar(
         select(ImportRow)
         .where(ImportRow.id == row_id, ImportRow.import_batch_id == batch_id)
@@ -306,16 +251,25 @@ def correct_row(db: Session, batch_id: int, row_id: int, values: dict[str, str])
         **(row.correction_values or {}),
         **trimmed,
     }
-    scope = employee_scope(db, period, payroll_batch.subject_id)
+    subject = scope.subject_for(corrected["身份证号"])
+    row.subject_id = subject.id if subject else None
+    row.payroll_batch_id = (
+        scope.batches[subject.id].id if subject and subject.id in scope.batches else None
+    )
     normalized, errors = _validate(
         db,
         period,
         batch.company_id,
-        set(scope.employee_ids),
-        set(scope.ambiguous_employee_ids),
+        scope.scope_ids,
+        scope.ambiguous_ids,
         row.source_row_number,
         corrected,
     )
+    batch_error = scope.batch_error(subject)
+    if batch_error:
+        errors.insert(
+            0, _issue("BATCH_NOT_EDITABLE", "身份证号", batch_error, row.source_row_number)
+        )
     for old_error in row.errors or []:
         if (
             old_error["code"] in {"IDENTIFIER_NOT_TEXT", "EXCEL_ERROR"}
@@ -342,7 +296,19 @@ def correct_row(db: Session, batch_id: int, row_id: int, values: dict[str, str])
     ]
     row.errors = errors or None
     if normalized is not None and not errors:
+        assert subject is not None
+        payroll_batch, created = scope.ensure_batch(db, subject)
+        row.payroll_batch_id = payroll_batch.id
         _save(db, batch, period, row, normalized, corrected)
+        row.normalized_data = {**row.normalized_data, "batch_created": created}
+    row.correction_history = [
+        *row.correction_history[:-1],
+        {
+            **row.correction_history[-1],
+            "subject_id": row.subject_id,
+            "payroll_batch_id": row.payroll_batch_id,
+        },
+    ]
     remaining = db.scalar(
         select(ImportRow.id).where(
             ImportRow.import_batch_id == batch_id, ImportRow.validation_status == "invalid"

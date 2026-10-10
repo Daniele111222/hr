@@ -45,6 +45,8 @@ class ImportRowOut(BaseModel):
     normalized_data: dict[str, Any] | None
     errors: list[ImportIssueOut] | None
     correction_history: list[dict[str, Any]]
+    subject_id: int | None = None
+    payroll_batch_id: int | None = None
 
 
 class ImportBatchOut(BaseModel):
@@ -63,10 +65,20 @@ class ImportBatchOut(BaseModel):
     rows: list[ImportRowOut] | None
 
 
+class SubjectImportOut(BaseModel):
+    subject_id: int
+    subject_name: str
+    payroll_batch_id: int | None
+    success_rows: int
+    error_rows: int
+    batch_created: bool
+
+
 class MonthlyImportBatchOut(ImportBatchOut):
     payroll_period_id: int
-    payroll_batch_id: int
+    payroll_batch_id: int | None
     subject_name: str
+    subjects: list[SubjectImportOut] = Field(default_factory=list)
 
 
 class RowCorrection(BaseModel):
@@ -88,7 +100,10 @@ def download_performance_template() -> Response:
 
 @router.post("/performance", status_code=201, response_model=MonthlyImportBatchOut)
 async def upload_performance(
-    payroll_batch_id: int = Query(...), file: UploadFile = File(...), db: Session = Depends(get_db)
+    company_id: int = Query(..., gt=0),
+    payroll_period_id: int = Query(..., gt=0),
+    file: UploadFile = File(...),
+    db: Session = Depends(get_db),
 ) -> dict[str, Any]:
     if not file.filename or not file.filename.lower().endswith(".xlsx"):
         raise HTTPException(400, "绩效导入仅支持 .xlsx 固定模板")
@@ -96,7 +111,9 @@ async def upload_performance(
     if not content or len(content) > MAX_FILE_SIZE:
         raise HTTPException(400, "文件为空或超过 20MB")
     return _run(
-        lambda: performance_import.upload_batch(db, payroll_batch_id, file.filename or "", content)
+        lambda: performance_import.upload_batch(
+            db, company_id, payroll_period_id, file.filename or "", content
+        )
     )
 
 
@@ -147,7 +164,10 @@ def download_attendance_template() -> Response:
 
 @router.post("/attendance", status_code=201, response_model=MonthlyImportBatchOut)
 async def upload_attendance(
-    payroll_batch_id: int = Query(...), file: UploadFile = File(...), db: Session = Depends(get_db)
+    company_id: int = Query(..., gt=0),
+    payroll_period_id: int = Query(..., gt=0),
+    file: UploadFile = File(...),
+    db: Session = Depends(get_db),
 ) -> dict[str, Any]:
     if not file.filename or not file.filename.lower().endswith(".xlsx"):
         raise HTTPException(400, "考勤导入仅支持 .xlsx 固定模板")
@@ -155,7 +175,9 @@ async def upload_attendance(
     if not content or len(content) > MAX_FILE_SIZE:
         raise HTTPException(400, "文件为空或超过 20MB")
     return _run(
-        lambda: attendance_import.upload_batch(db, payroll_batch_id, file.filename or "", content)
+        lambda: attendance_import.upload_batch(
+            db, company_id, payroll_period_id, file.filename or "", content
+        )
     )
 
 

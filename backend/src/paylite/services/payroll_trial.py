@@ -276,20 +276,18 @@ def _load_snapshot(
             .order_by(Department.id)
         )
     )
-    imports = list(
-        db.scalars(
-            select(ImportBatch)
-            .where(
-                ImportBatch.payroll_batch_id == batch.id,
-                ImportBatch.import_type.in_(["attendance", "performance"]),
-            )
-            .order_by(ImportBatch.id)
-        )
-    )
     import_rows = list(
         db.scalars(
             select(ImportRow)
-            .where(ImportRow.import_batch_id.in_([row.id for row in imports] or [-1]))
+            .join(ImportBatch, ImportRow.import_batch_id == ImportBatch.id)
+            .where(
+                (ImportRow.payroll_batch_id == batch.id)
+                | (
+                    ImportRow.payroll_batch_id.is_(None)
+                    & (ImportBatch.payroll_batch_id == batch.id)
+                ),
+                ImportBatch.import_type.in_(["attendance", "performance"]),
+            )
             .order_by(
                 ImportRow.import_batch_id,
                 ImportRow.sheet_name,
@@ -298,6 +296,18 @@ def _load_snapshot(
             )
         )
     )
+    imports = list(
+        db.scalars(
+            select(ImportBatch)
+            .where(
+                (ImportBatch.payroll_batch_id == batch.id)
+                | ImportBatch.id.in_({row.import_batch_id for row in import_rows}),
+                ImportBatch.import_type.in_(["attendance", "performance"]),
+            )
+            .order_by(ImportBatch.id)
+        )
+    )
+    legacy_import_ids = {row.id for row in imports if row.payroll_batch_id is not None}
     snapshot = {
         "period": _record(period, exclude={"created_at"}),
         "subject": _record(subject),
@@ -316,7 +326,16 @@ def _load_snapshot(
         "relations": [_record(row) for row in relations],
         "departments": [_record(row) for row in departments],
         "imports": [_record(row, exclude={"original_file", "uploaded_at"}) for row in imports],
-        "import_rows": [_record(row, exclude={"created_at"}) for row in import_rows],
+        # 保持历史单主体快照形态，新增追溯列不应让未变更的旧试算失效。
+        "import_rows": [
+            _record(
+                row,
+                exclude={"created_at", "subject_id", "payroll_batch_id"}
+                if row.import_batch_id in legacy_import_ids
+                else {"created_at"},
+            )
+            for row in import_rows
+        ],
         "scope": {"employee_ids": ids, "ambiguous_employee_ids": scope.ambiguous_employee_ids},
     }
     data = {
