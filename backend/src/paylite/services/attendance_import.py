@@ -20,11 +20,9 @@ from paylite.db.models import (
     Subject,
 )
 from paylite.excel.attendance_template import (
-    HEADERS,
-    LEGACY_HEADERS,
-    LEGACY_TEMPLATE_VERSION,
     SHEET_NAME,
-    TEMPLATE_VERSION,
+    TEMPLATE_HEADERS,
+    input_fields,
     parse_workbook,
     resolve_attendance_formulas,
 )
@@ -35,8 +33,11 @@ from paylite.services.employee_import import ImportFailure
 ID_PATTERN = re.compile(r"^\d{17}[\dX]$")
 
 
-def _issue(code: str, field: str, message: str, row: int) -> dict[str, str]:
-    headers = HEADERS if field in HEADERS else LEGACY_HEADERS
+def _issue(
+    code: str, field: str, message: str, row: int, *, headers: tuple[str, ...] | None = None
+) -> dict[str, str]:
+    if headers is None:
+        headers = next(items for items in TEMPLATE_HEADERS.values() if field in items)
     column = get_column_letter(headers.index(field) + 1)
     return {
         "code": code,
@@ -80,15 +81,16 @@ def _validate(
     ambiguous_ids: set[int],
     number: int,
     raw: dict[str, str],
+    headers: tuple[str, ...],
 ) -> tuple[dict[str, Any] | None, list[dict[str, str]]]:
     errors: list[dict[str, str]] = []
     reference = "公司" in raw
     fields = (
         {
-            "应出勤天数": "工作日天数合计",
-            "迟到分钟": "迟到时长",
-            "早退分钟": "早退时长",
-            "忘打卡次数": "缺卡次数",
+            "应出勤天数": "工作日天数合计" if "工作日天数合计" in raw else "应出勤天数",
+            "迟到分钟": "迟到时长" if "迟到时长" in raw else "迟到分钟",
+            "早退分钟": "早退时长" if "早退时长" in raw else "早退分钟",
+            "忘打卡次数": "缺卡次数" if "缺卡次数" in raw else "未补卡次数",
             "无薪请假天数": "事假天数",
             "有薪请假天数": "病假天数",
         }
@@ -203,9 +205,13 @@ def _validate(
         )
     if errors:
         return None, [
-            _issue(error["code"], fields[error["field"]], error["message"], number)
-            if error["field"] in fields
-            else error
+            _issue(
+                error["code"],
+                fields.get(error["field"], error["field"]),
+                error["message"],
+                number,
+                headers=headers,
+            )
             for error in errors
         ]
     assert employee and days is not None and late is not None and early is not None
@@ -294,7 +300,9 @@ def upload_batch(
         original_filename=filename,
         file_sha256=digest,
         original_file=content,
-        template_version=TEMPLATE_VERSION if headers == HEADERS else LEGACY_TEMPLATE_VERSION,
+        template_version=next(
+            version for version, items in TEMPLATE_HEADERS.items() if items == headers
+        ),
         field_mapping={field: get_column_letter(index + 1) for index, field in enumerate(headers)},
         status="uploaded",
     )
@@ -305,7 +313,15 @@ def upload_batch(
     for source in workbook_rows:
         subject = scope.subject_for(source.raw["身份证号"])
         normalized, errors = _validate(
-            db, period, company_id, subject, scope_ids, ambiguous_ids, source.number, source.raw
+            db,
+            period,
+            company_id,
+            subject,
+            scope_ids,
+            ambiguous_ids,
+            source.number,
+            source.raw,
+            headers,
         )
         batch_error = scope.batch_error(subject)
         if batch_error:
@@ -366,13 +382,16 @@ def correct_row(db: Session, batch_id: int, row_id: int, values: dict[str, str])
         raise ImportFailure(404, "导入行不存在")
     if row.validation_status != "invalid":
         raise ImportFailure(409, "该行已入库，重复修正不会再次入账")
-    if not values or any(field not in row.raw_data for field in values):
-        raise ImportFailure(400, "只能修正固定模板中的字段")
+    headers = TEMPLATE_HEADERS[batch.template_version]
+    if not values or any(
+        field not in row.raw_data or field not in input_fields(headers) for field in values
+    ):
+        raise ImportFailure(400, "只能修正考勤输入字段，薪资及扣款等原始数据只读")
     corrected = {**row.raw_data, **(row.correction_values or {}), **values}
     computed, formula_errors = resolve_attendance_formulas(
         corrected,
         row.source_row_number,
-        HEADERS if batch.template_version == TEMPLATE_VERSION else LEGACY_HEADERS,
+        headers,
     )
     subject = scope.subject_for(corrected["身份证号"])
     row.subject_id = subject.id if subject else None
@@ -388,6 +407,7 @@ def correct_row(db: Session, batch_id: int, row_id: int, values: dict[str, str])
         scope.ambiguous_ids,
         row.source_row_number,
         computed,
+        headers,
     )
     batch_error = scope.batch_error(subject)
     if batch_error:
@@ -398,6 +418,7 @@ def correct_row(db: Session, batch_id: int, row_id: int, values: dict[str, str])
     for old_error in row.errors or []:
         if (
             old_error["code"] in {"IDENTIFIER_NOT_TEXT", "EXCEL_ERROR"}
+            and old_error["field"] in input_fields(headers)
             and old_error["field"] not in (row.correction_values or {})
             and old_error["field"] not in values
         ):

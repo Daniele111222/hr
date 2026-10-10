@@ -15,7 +15,8 @@ from paylite.excel.employee_template import (
 )
 from paylite.excel.formulas import resolve_row_formulas
 
-TEMPLATE_VERSION = "TPL-ATT-v2"
+TEMPLATE_VERSION = "TPL-ATT-v3"
+REFERENCE_TEMPLATE_VERSION = "TPL-ATT-v2"
 LEGACY_TEMPLATE_VERSION = "TPL-ATT-v1"
 SHEET_NAME = "月度考勤"
 LEGACY_HEADERS = (
@@ -30,7 +31,7 @@ LEGACY_HEADERS = (
     "补卡次数",
     "来源说明",
 )
-HEADERS = (
+REFERENCE_HEADERS = (
     "身份证号",
     "姓名",
     "公司",
@@ -80,8 +81,36 @@ HEADERS = (
     "效验",
     "转正后实际出勤",
 )
+HEADERS = (
+    "身份证号",
+    "姓名",
+    "公司",
+    "应出勤天数",
+    "迟到分钟",
+    "早退分钟",
+    "未补卡次数",
+    *REFERENCE_HEADERS[25:37],
+)
+TEMPLATE_HEADERS = {
+    TEMPLATE_VERSION: HEADERS,
+    REFERENCE_TEMPLATE_VERSION: REFERENCE_HEADERS,
+    LEGACY_TEMPLATE_VERSION: LEGACY_HEADERS,
+}
+
+
+def input_fields(headers: tuple[str, ...]) -> set[str]:
+    if headers == LEGACY_HEADERS:
+        return set(LEGACY_HEADERS)
+    return set(HEADERS) | {"工作日天数合计", "迟到时长", "早退时长", "缺卡次数"}
+
+
 DATE_FIELDS = {"入职日期", "转正日期", "离职日期"}
-NUMERIC_FIELDS = set(HEADERS[9:45]) | {"效验", "转正后实际出勤"} | set(LEGACY_HEADERS[2:9])
+NUMERIC_FIELDS = (
+    set(REFERENCE_HEADERS[9:45])
+    | {"效验", "转正后实际出勤"}
+    | set(LEGACY_HEADERS[2:9])
+    | set(HEADERS[3:])
+)
 INTEGER_FIELDS = {
     "迟到时长",
     "早退时长",
@@ -90,6 +119,7 @@ INTEGER_FIELDS = {
     "早退分钟",
     "忘打卡次数",
     "补卡次数",
+    "未补卡次数",
 }
 
 
@@ -97,6 +127,7 @@ def resolve_attendance_formulas(
     raw: dict[str, str], number: int, headers: tuple[str, ...]
 ) -> tuple[dict[str, str], list[dict[str, str]]]:
     formula_fields = {field for field, value in raw.items() if value.startswith("=")}
+    targets = input_fields(headers)
     computed, errors = resolve_row_formulas(
         raw,
         number,
@@ -104,9 +135,10 @@ def resolve_attendance_formulas(
         DATE_FIELDS,
         NUMERIC_FIELDS,
         formula_fields=formula_fields,
+        target_fields=targets,
         blank_numeric_zero=True,
     )
-    for field in formula_fields & INTEGER_FIELDS:
+    for field in formula_fields & INTEGER_FIELDS & targets:
         if not computed[field].startswith("="):
             value = Decimal(computed[field])
             if value == value.to_integral_value():
@@ -146,14 +178,12 @@ def parse_workbook(content: bytes) -> list[WorkbookRow]:
             raise WorkbookFormatError("工作表不匹配，请使用月度考勤固定模板")
         sheet = workbook[SHEET_NAME]
         legacy = sheet["A1"].value == LEGACY_TEMPLATE_VERSION
-        headers = LEGACY_HEADERS if legacy else HEADERS
         header_row = 2 if legacy else 1
-        if (
-            sheet.max_column != len(headers)
-            or tuple(sheet.cell(header_row, col).value for col in range(1, len(headers) + 1))
-            != headers
-        ):
+        headers = tuple(cell.value for cell in sheet[header_row])
+        if headers not in TEMPLATE_HEADERS.values() or (legacy and headers != LEGACY_HEADERS):
             raise WorkbookFormatError("模板表头或列顺序不匹配")
+        if not legacy and headers == LEGACY_HEADERS:
+            raise WorkbookFormatError("旧模板须包含 TPL-ATT-v1 版本行")
         if sheet.max_row - header_row > MAX_ROWS:
             raise WorkbookFormatError(f"单次最多导入 {MAX_ROWS} 行")
         rows = []
@@ -166,8 +196,10 @@ def parse_workbook(content: bytes) -> list[WorkbookRow]:
                 value, error = _value(cell, field)
                 raw[field] = value
                 if cell.data_type == "f":
+                    value = str(getattr(cell.value, "text", value))
+                    raw[field] = value
                     formulas[field] = value
-                elif error:
+                elif error and field in input_fields(headers):
                     errors.append(error)
             if any(raw.values()):
                 computed, formula_errors = resolve_attendance_formulas(raw, number, headers)

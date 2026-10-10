@@ -12,7 +12,10 @@ GitHub remote（`github.com/Daniele111222/hr`）存在，但**不**作为 issue 
 - 状态记录在文件顶部附近的 `**Status:**` 行（角色字符串见 `triage-labels.md`）
 - 评论与讨论追加到文件底部的 `## Comments` 标题下
 
-当前唯一在用的 feature slug 是 **`paylite-mvp`**，共 16 张票（`01`—`16`）。
+当前 feature：
+
+- **`paylite-mvp`**：原 MVP 共 16 张票（`01`—`16`），沿用既有无独立 spec 的登记方式。
+- **`paylite-workbook-monthly`**：整本导入与月度不含绩效，含 `spec.md` 及三张用户已确认的实施票（`01`—`03`）；2026-10-10 完成需求设计，尚未实施。
 
 ## 本仓库的两处既有偏差
 
@@ -23,7 +26,7 @@ GitHub remote（`github.com/Daniele111222/hr`）存在，但**不**作为 issue 
 
 ## 执行索引必须同步
 
-[docs/development-plan.md](../development-plan.md) 是 16 张票的执行索引（状态列 + 交付阶段 M1—M4 + 业务决策门槛）。改任何票的 `Status:` 或勾选验收标准时，**同一提交内**更新该索引的状态列。索引自身写明"更新状态时同步修改任务文件和本索引"。
+[docs/development-plan.md](../development-plan.md) 是原 16 张 MVP 票及新增整本导入需求的执行索引（状态列 + 交付阶段 M1—M4 + 业务决策门槛）。新增票以 WB01—WB03 在索引中区分，文件仍按各 feature 内的 01—03 编号。改任何票的 `Status:` 或勾选验收标准时，**同一提交内**更新该索引的状态列。索引自身写明"更新状态时同步修改任务文件和本索引"。
 
 票文件里的验收标准复选框必须逐条勾选，且勾选需有实际证据——development-plan.md 的"验证和完成标准"一节禁止用计划中的测试替代已运行结果。
 
@@ -33,7 +36,7 @@ GitHub remote（`github.com/Daniele111222/hr`）存在，但**不**作为 issue 
 
 ## 当 skill 说"fetch the relevant ticket"
 
-读取被引用路径的文件。用户通常会直接给出路径或票号（如 `03` → `.scratch/paylite-mvp/issues/03-rules.md`）。
+读取被引用路径的文件。票号须结合 feature 或当前会话范围；例如 MVP `03` 对应 `.scratch/paylite-mvp/issues/03-rules.md`，WB03 对应整本导入需求的 `03-workbook-correction-trace.md`，不能跨 feature 猜测。
 
 ## Wayfinding operations
 

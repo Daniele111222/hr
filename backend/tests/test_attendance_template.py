@@ -17,6 +17,18 @@ REFERENCE_HEADERS = tuple(
     "婚假天数 丧假天数 其他福利假 调休天数 请假外未出勤扣款 迟到/早退扣款 缺卡扣款 "
     "事假扣款 病假扣款 产假扣款 旷工扣款 总扣款 转正标记 效验 转正后实际出勤".split()
 )
+FACT_HEADERS = tuple(
+    "身份证号 姓名 公司 应出勤天数 迟到分钟 早退分钟 未补卡次数 旷工天数 事假天数 "
+    "病假天数 年假天数 产假天数 产检假天数 陪产假天数 育儿假天数 婚假天数 丧假天数 "
+    "其他福利假 调休天数".split()
+)
+
+
+def reference_workbook() -> Workbook:
+    workbook = Workbook()
+    workbook.active.title = "月度考勤"
+    workbook.active.append(REFERENCE_HEADERS)
+    return workbook
 
 
 def test_attendance_template_matches_reference_and_download_name() -> None:
@@ -26,13 +38,13 @@ def test_attendance_template_matches_reference_and_download_name() -> None:
     assert "filename*=UTF-8''考勤导入模版.xlsx" in unquote(response.headers["content-disposition"])
     workbook = load_workbook(BytesIO(response.content))
     sheet = workbook.active
-    assert tuple(cell.value for cell in sheet[1]) == REFERENCE_HEADERS
+    assert tuple(cell.value for cell in sheet[1]) == FACT_HEADERS
     assert sheet.max_row == 1
     assert sheet.column_dimensions["A"].number_format == "@"
 
 
 def test_reference_attendance_preserves_all_columns_and_error_coordinates() -> None:
-    workbook = load_workbook(BytesIO(make_template()))
+    workbook = reference_workbook()
     sheet = workbook.active
     values = {
         "身份证号": "11010119900101123X",
@@ -93,7 +105,7 @@ def test_attendance_template_preserves_identity_and_calculates_legacy_formula() 
 
 
 def test_attendance_formulas_calculate_dependencies_without_excel_cache() -> None:
-    workbook = load_workbook(BytesIO(make_template()))
+    workbook = reference_workbook()
     values = {
         "身份证号": "11010119900101123X",
         "姓名": "测试员工",
@@ -119,8 +131,9 @@ def test_attendance_formulas_calculate_dependencies_without_excel_cache() -> Non
     assert row.raw["迟到时长"] == "62"
     assert row.raw["缺卡次数"] == "2"
     assert row.raw["病假天数"] == "0.5"
-    assert row.raw["转正日期"] == "2026-04-30"
-    assert row.raw["总扣款"] == row.raw["迟到/早退扣款"] == "49.21"
+    assert row.raw["转正日期"] == values["转正日期"]
+    assert row.raw["总扣款"] == values["总扣款"]
+    assert row.raw["迟到/早退扣款"] == values["迟到/早退扣款"]
     assert row.formulas["总扣款"] == values["总扣款"]
     assert row.raw["缺卡扣款"] == ""
 
@@ -140,7 +153,7 @@ def test_attendance_formulas_calculate_dependencies_without_excel_cache() -> Non
     ],
 )
 def test_attendance_rejects_invalid_formula_with_source_location(formula) -> None:
-    workbook = load_workbook(BytesIO(make_template()))
+    workbook = reference_workbook()
     workbook.active["T2"] = formula
     output = BytesIO()
     workbook.save(output)
@@ -148,3 +161,58 @@ def test_attendance_rejects_invalid_formula_with_source_location(formula) -> Non
     assert row.errors[0]["field"] == "工作日天数合计"
     assert row.errors[0]["cell"] == "T2"
     assert row.formulas["工作日天数合计"] == formula
+
+
+def test_trace_only_errors_do_not_block_facts_but_required_dependencies_do() -> None:
+    workbook = reference_workbook()
+    values = {
+        "身份证号": "11010119900101123X",
+        "姓名": "测试员工",
+        "公司": "测试主体",
+        "工作日天数合计": "=R2+S2",
+        "试用期工作日天数": "=ROUND(3,0)",
+        "转正工作日天数": "18",
+        "当月固定薪资标准": "=花名册!T2",
+        "总扣款": "=SUM(AL2:AR2)",
+        "实际出勤天数": "#REF!",
+        "一级部门": "=花名册!F2",
+    }
+    workbook.active.append([values.get(field) for field in REFERENCE_HEADERS])
+    values["工作日天数合计"] = "=R3+S3"
+    values["试用期工作日天数"] = "=SUM(3,0)"
+    workbook.active.append([values.get(field) for field in REFERENCE_HEADERS])
+    output = BytesIO()
+    workbook.save(output)
+    first, second = parse_workbook(output.getvalue())
+    assert first.errors == []
+    assert first.raw["工作日天数合计"] == "21"
+    assert first.raw["总扣款"] == values["总扣款"]
+    assert first.raw["实际出勤天数"] == "#REF!"
+    assert second.errors[0]["cell"] == "T3"
+    assert second.errors[0]["code"] == "FORMULA_NOT_ALLOWED"
+
+
+def test_fact_template_resolves_inputs_and_rejects_text_formulas() -> None:
+    workbook = load_workbook(BytesIO(make_template()))
+    values = {
+        "身份证号": "11010119900101123X",
+        "姓名": "测试员工",
+        "公司": "测试主体",
+        "应出勤天数": "=10+11",
+        "迟到分钟": "=ROUND(62,2)",
+        "未补卡次数": "=1+1",
+        "病假天数": "=1/2",
+    }
+    workbook.active.append([values.get(field) for field in FACT_HEADERS])
+    values["公司"] = "=A3"
+    workbook.active.append([values.get(field) for field in FACT_HEADERS])
+    output = BytesIO()
+    workbook.save(output)
+    first, second = parse_workbook(output.getvalue())
+    assert first.errors == []
+    assert first.raw["应出勤天数"] == "21"
+    assert first.raw["迟到分钟"] == "62"
+    assert first.raw["未补卡次数"] == "2"
+    assert first.raw["病假天数"] == "0.5"
+    assert second.errors[0]["cell"] == "C3"
+    assert second.errors[0]["code"] == "FORMULA_NOT_ALLOWED"

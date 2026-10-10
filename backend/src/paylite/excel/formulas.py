@@ -118,6 +118,7 @@ def resolve_row_formulas(
     numeric_fields: set[str],
     *,
     formula_fields: set[str] | None = None,
+    target_fields: set[str] | None = None,
     blank_numeric_zero: bool = False,
     number_error_code: str = "INVALID_NUMBER",
 ) -> tuple[dict[str, str], list[dict[str, str]]]:
@@ -169,7 +170,7 @@ def resolve_row_formulas(
 
     errors = []
     for field in headers:
-        if field not in fields:
+        if field not in fields or (target_fields is not None and field not in target_fields):
             continue
         try:
             result = resolve(field)

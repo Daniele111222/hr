@@ -506,7 +506,7 @@ test.each([
   },
 );
 
-test.each(["TPL-ATT-v1", "TPL-ATT-v2"])(
+test.each(["TPL-ATT-v1", "TPL-ATT-v2", "TPL-ATT-v3"])(
   "考勤本次上传保留逐行修正功能 %s",
   async (version) => {
     const daysField =
@@ -523,9 +523,11 @@ test.each(["TPL-ATT-v1", "TPL-ATT-v2"])(
       field_mapping: {
         身份证号: "A",
         姓名: "B",
-        [daysField]: version === "TPL-ATT-v2" ? "T" : "C",
+        [daysField]:
+          version === "TPL-ATT-v2" ? "T" : version === "TPL-ATT-v3" ? "D" : "C",
         旷工天数: "Z",
         病假天数: "AB",
+        总扣款: "AS",
       },
       status: "partially_imported",
       total_rows: 2,
@@ -539,7 +541,15 @@ test.each(["TPL-ATT-v1", "TPL-ATT-v2"])(
           validation_status: "imported",
           raw_data: { 身份证号: "11010119900101123X", 姓名: "张三" },
           correction_values: null,
-          normalized_data: {},
+          normalized_data: {
+            expected_work_days: "21",
+            late_minutes: 62,
+            early_leave_minutes: 0,
+            paid_leave_days: "0.5",
+            unpaid_leave_days: "0",
+            missed_punch_count: 2,
+            corrected_punch_count: 1,
+          },
           errors: null,
           correction_history: [],
         },
@@ -549,8 +559,11 @@ test.each(["TPL-ATT-v1", "TPL-ATT-v2"])(
           source_row_number: 4,
           validation_status: "invalid",
           raw_data: {
-            ...(version === "TPL-ATT-v2"
+            ...(version !== "TPL-ATT-v1"
               ? { 病假天数: "0.5", 旷工天数: "0" }
+              : {}),
+            ...(version === "TPL-ATT-v2"
+              ? { 总扣款: "=SUM(AL4:AR4)", 当月固定薪资标准: "8000" }
               : {}),
             [daysField]: "0",
             身份证号: "11010119900101124X",
@@ -616,7 +629,8 @@ test.each(["TPL-ATT-v1", "TPL-ATT-v2"])(
     renderPage();
     await user.click(screen.getByRole("button", { name: "月度考勤" }));
     expect(await screen.findByText("考勤导入模版")).toBeInTheDocument();
-    expect(screen.getByText(/日期和数值列支持本行引用/)).toBeInTheDocument();
+    expect(screen.getByText(/固定 19 列/)).toBeInTheDocument();
+    expect(screen.getByText(/只计算有效输入及其必要依赖/)).toBeInTheDocument();
     expect(screen.getByRole("link", { name: /下载模板/ })).toHaveAttribute(
       "href",
       "/api/imports/attendance-template",
@@ -630,6 +644,15 @@ test.each(["TPL-ATT-v1", "TPL-ATT-v2"])(
       await screen.findByText("正确行已保存，错误行未进入有效考勤"),
     ).toBeInTheDocument();
     expect(
+      screen.getByText("本页仅展示考勤事实", { exact: false }),
+    ).toBeInTheDocument();
+    expect(
+      screen.getAllByRole("columnheader", { name: "应出勤天数" }).length,
+    ).toBeGreaterThan(0);
+    expect(
+      screen.getAllByRole("columnheader", { name: "未补卡次数" }).length,
+    ).toBeGreaterThan(0);
+    expect(
       (await screen.findAllByText("须大于 0 且不超过当月自然日天数")).length,
     ).toBeGreaterThan(0);
     await user.click(await screen.findByRole("button", { name: "修正" }));
@@ -638,7 +661,7 @@ test.each(["TPL-ATT-v1", "TPL-ATT-v2"])(
         .getAllByRole("textbox")
         .map((input) => input.getAttribute("aria-label")),
     ).toEqual(
-      version === "TPL-ATT-v2"
+      version !== "TPL-ATT-v1"
         ? [
             "修正身份证号",
             "修正姓名",
@@ -648,6 +671,22 @@ test.each(["TPL-ATT-v1", "TPL-ATT-v2"])(
           ]
         : ["修正身份证号", "修正姓名", `修正${daysField}`],
     );
+    expect(
+      screen.queryByRole("textbox", { name: "修正总扣款" }),
+    ).not.toBeInTheDocument();
+    expect(
+      screen.queryByRole("textbox", { name: "修正当月固定薪资标准" }),
+    ).not.toBeInTheDocument();
+    if (version === "TPL-ATT-v2") {
+      const drawer = screen.getByRole("dialog");
+      await user.click(
+        within(drawer).getAllByRole("button", { name: /展开行|Expand row/ })[1],
+      );
+      expect(within(drawer).getByText("=SUM(AL4:AR4)")).toBeInTheDocument();
+      expect(
+        within(drawer).getAllByText("原始数据（只读）").length,
+      ).toBeGreaterThan(0);
+    }
     await user.clear(screen.getByRole("textbox", { name: `修正${daysField}` }));
     await user.type(
       screen.getByRole("textbox", { name: `修正${daysField}` }),
@@ -814,7 +853,7 @@ test("绩效本次上传保留逐行修正功能", async () => {
   ).toHaveLength(2);
   await user.click(screen.getByRole("button", { name: "月度考勤" }));
   expect(
-    screen.getByText("上传月度考勤模板后显示校验结果"),
+    screen.getByText("上传月度考勤模板后显示导入结果"),
   ).toBeInTheDocument();
 });
 

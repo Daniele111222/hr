@@ -56,6 +56,9 @@ from paylite.excel.attendance_template import (
     LEGACY_HEADERS as ATTENDANCE_LEGACY_HEADERS,
 )
 from paylite.excel.attendance_template import (
+    REFERENCE_HEADERS as ATTENDANCE_REFERENCE_HEADERS,
+)
+from paylite.excel.attendance_template import (
     make_template as make_attendance_template,
 )
 from paylite.excel.employee_template import (
@@ -1846,14 +1849,18 @@ def test_attendance_import_partial_correction_and_revision(api_client, db_sessio
     )
 
 
-def test_reference_attendance_import_and_correction(api_client, db_session: Session) -> None:
-    company = Company(code="ATTREF", name="考勤参考表测试公司")
+@pytest.mark.parametrize("version", ["TPL-ATT-v2", "TPL-ATT-v3"])
+def test_reference_attendance_import_and_correction(
+    api_client, db_session: Session, version
+) -> None:
+    company = Company(code=f"ATTREF-{version}", name="考勤参考表测试公司")
     db_session.add(company)
     db_session.flush()
     subject = Subject(company_id=company.id, code="ATTREFSUB", name="考勤参考表主体")
     department = Department(company_id=company.id, code="ATTREFDEP", name="测试部门")
+    year = 2028 if version == "TPL-ATT-v2" else 2029
     period = PayrollPeriod(
-        year=2028, month=10, period_start=date(2028, 10, 1), period_end=date(2028, 10, 31)
+        year=year, month=10, period_start=date(year, 10, 1), period_end=date(year, 10, 31)
     )
     db_session.add_all([subject, department, period])
     db_session.flush()
@@ -1893,6 +1900,13 @@ def test_reference_attendance_import_and_correction(api_client, db_session: Sess
     db_session.commit()
     workbook = load_workbook(BytesIO(make_attendance_template()))
     sheet = workbook.active
+    headers = ATTENDANCE_HEADERS
+    days_field = "应出勤天数"
+    if version == "TPL-ATT-v2":
+        headers = ATTENDANCE_REFERENCE_HEADERS
+        days_field = "工作日天数合计"
+        sheet.delete_rows(1)
+        sheet.append(headers)
     for index, employee in enumerate(employees):
         values = {
             "身份证号": employee.id_number,
@@ -1901,18 +1915,22 @@ def test_reference_attendance_import_and_correction(api_client, db_session: Sess
             "试用期工作日天数": "0",
             "转正工作日天数": "0" if index == 1 else "21",
             "工作日天数合计": "=R2+S2",
+            "应出勤天数": "=0" if index == 1 else "=10+11",
             "实际出勤天数": "6",
             "请假外未出勤天数（当月入离职）": "15",
             "迟到时长": "=ROUND(62.0,2)",
+            "迟到分钟": "=ROUND(62.0,2)",
             "早退时长": "8",
+            "早退分钟": "8",
             "缺卡次数": "1",
+            "未补卡次数": "1",
             "病假天数": "=1/2",
             "产假天数": "2",
             "年假天数": "1",
             "事假天数": "0.5",
             "旷工天数": "0.5",
-            "总扣款": "=ROUND(9999.99,2)",
-            "当月固定薪资标准": "12345.67",
+            "总扣款": "=SUM(AL2:AR2)",
+            "当月固定薪资标准": "=花名册!T2",
             "转正标记": "转正",
         }
         for field, value in list(values.items()):
@@ -1922,7 +1940,7 @@ def test_reference_attendance_import_and_correction(api_client, db_session: Sess
             values["公司"] = "错误主体"
         if index == 3:
             values["产假天数"] = "=1/0"
-        sheet.append([values.get(field) for field in ATTENDANCE_HEADERS])
+        sheet.append([values.get(field) for field in headers])
     output = BytesIO()
     workbook.save(output)
     response = api_client.post(
@@ -1932,12 +1950,19 @@ def test_reference_attendance_import_and_correction(api_client, db_session: Sess
     assert response.status_code == 201, response.text
     result = response.json()
     assert (result["success_rows"], result["error_rows"]) == (1, 3)
-    assert result["template_version"] == "TPL-ATT-v2"
-    assert result["field_mapping"]["总扣款"] == "AS"
+    assert result["template_version"] == version
+    if version == "TPL-ATT-v2":
+        assert result["field_mapping"]["总扣款"] == "AS"
+    else:
+        assert len(result["field_mapping"]) == 19
+        assert "总扣款" not in result["field_mapping"]
     assert result["rows"][0]["source_row_number"] == 2
-    assert result["rows"][1]["errors"][0]["column"] == "T"
+    assert result["rows"][1]["errors"][0]["column"] == ("T" if version == "TPL-ATT-v2" else "D")
     assert result["rows"][2]["errors"][0]["field"] == "公司"
-    assert any(error["column"] == "AD" for error in result["rows"][3]["errors"])
+    assert any(
+        error["column"] == ("AD" if version == "TPL-ATT-v2" else "L")
+        for error in result["rows"][3]["errors"]
+    )
     db_session.expire_all()
     fact = db_session.scalar(
         select(AttendanceRecord).where(AttendanceRecord.employee_id == employees[0].id)
@@ -1946,19 +1971,37 @@ def test_reference_attendance_import_and_correction(api_client, db_session: Sess
     assert fact.paid_leave_days == Decimal("3.50")
     assert fact.unpaid_leave_days == Decimal("1.00")
     assert (fact.late_minutes, fact.early_leave_minutes, fact.missed_punch_count) == (62, 8, 1)
-    assert fact.raw_values["总扣款"] == "=ROUND(9999.99,2)"
-    assert result["rows"][0]["raw_data"]["工作日天数合计"] == "=R2+S2"
+    if version == "TPL-ATT-v2":
+        assert fact.raw_values["总扣款"] == "=SUM(AL2:AR2)"
+        assert result["rows"][0]["raw_data"][days_field] == "=R2+S2"
     assert "总扣款" not in result["rows"][0]["normalized_data"]
+    trace_correction = api_client.post(
+        f"/imports/attendance/{result['id']}/rows/{result['rows'][1]['id']}/correct",
+        json={"values": {"当月固定薪资标准": "8000"}},
+    )
+    assert trace_correction.status_code == 400
+    invalid_correction = api_client.post(
+        f"/imports/attendance/{result['id']}/rows/{result['rows'][1]['id']}/correct",
+        json={"values": {days_field: "0"}},
+    )
+    assert invalid_correction.status_code == 200
+    assert invalid_correction.json()["rows"][1]["errors"][0]["column"] == (
+        "T" if version == "TPL-ATT-v2" else "D"
+    )
+    db_session.expire_all()
+    assert db_session.get(ImportRow, result["rows"][1]["id"]).errors[0]["cell"] == (
+        "T3" if version == "TPL-ATT-v2" else "D3"
+    )
     corrected = api_client.post(
         f"/imports/attendance/{result['id']}/rows/{result['rows'][1]['id']}/correct",
-        json={"values": {"转正工作日天数": "21"}},
+        json={"values": {days_field: "21"}},
     )
     assert corrected.status_code == 200, corrected.text
     assert corrected.json()["success_rows"] == 2
     corrected_row = corrected.json()["rows"][1]
     assert corrected_row["normalized_data"]["expected_work_days"] == "21"
-    assert corrected_row["raw_data"]["工作日天数合计"] == "=R3+S3"
-    assert "工作日天数合计" not in corrected_row["correction_values"]
+    assert corrected_row["raw_data"][days_field] == ("=R3+S3" if version == "TPL-ATT-v2" else "=0")
+    assert corrected_row["correction_values"][days_field] == "21"
     formula_corrected = api_client.post(
         f"/imports/attendance/{result['id']}/rows/{result['rows'][3]['id']}/correct",
         json={"values": {"产假天数": "=1+1"}},
@@ -3969,7 +4012,7 @@ def test_company_monthly_import_groups_and_creates_batches(api_client, db_sessio
                 "身份证号": employee.id_number,
                 "姓名": name,
                 "公司": subjects[index].name,
-                "工作日天数合计": "0" if index == 2 else "20",
+                "应出勤天数": "0" if index == 2 else "20",
             }
             book.active.append([values.get(field) for field in ATTENDANCE_HEADERS])
         else:
@@ -4004,7 +4047,7 @@ def test_company_monthly_import_groups_and_creates_batches(api_client, db_sessio
     assert next_month.json()["id"] != result["id"]
     correction = api_client.post(
         f"/imports/{kind}/{result['id']}/rows/{result['rows'][2]['id']}/correct",
-        json={"values": {"工作日天数合计": "20"} if kind == "attendance" else {"绩效系数": "1"}},
+        json={"values": {"应出勤天数": "20"} if kind == "attendance" else {"绩效系数": "1"}},
     )
     assert correction.status_code == 200, correction.text
     assert correction.json()["success_rows"] == 3

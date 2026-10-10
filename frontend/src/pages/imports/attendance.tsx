@@ -31,6 +31,36 @@ const API_BASE = import.meta.env.VITE_API_BASE_URL ?? "/api";
 type MonthlyKind = "attendance" | "performance";
 type MonthlyBatch = AttendanceImportBatch | PerformanceImportBatch;
 const performanceFields = ["身份证号", "姓名", "绩效系数", "来源说明"];
+const attendanceFields = new Set([
+  "身份证号",
+  "姓名",
+  "公司",
+  "应出勤天数",
+  "迟到分钟",
+  "早退分钟",
+  "未补卡次数",
+  "旷工天数",
+  "事假天数",
+  "病假天数",
+  "年假天数",
+  "产假天数",
+  "产检假天数",
+  "陪产假天数",
+  "育儿假天数",
+  "婚假天数",
+  "丧假天数",
+  "其他福利假",
+  "调休天数",
+  "工作日天数合计",
+  "迟到时长",
+  "早退时长",
+  "缺卡次数",
+  "有薪请假天数",
+  "无薪请假天数",
+  "忘打卡次数",
+  "补卡次数",
+  "来源说明",
+]);
 
 export function MonthlyImportsPage({ kind }: { kind: MonthlyKind }) {
   const performance = kind === "performance";
@@ -161,13 +191,13 @@ export function MonthlyImportsPage({ kind }: { kind: MonthlyKind }) {
       <Card title="导入流程">
         <Steps
           size="small"
-          current={2}
+          current={preview ? 3 : 2}
           items={[
             "选择类型与范围",
             "下载固定模板",
-            "上传 Excel",
-            "校验预览",
-            "查看结果",
+            "上传并导入",
+            "查看导入结果",
+            "修正后返回试算",
           ].map((title) => ({ title }))}
         />
       </Card>
@@ -223,7 +253,7 @@ export function MonthlyImportsPage({ kind }: { kind: MonthlyKind }) {
             description={
               performance
                 ? "身份证号按文本填写；系数须为非负数，不设固定上限。缺失和零值不同；公式按行报错。"
-                : "固定 48 列，首行为表头；公司须与员工当期归属主体一致，身份证号按文本填写。工作日天数合计为应出勤天数，须大于零且不超过当月自然日天数；迟到、早退时长按分钟填写，缺卡次数为未补卡次数。事假、旷工按无薪天数折算，病假、产假及其他假期按有薪保存。入离职未出勤天数仅留存，工资按员工主档入离职日期折算；薪资与扣款列仅供追溯，不覆盖主档或直接采用总扣款。日期和数值列支持本行引用、四则运算、括号、ROUND 和 EDATE，数值引用空白按 0 计算；SUM、IF、跨行、跨表及外部引用请先转为实际值。计算结果仍须通过考勤数值校验，公式原文保留追溯。"
+                : "新版 TPL-ATT-v3 固定 19 列，首行为表头；仅填写员工标识、应出勤、考勤异常及各类假期，不填写薪资或扣款。身份证号按文本填写，公司须与员工当期归属主体一致。应出勤天数填写考勤表核定的工作日合计，须大于零且不超过当月自然日天数；迟到、早退按分钟填写，未补卡次数不包含已补卡。事假、旷工为无薪，其余假期为有薪并参与激励资格判断。原工作簿请将所需列粘贴为值到模板；继续兼容 48 列 v2 及 v1。有效输入支持本行引用、四则运算、括号、ROUND；旧模板日期依赖支持 EDATE。只计算有效输入及其必要依赖，无关公式仅保留原文；SUM、IF、跨表等无法求值的有效输入请转为实际值。"
             }
             action={
               <Button
@@ -267,7 +297,7 @@ export function MonthlyImportsPage({ kind }: { kind: MonthlyKind }) {
         </div>
       </Card>
 
-      <Card title="校验预览" extra={preview && <StatusTag batch={preview} />}>
+      <Card title="导入结果" extra={preview && <StatusTag batch={preview} />}>
         {preview ? (
           <>
             <div className={styles.metrics}>
@@ -284,14 +314,23 @@ export function MonthlyImportsPage({ kind }: { kind: MonthlyKind }) {
                   ? `正确行已保存，错误行未进入有效${label}`
                   : `全部行已保存为${label}事实`
               }
-              description={`${label}变化会使旧试算失效，后续需要重新试算并核对。`}
+              description={`${label}变化会使旧试算失效，后续需要重新试算并核对。${performance ? "" : "本页仅展示考勤事实，扣款由工资试算统一计算。"}`}
             />
             <SubjectSummary batch={preview} />
             <Table<ImportRow>
               size="small"
               rowKey="id"
               pagination={false}
-              scroll={{ x: 760 }}
+              scroll={{ x: performance ? 760 : 1400 }}
+              expandable={
+                performance
+                  ? undefined
+                  : {
+                      expandedRowRender: (row) => (
+                        <RawAttendanceRow row={row} batch={preview} />
+                      ),
+                    }
+              }
               dataSource={preview.rows?.slice(0, 8)}
               columns={rowColumns(preview)}
             />
@@ -309,7 +348,7 @@ export function MonthlyImportsPage({ kind }: { kind: MonthlyKind }) {
         ) : (
           <Empty
             image={Empty.PRESENTED_IMAGE_SIMPLE}
-            description={`上传月度${label}模板后显示校验结果`}
+            description={`上传月度${label}模板后显示导入结果`}
           />
         )}
       </Card>
@@ -390,11 +429,13 @@ const rowColumns = (batch: MonthlyBatch) => [
   { title: "原始行", dataIndex: "source_row_number" },
   {
     title: "身份证号",
-    render: (_: unknown, row: ImportRow) => row.raw_data["身份证号"],
+    render: (_: unknown, row: ImportRow) =>
+      row.correction_values?.["身份证号"] ?? row.raw_data["身份证号"],
   },
   {
     title: "姓名",
-    render: (_: unknown, row: ImportRow) => row.raw_data["姓名"],
+    render: (_: unknown, row: ImportRow) =>
+      row.correction_values?.["姓名"] ?? row.raw_data["姓名"],
   },
   {
     title: "归属主体",
@@ -411,12 +452,78 @@ const rowColumns = (batch: MonthlyBatch) => [
         <Tag color="success">已保存</Tag>
       ),
   },
+  ...(batch.import_type === "attendance"
+    ? [
+        ["应出勤天数", "expected_work_days"],
+        ["迟到分钟", "late_minutes"],
+        ["早退分钟", "early_leave_minutes"],
+        ["有薪假天数", "paid_leave_days"],
+        ["无薪假天数", "unpaid_leave_days"],
+      ]
+        .map(([title, key]) => ({
+          title,
+          render: (_: unknown, row: ImportRow) =>
+            String(row.normalized_data?.[key] ?? "—"),
+        }))
+        .concat([
+          {
+            title: "未补卡次数",
+            render: (_: unknown, row: ImportRow) =>
+              row.normalized_data?.missed_punch_count != null &&
+              row.normalized_data?.corrected_punch_count != null
+                ? String(
+                    Number(row.normalized_data.missed_punch_count) -
+                      Number(row.normalized_data.corrected_punch_count),
+                  )
+                : "—",
+          },
+        ])
+    : []),
   {
     title: "校验错误",
     render: (_: unknown, row: ImportRow) =>
       row.errors?.map((item) => item.message).join("；") ?? "—",
   },
 ];
+
+function RawAttendanceRow({
+  row,
+  batch,
+}: {
+  row: ImportRow;
+  batch: MonthlyBatch;
+}) {
+  return (
+    <Table
+      size="small"
+      rowKey="field"
+      pagination={false}
+      scroll={{ x: 640 }}
+      dataSource={Object.entries(row.raw_data).map(([field, value]) => ({
+        field,
+        value,
+        correction: row.correction_values?.[field],
+      }))}
+      columns={[
+        {
+          title: "字段 / 原始位置",
+          render: (_, item) =>
+            `${item.field}（${batch.field_mapping[item.field]}${row.source_row_number}）`,
+        },
+        {
+          title: "原始数据（只读）",
+          dataIndex: "value",
+          render: (value) => value || "—",
+        },
+        {
+          title: "修正值",
+          dataIndex: "correction",
+          render: (value) => value ?? "—",
+        },
+      ]}
+    />
+  );
+}
 
 function SubjectSummary({ batch }: { batch: MonthlyBatch }) {
   if (!batch.subjects?.length) return null;
@@ -570,7 +677,16 @@ function MonthlyDetail({
                   size="small"
                   rowKey="id"
                   dataSource={batch.rows ?? []}
-                  scroll={{ x: 760 }}
+                  scroll={{ x: kind === "attendance" ? 1400 : 760 }}
+                  expandable={
+                    kind === "attendance"
+                      ? {
+                          expandedRowRender: (row) => (
+                            <RawAttendanceRow row={row} batch={batch} />
+                          ),
+                        }
+                      : undefined
+                  }
                   pagination={{ pageSize: 8 }}
                   columns={rowColumns(batch)}
                 />
@@ -583,7 +699,16 @@ function MonthlyDetail({
           size="small"
           rowKey="id"
           dataSource={batch.rows ?? []}
-          scroll={{ x: 760 }}
+          scroll={{ x: kind === "attendance" ? 1400 : 760 }}
+          expandable={
+            kind === "attendance"
+              ? {
+                  expandedRowRender: (row) => (
+                    <RawAttendanceRow row={row} batch={batch} />
+                  ),
+                }
+              : undefined
+          }
           pagination={{ pageSize: 8 }}
           columns={[
             ...rowColumns(batch),
@@ -610,6 +735,11 @@ function MonthlyDetail({
           <Typography.Text strong>
             修正原始行 {editingRow.source_row_number}
           </Typography.Text>
+          {kind === "attendance" && (
+            <Typography.Text type="secondary">
+              仅修正考勤输入；薪资、扣款等原始数据只读。无法求值的输入公式可填写核实后的实际值，原公式保留追溯。
+            </Typography.Text>
+          )}
           <Alert
             type="error"
             showIcon
@@ -620,11 +750,13 @@ function MonthlyDetail({
           <div className={styles.correctionGrid}>
             {(kind === "performance"
               ? performanceFields
-              : Object.keys(editingRow.raw_data).sort((left, right) => {
-                  const a = batch.field_mapping[left] ?? "";
-                  const b = batch.field_mapping[right] ?? "";
-                  return a.length - b.length || a.localeCompare(b);
-                })
+              : Object.keys(editingRow.raw_data)
+                  .filter((field) => attendanceFields.has(field))
+                  .sort((left, right) => {
+                    const a = batch.field_mapping[left] ?? "";
+                    const b = batch.field_mapping[right] ?? "";
+                    return a.length - b.length || a.localeCompare(b);
+                  })
             ).map((field) => (
               <label key={field}>
                 {field}
