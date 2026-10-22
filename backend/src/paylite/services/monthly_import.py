@@ -15,6 +15,7 @@ from paylite.db.models import (
     PayrollBatch,
     PayrollPeriod,
     Subject,
+    WorkbookImport,
 )
 from paylite.services.employee_import import ImportFailure
 from paylite.services.payroll_workbench import _active_assignment_query
@@ -215,6 +216,12 @@ def get_batch(
     }
     if include_file:
         result["original_file"] = batch.original_file
+        if batch.original_file is None:
+            result["original_file"] = db.scalar(
+                select(WorkbookImport.original_file).where(
+                    WorkbookImport.attendance_import_id == batch.id
+                )
+            )
     return result
 
 

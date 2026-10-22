@@ -3,7 +3,54 @@ from io import BytesIO
 
 from openpyxl import load_workbook
 
+from paylite.domain.payroll import MONTHLY_CALCULATION_MODE
 from paylite.excel.payroll_export import render_payroll
+
+
+def test_export_preserves_legacy_income_but_excludes_new_monthly_performance():
+    legacy = {
+        "employee_id": 1,
+        "subject_id": 1,
+        "subject_name": "测试主体",
+        "batch_type": "normal",
+        "batch_no": 1,
+        "batch_name": None,
+        "snapshot": {
+            "name": "历史员工",
+            "id_number": "110101199001011234",
+            "fixed_salary": "8000.00",
+            "performance_base": "2000.00",
+        },
+        "amounts": {"gross": "10000.00", "untaxed_amount": "9000.00", "employer_cost": "11000.00"},
+        "items": [
+            {"code": "fixed_salary", "amount": "8000.00"},
+            {"code": "performance", "amount": "2000.00"},
+        ],
+    }
+    monthly = {
+        **legacy,
+        "employee_id": 2,
+        "snapshot": {
+            **legacy["snapshot"],
+            "calculation_mode": MONTHLY_CALCULATION_MODE,
+            "performance_base": None,
+        },
+        "amounts": {"gross": "8000.00", "untaxed_amount": "7000.00", "employer_cost": "9000.00"},
+        "items": [{"code": "fixed_salary", "amount": "8000.00"}],
+    }
+    book = load_workbook(
+        BytesIO(render_payroll({"period": "2026-10", "records": [legacy, monthly]}))
+    )
+    sheet = book["工资表明细"]
+    assert (sheet["O5"].value, sheet["AC5"].value, sheet["AJ5"].value) == (10000, 2000, 2000)
+    assert (sheet["O6"].value, sheet["AC6"].value, sheet["AJ6"].value) == (8000, None, None)
+    assert "本月不含绩效" in sheet["BG6"].value
+    assert sheet["AC4"].value == "=SUBTOTAL(9,AC5:AC6)"
+    only_monthly = load_workbook(
+        BytesIO(render_payroll({"period": "2026-10", "records": [monthly]}))
+    )
+    assert only_monthly["工资表明细"]["AC4"].value is None
+    assert only_monthly["工资表明细"]["AJ4"].value is None
 
 
 def test_payroll_template_expands_and_preserves_text_and_unknown_tax():

@@ -26,6 +26,7 @@ from paylite.db.models.imports import (
     ImportBatch,
     ImportRow,
     PerformanceRecord,
+    WorkbookImport,
 )
 from paylite.db.models.organization import (
     City,
@@ -83,6 +84,7 @@ __all__ = [
     "SocialSecurityRule",
     "Subject",
     "SubjectDepartment",
+    "WorkbookImport",
     "created_at_column",
     "effective_date_range",
     "empty_json_default",

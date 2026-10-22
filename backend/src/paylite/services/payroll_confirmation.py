@@ -228,7 +228,11 @@ def _create_records(db: Session, batch: PayrollBatch, trial: PayrollTrialRun) ->
             snapshot_level_code=snapshot.get("level_code"),
             snapshot_level_number=snapshot.get("level_number"),
             snapshot_fixed_salary=_decimal(snapshot.get("fixed_salary")),
-            snapshot_performance_base=_decimal(snapshot.get("performance_base")),
+            snapshot_performance_base=(
+                _decimal(snapshot["performance_base"])
+                if snapshot.get("performance_base") is not None
+                else None
+            ),
             snapshot_base_city_name=snapshot.get("base_city_name"),
             snapshot_bank_account=snapshot.get("bank_account"),
             gross_amount=gross,

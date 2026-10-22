@@ -10,6 +10,8 @@ from typing import Any
 from openpyxl import load_workbook
 from openpyxl.styles import Alignment
 
+from paylite.domain.payroll import MONTHLY_CALCULATION_MODE
+
 TEMPLATE_PATH = Path(__file__).with_name("templates") / "payroll-v1.xlsx"
 TEMPLATE_VERSION = "payroll-v1-" + sha256(TEMPLATE_PATH.read_bytes()).hexdigest()[:12]
 TAX_NOTICE = "未扣个税金额；个税及税务申报字段无来源，已留空，请在 Excel 线下计算并核对后发薪。"
@@ -81,24 +83,37 @@ def render_payroll(ledger: dict[str, Any]) -> bytes:
         if record["batch_type"] == "supplement":
             values["AM"] = Decimal(amounts["gross"])
         else:
+            monthly = snapshot.get("calculation_mode") == MONTHLY_CALCULATION_MODE
+            fixed_salary = Decimal(snapshot["fixed_salary"])
+            performance_base = (
+                Decimal(snapshot["performance_base"])
+                if snapshot.get("performance_base") is not None
+                else None
+            )
             values.update(
                 {
-                    "O": Decimal(snapshot["fixed_salary"]) + Decimal(snapshot["performance_base"]),
-                    "P": Decimal(snapshot["fixed_salary"]),
-                    "AC": Decimal(snapshot["performance_base"]),
+                    "O": fixed_salary
+                    if monthly
+                    else fixed_salary + performance_base
+                    if performance_base is not None
+                    else None,
+                    "P": fixed_salary,
+                    "AC": None if monthly else performance_base,
                     "Q": items.get("attendance_late", Decimal(0))
                     + items.get("attendance_early", Decimal(0)),
                     "R": items.get("attendance_missed_punch", Decimal(0)),
                     "X": attendance,
                     "Y": items.get("attendance_incentive", Decimal(0)),
                     "AB": items.get("fixed_salary", Decimal(0)) - attendance + incentive,
-                    "AJ": items.get("performance", Decimal(0)),
+                    "AJ": None if monthly else items.get("performance", Decimal(0)),
                     "AS": total("social_employee_"),
                     "AT": items.get("housing_employee", Decimal(0)),
                     "BD": total("social_company_"),
                     "BE": items.get("housing_company", Decimal(0)),
                 }
             )
+            if monthly:
+                values["BG"] += "；本月不含绩效，绩效区域不适用"
             values["BG"] += "；无薪请假扣款计入考勤合计，不猜测假别"
         for col, value in values.items():
             _write(detail, n, col, value)
@@ -132,7 +147,12 @@ def render_payroll(ledger: dict[str, Any]) -> bytes:
         "BE",
         "BF",
     ):
-        detail[f"{col}4"] = f"=SUBTOTAL(9,{col}5:{col}{last})"
+        detail[f"{col}4"] = (
+            None
+            if col in {"AC", "AJ"}
+            and all(detail[f"{col}{n}"].value is None for n in range(5, last + 1))
+            else f"=SUBTOTAL(9,{col}5:{col}{last})"
+        )
         detail[f"{col}4"].number_format = "#,##0.00"
     detail.freeze_panes = "E5"
     detail.auto_filter.ref = f"A3:BP{last}"

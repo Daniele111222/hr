@@ -32,6 +32,7 @@ from paylite.excel.employee_template import (
     HEADERS,
     LEGACY_HEADERS,
     LEGACY_TEMPLATE_VERSION,
+    NON_MONTHLY_FIELDS,
     SHEET_NAME,
     TEMPLATE_VERSION,
     WorkbookFormatError,
@@ -52,7 +53,6 @@ REQUIRED = (
     "部门编码",
     "职位",
     "固定薪资",
-    "绩效基数",
     "base城市编码",
     "银行卡号",
     "开户名",
@@ -177,9 +177,8 @@ def _validate_values(
         except ValueError:
             errors.append(_issue("INVALID_LEVEL", "职级数字", "须为非负整数", row_number))
     fixed_salary = _money(raw["固定薪资"], "固定薪资", row_number, errors)
-    performance_base = _money(raw["绩效基数"], "绩效基数", row_number, errors)
-    if status == "in_probation" and performance_base not in (None, Decimal("0")):
-        errors.append(_issue("PROBATION_PAY", "绩效基数", "试用期绩效基数必须为 0", row_number))
+    # Non-monthly source values remain traceable; uninterpretable performance data stays unknown.
+    performance_base = _money(raw["绩效基数"], "绩效基数", row_number, [])
     subject = (
         db.scalar(
             select(Subject).where(
@@ -421,20 +420,13 @@ def _validate(
     status = "confirmed" if probation_date and probation_date <= imported_on else "in_probation"
     values["转正状态"] = status
     fixed = _money(raw["转正固定薪资"], "固定薪资", row_number, errors)
-    performance = _money(raw["转正绩效标准"], "绩效基数", row_number, errors)
-    if not raw["转正绩效标准"]:
-        errors.append(_issue("REQUIRED", "转正绩效标准", "转正绩效标准不能为空", row_number))
+    performance = _money(raw["转正绩效标准"], "绩效基数", row_number, [])
     probation_fixed = _money(raw["试用期底薪"], "试用期底薪", row_number, errors)
-    probation_performance = _money(raw["试用期绩效"], "试用期绩效", row_number, errors)
     if probation_fixed is not None and fixed is not None and probation_fixed != fixed:
         errors.append(
             _issue("PROBATION_FIXED", "试用期底薪", "试用期底薪须与转正固定薪资相同", row_number)
         )
-    if probation_performance not in (None, Decimal("0")):
-        errors.append(_issue("PROBATION_PAY", "试用期绩效", "试用期绩效必须为 0", row_number))
-    values["绩效基数"] = (
-        str(performance) if status == "confirmed" and performance is not None else "0"
-    )
+    values["绩效基数"] = str(performance) if performance is not None else ""
     normalized, validation_errors = _validate_values(
         db, company_id, row_number, values, auto_number=True
     )
@@ -794,6 +786,7 @@ def correct_row(
             error
             for error in row.errors or []
             if error["code"] in {"FORMULA_NOT_ALLOWED", "EXCEL_ERROR", "IDENTIFIER_NOT_TEXT"}
+            and error["field"] not in NON_MONTHLY_FIELDS
             and error["field"] not in corrected_fields
             and error["field"] not in formula_fields
         ]

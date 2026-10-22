@@ -1,6 +1,6 @@
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { App as AntdApp } from "antd";
-import { cleanup, render, screen, waitFor } from "@testing-library/react";
+import { act, cleanup, render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { MemoryRouter, Route, Routes } from "react-router-dom";
 import { afterEach, expect, test, vi } from "vitest";
@@ -366,14 +366,15 @@ test("替代版本可修正月度输入并保存来源说明", async () => {
   renderPage();
   const user = userEvent.setup();
   expect(
-    await screen.findByText(/本次仅修正考勤与绩效；薪酬和规则沿用原确认快照/),
+    await screen.findByText(/本次仅修正考勤，按月度不含绩效口径计算/),
   ).toBeInTheDocument();
   await user.click(await screen.findByRole("button", { name: "修正输入" }));
   expect(screen.getByRole("button", { name: "保存修正输入" })).toBeDisabled();
   await user.clear(screen.getByRole("textbox", { name: "迟到分钟" }));
   await user.type(screen.getByRole("textbox", { name: "迟到分钟" }), "30");
-  await user.clear(screen.getByRole("textbox", { name: "绩效系数" }));
-  await user.type(screen.getByRole("textbox", { name: "绩效系数" }), "1.5");
+  expect(
+    screen.queryByRole("textbox", { name: "绩效系数" }),
+  ).not.toBeInTheDocument();
   await user.type(
     screen.getByRole("textbox", { name: "修正来源说明" }),
     "考勤核对单",
@@ -532,4 +533,122 @@ test("独立补发校验金额并在保存后重新试算", async () => {
   expect(
     await screen.findByText("试算合计：", { exact: false }),
   ).toBeInTheDocument();
+});
+
+test("最新试算读取完成后刷新确认状态，消除并行查询的尚未查看旧状态", async () => {
+  let viewed = false;
+  let release!: () => void;
+  vi.stubGlobal(
+    "fetch",
+    vi.fn(async (input: RequestInfo | URL) => {
+      const url = String(input);
+      if (url.includes("/workbench"))
+        return Response.json({
+          period: { id: 1, period: "2026-08" },
+          periods: [],
+          batches: [],
+        });
+      if (url.endsWith("/batches/10"))
+        return Response.json({ ...batch, status: "trial" });
+      if (url.endsWith("/trial")) {
+        await new Promise<void>((resolve) => {
+          release = resolve;
+        });
+        viewed = true;
+        return Response.json({
+          ...trial,
+          includes_final_incentive: true,
+          ready_for_confirmation: true,
+          confirmation_blockers: [],
+        });
+      }
+      if (url.endsWith("/confirmation"))
+        return Response.json({
+          blockers: viewed ? [] : ["最新试算尚未查看"],
+          can_confirm: viewed,
+          can_lock: false,
+        });
+      return Response.json([]);
+    }),
+  );
+  const client = new QueryClient({
+    defaultOptions: { queries: { retry: false } },
+  });
+  client.setQueryData(["payroll", "trial", 10], {
+    ...trial,
+    includes_final_incentive: true,
+    ready_for_confirmation: true,
+    confirmation_blockers: [],
+  });
+  renderPage("/payroll/batches/10", client);
+  await screen.findByText("最新试算尚未查看");
+  release();
+  await waitFor(() =>
+    expect(screen.getByRole("button", { name: "整批确认" })).toBeEnabled(),
+  );
+});
+
+test("确认首次请求的旧响应晚返回也不能覆盖试算读取后的就绪状态", async () => {
+  let releaseTrial!: () => void;
+  let releaseOld!: () => void;
+  let started!: () => void;
+  const oldStarted = new Promise<void>((resolve) => {
+    started = resolve;
+  });
+  let confirmationCalls = 0;
+  vi.stubGlobal(
+    "fetch",
+    vi.fn(async (input: RequestInfo | URL) => {
+      const url = String(input);
+      if (url.includes("/workbench"))
+        return Response.json({
+          period: { id: 1, period: "2026-08" },
+          periods: [],
+          batches: [],
+        });
+      if (url.endsWith("/batches/10"))
+        return Response.json({ ...batch, status: "trial" });
+      if (url.endsWith("/trial")) {
+        await new Promise<void>((resolve) => {
+          releaseTrial = resolve;
+        });
+        return Response.json({
+          ...trial,
+          includes_final_incentive: true,
+          ready_for_confirmation: true,
+          confirmation_blockers: [],
+        });
+      }
+      if (url.endsWith("/confirmation")) {
+        if (++confirmationCalls === 1) {
+          started();
+          await new Promise<void>((resolve) => {
+            releaseOld = resolve;
+          });
+          return Response.json({
+            blockers: ["最新试算尚未查看"],
+            can_confirm: false,
+            can_lock: false,
+          });
+        }
+        return Response.json({
+          blockers: [],
+          can_confirm: true,
+          can_lock: false,
+        });
+      }
+      return Response.json([]);
+    }),
+  );
+  renderPage();
+  await oldStarted;
+  releaseTrial();
+  await waitFor(() =>
+    expect(screen.getByRole("button", { name: "整批确认" })).toBeEnabled(),
+  );
+  await act(async () => releaseOld());
+  await waitFor(() =>
+    expect(screen.getByRole("button", { name: "整批确认" })).toBeEnabled(),
+  );
+  expect(confirmationCalls).toBe(2);
 });

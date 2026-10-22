@@ -15,7 +15,7 @@
 
       <section data-od-id="workbench-summary">
         <div class="between" style="align-items:flex-start; flex-wrap:wrap; gap:10px">
-          <p class="page-lead">2026 年 8 月工资期间。三个工资归属主体、128 名员工。下列进度按「资料准备 → 考勤导入 → 绩效导入 → 工资试算 → 考勤激励 → 确认锁定 → 结果导出」推进，红色为阻断项，必须处理完才能整批确认。</p>
+          <p class="page-lead">2026 年 8 月工资期间。三个工资归属主体、128 名员工。下列进度按「资料准备 → 考勤导入 → 工资试算 → 考勤激励 → 确认锁定 → 结果导出」推进；绩效由独立流程处理。</p>
           <div class="anchors">
             <a href="#progress">主体进度</a>
             <a href="#todos">待办</a>
@@ -50,7 +50,6 @@
                 <th class="sticky-col" style="min-width:190px">主体</th>
                 <th class="n">员工数</th>
                 <th>考勤准备</th>
-                <th>绩效准备</th>
                 <th>规则状态</th>
                 <th>工资批次状态</th>
                 <th style="min-width:160px">下一步操作</th>
@@ -74,7 +73,7 @@
             <div class="card-head"><h2>快捷入口</h2></div>
             <div class="card-body stack" style="gap:8px">
               <a class="btn" href="employees.html" style="justify-content:flex-start">维护员工资料</a>
-              <a class="btn" href="import-center.html" style="justify-content:flex-start">导入考勤与绩效</a>
+              <a class="btn" href="import-center.html" style="justify-content:flex-start">导入考勤</a>
               <a class="btn" href="batch-detail.html" style="justify-content:flex-start">进入批次核算</a>
               <a class="btn" href="export-center.html" style="justify-content:flex-start">导出结果</a>
             </div>
@@ -150,14 +149,13 @@
   var flow = [
     { t: '资料准备', st: 'done', note: '128 人在册，' + Q.EMPLOYEES.filter(function (e) { return e.profile !== '完整'; }).length + ' 人资料缺项' },
     { t: '考勤导入', st: 'done', note: '三主体全部就绪' },
-    { t: '绩效导入', st: s.perfFixed ? 'done' : 'blocked', note: s.perfFixed ? '三主体全部就绪' : '上海 3 行错误待修复' },
-    { t: '工资试算', st: s.perfFixed ? (s.recalculated ? 'done' : 'current') : 'blocked', note: s.recalculated ? '三主体已重新试算' : (s.perfFixed ? '输入已更新，需重新试算' : '上海 2 人绩效系数异常') },
+    { t: '工资试算', st: s.recalculated ? 'done' : 'current', note: s.recalculated ? '三主体已重新试算' : '按固定薪资、考勤及规则试算' },
     { t: '考勤激励', st: s.incentiveDone ? 'done' : (Q.incentiveReady() ? 'current' : 'blocked'), note: s.incentiveDone ? '已计算并计入工资' : (Q.incentiveReady() ? '可执行本期分配' : '待三主体数据齐全') },
     { t: '确认锁定', st: s.locked ? 'done' : (s.confirmed ? 'current' : (allReady ? 'current' : 'blocked')), note: s.locked ? '已锁定，内容只读' : (s.confirmed ? '已确认，待锁定' : (allReady ? '全体校验通过，可确认' : '需全体校验通过')) },
     { t: '结果导出', st: s.exported ? 'done' : (s.locked ? 'current' : 'pending'), note: s.exported ? '工资表已生成' : (s.locked ? '可生成四类文件' : '未开始') }
   ];
   var flowDone = flow.filter(function (f) { return f.st === 'done'; }).length;
-  document.getElementById('flow-sub').textContent = '当前期间 2026-08 · 整体进度 ' + flowDone + ' / 7';
+  document.getElementById('flow-sub').textContent = '当前期间 2026-08 · 整体进度 ' + flowDone + ' / 6';
   document.getElementById('flow').innerHTML = flow.map(function (f, i) {
     return (i ? '<span class="step-line"></span>' : '') +
       '<div class="step is-' + f.st + '"><span class="step-dot">' + (f.st === 'done' ? '✓' : (f.st === 'blocked' ? '!' : i + 1)) + '</span>' +
@@ -174,7 +172,6 @@
   function nextAction(code, st) {
     var s = Q.state();
     if (st.note.indexOf('缺有效城市规则') >= 0) return { t: '维护深圳城市规则', href: 'city-rules.html' };
-    if (code === 'SH01' && !s.perfFixed) return { t: '修复绩效导入错误', href: 'import-batch.html' };
     if (!s.recalculated) return { t: '重新试算', href: 'batch-detail.html' };
     if (!Q.incentiveDone()) return { t: '计算考勤激励', href: 'incentive.html' };
     if (s.locked) return { t: '查看已锁定批次', href: 'batch-detail.html' };
@@ -189,7 +186,6 @@
       '<td class="sticky-col"><a href="periods.html">' + esc(e.name) + '</a><span class="tbl-sub">' + e.code + ' · base ' + e.city + '</span></td>' +
       '<td class="n mono">' + e.headcount + '</td>' +
       '<td>' + Q.badge(p.att[0], p.att[1]) + '</td>' +
-      '<td>' + Q.badge(p.perf[0], p.perf[1]) + '</td>' +
       '<td>' + (rules ? Q.badge('valid', '生效中 ' + rules.version) : Q.badge('expired', '已过期')) + '</td>' +
       '<td>' + Q.badge(st.key, st.label) + '<span class="tbl-sub">' + esc(st.note) + '</span></td>' +
       '<td><a class="btn btn-sm' + (st.key === 'blocked' ? ' btn-primary' : '') + '" href="' + na.href + '">' + esc(na.t) + '</a></td>' +
@@ -199,11 +195,8 @@
   /* ── 待办 ───────────────────────────────────────────────── */
   function buildTodos() {
     var s = Q.state(), out = [];
-    if (!s.perfFixed) {
-      out.push({ level: 'block', title: '上海主体：绩效导入有 3 行错误', desc: 'IMP-202608-SH01-002 · 缺绩效系数、绩效系数为负数、员工无法匹配', href: 'import-batch.html', act: '前往纠错' });
-      out.push({ level: 'block', title: '上海主体：2 名员工绩效系数异常', desc: 'EMP037 缺失、EMP058 为负数，无法计入绩效金额', href: 'import-batch.html', act: '修正系数' });
-    } else if (!s.recalculated) {
-      out.push({ level: 'warn', title: '上海主体：输入已更新，原试算已失效', desc: '绩效数据已修正，需重新试算后才能整批确认', href: 'batch-detail.html', act: '重新试算' });
+    if (!s.recalculated) {
+      out.push({ level: 'warn', title: '上海主体：原试算需更新', desc: '按最新固定薪资、考勤和规则重新试算后再确认', href: 'batch-detail.html', act: '重新试算' });
     }
     if (!s.szRuleAdded) {
       out.push({ level: 'block', title: '深圳社保与公积金规则已过期', desc: '深圳规则有效期至 2026-07-31，2026-08 期间无适用规则，7 名深圳主体员工与 1 名 base 深圳的北京员工无法计算', href: 'city-rules.html', act: '维护规则' });
@@ -213,7 +206,7 @@
     } else if (!Q.incentiveDone()) {
       out.push({ level: 'warn', title: '全公司考勤激励待计算', desc: '三主体数据已齐全，可执行本期激励分配', href: 'incentive.html', act: '计算激励' });
     }
-    if (s.perfFixed && s.recalculated && Q.incentiveDone() && !s.confirmed) {
+    if (s.recalculated && Q.incentiveDone() && !s.confirmed) {
       out.push({ level: 'info', title: '三个主体：全体校验通过，可整批确认', desc: '确认后工资内容只读，需更正请发起整批更正', href: 'batch-detail.html', act: '去确认' });
     }
     if (s.confirmed && !s.locked) {

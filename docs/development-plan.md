@@ -1,10 +1,10 @@
 # PayLite MVP 开发任务计划
 
 > 建立日期：2026-09-17  
-> 最近更新：2026-10-10
-> 状态：16 项需求功能均已实现，首页、正式台账明细与契约/筛选缺口已补齐；04 待用户页面验收，14 待标准镜像重建验证。真实工资人工对账与 MVP 整体验收待业务输入。
+> 最近更新：2026-10-22
+> 状态：16 项需求功能均已实现，首页、正式台账明细与契约/筛选缺口已补齐；04 待用户页面验收，14 待业务验收。真实工资人工对账与 MVP 整体验收待业务输入。
 > 范围：从当前后端基础设施推进至资料维护、月度输入、算薪、确认、更正、补发及四类 Excel 输出。
-> 追加需求：整本工作簿导入与月度核算排除绩效已完成设计，三项实施票尚未开始；不计入原 MVP 已完成数量。
+> 追加需求：WB01 月度不含绩效、WB02 整本导入、WB03 依赖纠错在功能分支完成并通过合成验收，不计入原 MVP 已完成数量。
 
 ## 任务入口与状态
 
@@ -37,17 +37,17 @@
 
 ### 整本导入与月度不含绩效（2026-10-10 新需求）
 
-[独立需求规格](../.scratch/paylite-workbook-monthly/spec.md)与三项拆分、完整流程验收已由用户确认。三票均为 `ready-for-agent`，但实际交付状态均为未开始；前置票未完成时不能越过依赖执行。不改写原 MVP 票的完成事实。
+[独立需求规格](../.scratch/paylite-workbook-monthly/spec.md)与三项拆分、完整流程验收已由用户确认。WB01、WB02、WB03 均为 `completed`，已完成开发及验收。不改写原 MVP 票的完成事实。
 
 | 编号 | 任务 | 前置任务 | 执行状态 |
 | --- | --- | --- | --- |
-| WB01 | [月度核算排除绩效并保留旧结果](../.scratch/paylite-workbook-monthly/issues/01-monthly-without-performance.md) | 无本 feature 前置票 | 未开始 |
-| WB02 | [整本上传花名册与考勤并支持历史初始化](../.scratch/paylite-workbook-monthly/issues/02-workbook-import.md) | WB01 | 未开始 |
-| WB03 | [整本导入的依赖纠错、幂等与追溯](../.scratch/paylite-workbook-monthly/issues/03-workbook-correction-trace.md) | WB02 | 未开始 |
+| WB01 | [月度核算排除绩效并保留旧结果](../.scratch/paylite-workbook-monthly/issues/01-monthly-without-performance.md) | 无本 feature 前置票 | 已完成 |
+| WB02 | [整本上传花名册与考勤并支持历史初始化](../.scratch/paylite-workbook-monthly/issues/02-workbook-import.md) | WB01 ✅ | 已完成 |
+| WB03 | [整本导入的依赖纠错、幂等与追溯](../.scratch/paylite-workbook-monthly/issues/03-workbook-correction-trace.md) | WB02 ✅ | 已完成 |
 
 已确认：整本新增员工生效日取期间月初与入职日的较晚者；已有员工不自动覆盖或回填历史；月度核算不处理绩效；旧确认结果只读保留，但新更正也统一排除绩效。首版固定适配必要工作表并引入受控本机公式引擎，保留现有单项导入；不开发独立绩效、增减项或自建通用 Excel 引擎。[引擎评估](../.scratch/paylite-workbook-monthly/engine-evaluation.md)推荐先验证 LibreOffice/UNO，普通转换的旧缓存反例已经实测，WB02 接入前须通过显式强制重算及稳定版部署验证。
 
-验收沿真实上传/纠错接口与专用测试库覆盖“整本输入→纠错→试算→激励→确认→锁定→四类导出→旧批次的新更正→有效版本查询”，页面测试补充交互和窄屏。当前完成需求设计、源码/样表结构核对及引擎隔离合成试验，未执行新上传/算薪功能测试或勾选验收。
+整体验收沿真实上传/纠错接口与专用测试库覆盖“整本输入→纠错→试算→激励→确认→锁定→四类导出→旧批次的新更正→有效版本查询”，页面测试补充交互和窄屏。WB01 已在 `codex/feature-workbook-monthly` 验证月度核算、旧含绩效来源的新更正与四类导出：相关后端 99 项、追加两种来源流程 2 项、六页面 51 项及生产构建通过，详见 [WB01 证据](../.scratch/paylite-workbook-monthly/wb01-verification.md)。整本上传、依赖纠错与完整流程已验收：后端 175 项、前端 90 项、标准镜像安装包与真实页面均通过，详见 [最终验收](../.scratch/paylite-workbook-monthly/final-verification.md)。2026-10-11 验收时未提交、部署或迁移开发工资库；2026-10-22 按用户要求整理开发内容并进行提交复核，记录见同一验收文档。真实工资人工对账待业务执行。
 
 ### 01、02 验收结果（2026-09-22）
 

@@ -29,6 +29,7 @@ import {
 import styles from "./index.module.less";
 import { MonthlyImportsPage } from "./attendance.tsx";
 import { ImportFailureTable } from "./failure-table.tsx";
+import { WorkbookImportsPage } from "./workbook.tsx";
 
 const API_BASE = import.meta.env.VITE_API_BASE_URL ?? "/api";
 
@@ -36,7 +37,9 @@ export function ImportsPage() {
   const [params, setParams] = useSearchParams();
   const requested = params.get("type");
   const type =
-    requested === "attendance" || requested === "performance"
+    requested === "attendance" ||
+    requested === "performance" ||
+    requested === "workbook"
       ? requested
       : "employee";
   const setType = (value: string) =>
@@ -48,6 +51,12 @@ export function ImportsPage() {
   return (
     <>
       <Space wrap>
+        <Button
+          type={type === "workbook" ? "primary" : "default"}
+          onClick={() => setType("workbook")}
+        >
+          整本导入
+        </Button>
         <Button
           type={type === "employee" ? "primary" : "default"}
           onClick={() => setType("employee")}
@@ -64,10 +73,12 @@ export function ImportsPage() {
           type={type === "performance" ? "primary" : "default"}
           onClick={() => setType("performance")}
         >
-          月度绩效
+          绩效历史
         </Button>
       </Space>
-      {type === "employee" ? (
+      {type === "workbook" ? (
+        <WorkbookImportsPage />
+      ) : type === "employee" ? (
         <EmployeeImportsPage />
       ) : (
         <MonthlyImportsPage key={type} kind={type} />
@@ -182,7 +193,7 @@ function EmployeeImportsPage() {
             showIcon
             icon={<InfoCircleOutlined />}
             message="员工资料模板 TPL-EMP-v3"
-            description="固定 27 列，表头、工作表名称和列顺序固定。证件号码、手机号、银行卡号按文本填写。主体须已维护；缺失部门会按层级自动创建并关联所属主体，已有部门直接复用。员工编号自动生成，默认正式员工；base 城市按主体名称匹配，分公司所在地优先；生效日期为本次导入日期。转正固定薪资与绩效标准按实际金额填写，不限制比例；试用期底薪相同、绩效为 0。日期和薪资列支持本行引用、四则运算、括号、ROUND 和 EDATE；其他公式请先转为实际值。"
+            description="固定 27 列，表头、工作表名称和列顺序固定。证件号码、手机号、银行卡号按文本填写。主体须已维护；缺失部门会按层级自动创建并关联所属主体，已有部门直接复用。员工编号自动生成，默认正式员工；base 城市按主体名称匹配，分公司所在地优先；生效日期为本次导入日期。转正固定薪资按实际金额填写，试用期底薪须相同；绩效与年薪资料可留空，不参与月度核算。日期和薪资列支持本行引用、四则运算、括号、ROUND 和 EDATE；其他公式请先转为实际值。"
             action={
               <Button
                 size="small"

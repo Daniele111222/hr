@@ -298,7 +298,7 @@
     var rule = cityRule(emp.city, period);
     var invalid = [];
     if (!rule) invalid.push('缺有效城市规则（' + emp.city + '）');
-    if (opt.perfMissing) invalid.push(emp.id === 'EMP058' ? '绩效系数不能为负数' : '缺绩效系数');
+    if (opt.legacy && opt.perfMissing) invalid.push(emp.id === 'EMP058' ? '绩效系数不能为负数' : '缺绩效系数');
 
     var std = emp.salaryStandard;
     var fixedFull = round2(std * 0.8);
@@ -309,8 +309,8 @@
 
     var regularInPeriod = emp.regularDate && emp.regularDate.slice(0, 7) === period;
     var isRegular = !emp.probation || regularInPeriod;
-    var coef = opt.perfMissing ? null : coefficient(emp, period);
-    var perfAmount = (isRegular && coef != null) ? round2(perfBase * coef * days / monthDays) : 0;
+    var coef = opt.legacy ? (opt.perfMissing ? null : coefficient(emp, period)) : null;
+    var perfAmount = (opt.legacy && isRegular && coef != null) ? round2(perfBase * coef * days / monthDays) : 0;
 
     var att = attendance(emp, period);
     var penalized = emp.grade !== 'P7' && emp.grade !== 'P8';
@@ -497,7 +497,8 @@
     return period === '2026-07' && entityCode === 'BJ01' && version === 'V1' && BJ_V1_WRONG_COEF[id] != null;
   }
   function computeEntityVersion(period, entityCode, version) {
-    return computeEntity(period, entityCode).map(function (c) {
+    return scope(period, entityCode).map(function (e) {
+      var c = computeOne(e, period, { legacy: version === 'V1' });
       if (!c.ok || !isWrongCoef(period, entityCode, version, c.emp.id)) return c;
       var w = BJ_V1_WRONG_COEF[c.emp.id];
       var perf = round2(c.perfBase * w);
@@ -577,7 +578,6 @@
     var bad = missingRuleIn(P, code).length;
     var ruleGap = (!s.szRuleAdded && bad > 0) ? bad : 0;
     if (code === 'SH01') {
-      if (!s.perfFixed) return { key: 'blocked', label: '数据准备中', note: '绩效导入 3 行错误待修复' };
       if (ruleGap) return { key: 'blocked', label: '数据准备中', note: ruleGap + ' 名员工 base 深圳，缺有效城市规则' };
       if (!s.recalculated) return { key: 'trial', label: '试算已失效', note: '输入已更新，需重新试算' };
       if (!inc) return { key: 'trial', label: '试算完成', note: '等待全公司考勤激励' };
@@ -599,7 +599,6 @@
     var s = state();
     return ENTITIES.every(function (e) {
       if (e.code === 'SZ01') return !!s.szRuleAdded;
-      if (e.code === 'SH01') return !!s.perfFixed;
       return true;
     });
   }
@@ -701,8 +700,8 @@
   function navBadge(key) {
     var s = state();
     if (key === 'workbench') return 6;
-    if (key === 'import-center') return s.perfFixed ? 0 : 3;
-    if (key === 'batch') return s.perfFixed && s.recalculated && incentiveDone() ? 0 : 1;
+    if (key === 'import-center') return 0;
+    if (key === 'batch') return s.recalculated && incentiveDone() ? 0 : 1;
     if (key === 'incentive') return incentiveReady() ? (incentiveDone() ? 0 : 1) : 1;
     if (key === 'city-rules') return s.szRuleAdded ? 0 : 1;
     return 0;

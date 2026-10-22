@@ -36,8 +36,15 @@ from paylite.db.models import (
     Subject,
     SubjectDepartment,
 )
-from paylite.domain.payroll import Attendance, PayrollInput, SalarySegment, SocialItem, calculate
-from paylite.services.payroll_workbench import employee_scope, requires_performance
+from paylite.domain.payroll import (
+    MONTHLY_CALCULATION_MODE,
+    Attendance,
+    PayrollInput,
+    SalarySegment,
+    SocialItem,
+    calculate,
+)
+from paylite.services.payroll_workbench import employee_scope
 
 
 class TrialError(Exception):
@@ -118,7 +125,7 @@ def _snapshot_rows(model: Any, rows: list[dict[str, Any]]) -> list[Any]:
 
 
 def _correction_snapshot(
-    db: Session, batch: PayrollBatch
+    db: Session, batch: PayrollBatch, *, monthly: bool
 ) -> tuple[dict[str, Any], dict[str, Any]] | None:
     correction = db.scalar(
         select(CorrectionBatch).where(CorrectionBatch.replacement_batch_id == batch.id)
@@ -141,6 +148,8 @@ def _correction_snapshot(
         "correction_id": correction.id,
         "input_overrides": overrides,
     }
+    if monthly:
+        _without_performance(snapshot)
 
     employees = _snapshot_rows(Employee, snapshot["employees"])
     assignments = _snapshot_rows(EmployeeAssignment, snapshot["assignments"])
@@ -175,7 +184,14 @@ def _correction_snapshot(
 def _load_snapshot(
     db: Session, batch: PayrollBatch, period: PayrollPeriod
 ) -> tuple[dict[str, Any], dict[str, Any]]:
-    correction_snapshot = _correction_snapshot(db, batch)
+    confirmed = (
+        db.get(PayrollTrialRun, batch.confirmed_trial_id) if batch.confirmed_trial_id else None
+    )
+    monthly = batch.status not in {"confirmed", "locked", "exported"} or (
+        confirmed is not None
+        and confirmed.input_snapshot.get("calculation_mode") == MONTHLY_CALCULATION_MODE
+    )
+    correction_snapshot = _correction_snapshot(db, batch, monthly=monthly)
     if correction_snapshot is not None:
         return correction_snapshot
     subject = db.get(Subject, batch.subject_id)
@@ -200,14 +216,18 @@ def _load_snapshot(
             .order_by(AttendanceRecord.employee_id)
         )
     )
-    performance = list(
-        db.scalars(
-            select(PerformanceRecord)
-            .where(
-                PerformanceRecord.payroll_period_id == period.id,
-                PerformanceRecord.employee_id.in_(ids or [-1]),
+    performance = (
+        []
+        if monthly
+        else list(
+            db.scalars(
+                select(PerformanceRecord)
+                .where(
+                    PerformanceRecord.payroll_period_id == period.id,
+                    PerformanceRecord.employee_id.in_(ids or [-1]),
+                )
+                .order_by(PerformanceRecord.employee_id)
             )
-            .order_by(PerformanceRecord.employee_id)
         )
     )
     city_ids = sorted({row.city_id for row in bases})
@@ -286,7 +306,9 @@ def _load_snapshot(
                     ImportRow.payroll_batch_id.is_(None)
                     & (ImportBatch.payroll_batch_id == batch.id)
                 ),
-                ImportBatch.import_type.in_(["attendance", "performance"]),
+                ImportBatch.import_type.in_(
+                    ["attendance"] if monthly else ["attendance", "performance"]
+                ),
             )
             .order_by(
                 ImportRow.import_batch_id,
@@ -302,7 +324,9 @@ def _load_snapshot(
             .where(
                 (ImportBatch.payroll_batch_id == batch.id)
                 | ImportBatch.id.in_({row.import_batch_id for row in import_rows}),
-                ImportBatch.import_type.in_(["attendance", "performance"]),
+                ImportBatch.import_type.in_(
+                    ["attendance"] if monthly else ["attendance", "performance"]
+                ),
             )
             .order_by(ImportBatch.id)
         )
@@ -355,6 +379,8 @@ def _load_snapshot(
         "departments": {row.id: row for row in departments},
         "ambiguous_ids": set(scope.ambiguous_employee_ids),
     }
+    if monthly:
+        _without_performance(snapshot)
     return snapshot, data
 
 
@@ -398,12 +424,6 @@ def _employee_trial(
     attendance = data["attendance"].get(employee.id)
     if attendance is None:
         errors.append(_issue("ATTENDANCE_MISSING", "缺本期考勤记录"))
-    performance = data["performance"].get(employee.id)
-    performance_required = requires_performance(employee, period)
-    if performance_required and performance is None:
-        errors.append(_issue("PERFORMANCE_MISSING", "缺本期绩效系数"))
-    if not performance_required and performance is not None:
-        errors.append(_issue("PROBATION_PERFORMANCE", "试用期不考核绩效，请核对错误绩效记录"))
     attendance_rule = _covering(data["attendance_rules"], period)
     if attendance_rule is None:
         errors.append(_issue("ATTENDANCE_RULE_MISSING", "缺覆盖本期的有效考勤规则"))
@@ -443,6 +463,7 @@ def _employee_trial(
     last_day = days[-1] if days else period.period_end
     bank = _one(data["banks"].get(employee.id, []), last_day)
     snapshot = {
+        "calculation_mode": MONTHLY_CALCULATION_MODE,
         "id_number": employee.id_number,
         "employee_no": employee.employee_no,
         "name": employee.name,
@@ -455,7 +476,7 @@ def _employee_trial(
         ),
         "level_number": level_number,
         "fixed_salary": str(last_salary.fixed_salary) if last_salary else None,
-        "performance_base": str(last_salary.performance_base) if last_salary else None,
+        "performance_base": None,
         "base_city_name": city.name if city else None,
         "bank_account": bank.account_number if bank else None,
         "last_effective_subject_id": last_assignment.subject_id if last_assignment else None,
@@ -484,8 +505,6 @@ def _employee_trial(
     payroll_input = PayrollInput(
         month_days=(period.period_end - period.period_start).days + 1,
         salary_segments=tuple(salary_segments),
-        performance_base=last_salary.performance_base,
-        performance_coefficient=performance.coefficient if performance_required else None,
         attendance=Attendance(
             attendance.expected_work_days,
             attendance.late_minutes,
@@ -515,7 +534,6 @@ def _employee_trial(
         key: str(getattr(result, key))
         for key in (
             "fixed",
-            "performance",
             "attendance_deduction",
             "gross",
             "employee_social",
@@ -549,8 +567,51 @@ def _employee_trial(
     return row
 
 
+def _without_performance(snapshot: dict[str, Any]) -> None:
+    snapshot["calculation_mode"] = MONTHLY_CALCULATION_MODE
+    snapshot["period"].pop("performance_input_revision", None)
+    snapshot["performance"] = []
+    for salary in snapshot["salaries"]:
+        salary.pop("performance_base", None)
+    snapshot["imports"] = [
+        row for row in snapshot["imports"] if row["import_type"] != "performance"
+    ]
+    ids = {row["id"] for row in snapshot["imports"]}
+    snapshot["import_rows"] = [
+        row for row in snapshot["import_rows"] if row["import_batch_id"] in ids
+    ]
+
+
 def _fingerprint(snapshot: dict[str, Any]) -> str:
-    canonical = json.dumps(snapshot, ensure_ascii=False, sort_keys=True, separators=(",", ":"))
+    relevant = snapshot
+    if snapshot.get("calculation_mode") == MONTHLY_CALCULATION_MODE:
+        relevant = deepcopy(snapshot)
+        salaries = _index(_snapshot_rows(EmployeeSalary, snapshot["salaries"]))
+        period = snapshot["period"]
+        # A performance-only salary revision must not change monthly payroll readiness.
+        relevant["salaries"] = [
+            {
+                "employee_id": employee["id"],
+                "fixed_salary_by_day": [
+                    str(salary.fixed_salary) if salary else None
+                    for day in _days(
+                        max(
+                            date.fromisoformat(period["period_start"]),
+                            date.fromisoformat(employee["hire_date"]),
+                        ),
+                        min(
+                            date.fromisoformat(period["period_end"]),
+                            date.fromisoformat(employee["termination_date"])
+                            if employee.get("termination_date")
+                            else date.fromisoformat(period["period_end"]),
+                        ),
+                    )
+                    for salary in [_one(salaries.get(employee["id"], []), day)]
+                ],
+            }
+            for employee in snapshot["employees"]
+        ]
+    canonical = json.dumps(relevant, ensure_ascii=False, sort_keys=True, separators=(",", ":"))
     return hashlib.sha256(canonical.encode("utf-8")).hexdigest()
 
 

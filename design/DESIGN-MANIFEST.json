@@ -19,7 +19,8 @@
       "ledger.html",
       "organization.html",
       "payroll-rules.html",
-      "periods.html"
+      "periods.html",
+      "workbook-import.html"
     ],
     "html": [
       "batch-detail.html",
@@ -35,7 +36,8 @@
       "ledger.html",
       "organization.html",
       "payroll-rules.html",
-      "periods.html"
+      "periods.html",
+      "workbook-import.html"
     ],
     "css": [
       "assets/app.css"
@@ -79,7 +81,7 @@
     {
       "file": "import-center.html",
       "role": "screen",
-      "implementationNote": "Preserve visual hierarchy, responsive behavior and interactive states. Employee salary/date formulas use a shared local evaluator; duplicate identities are silently skipped. History detail views display every failure reason without editing. Current-upload results and row correction remain separate from history selection. Attendance defaults to the 19-column v3 facts template and accepts v2/v1; display saved normalized facts, with deductions calculated in payroll trials. Attendance and performance select only a period across all company subjects; valid rows create missing draft normal batches. Source batch context is for return navigation only."
+      "implementationNote": "Preserve visual hierarchy, responsive behavior and interactive states. Employee salary/date formulas use a shared local evaluator; duplicate identities are silently skipped. History detail views display every failure reason without editing. Current-upload results and row correction remain separate from history selection. Attendance defaults to the 19-column v3 facts template and accepts v2/v1; display saved normalized facts, with deductions calculated in payroll trials. Attendance selects only a period across all company subjects; valid rows create missing draft normal batches. Performance history is read-only and does not block monthly payroll. New monthly trials and corrections exclude performance, including corrections to legacy results. Employee performance data is optional; historical confirmed snapshots remain unchanged. Source batch context is for return navigation only."
     },
     {
       "file": "incentive.html",
@@ -115,6 +117,11 @@
       "file": "periods.html",
       "role": "screen",
       "implementationNote": "Preserve visual hierarchy, responsive behavior, and interactive states from this screen."
+    },
+    {
+      "file": "workbook-import.html",
+      "role": "screen",
+      "implementationNote": "Route /imports?type=workbook. Preserve shared import-center shell, period-only company scope, one original upload, employee-first initialization, separate employee and attendance metrics, per-subject results, original positions and read-only history drawer. No performance, calculated salary or tax inputs. Current-upload failed rows allow effective-input correction with revision checks; preserve original positions, values and correction history. Pending, failure and refresh states stay visible; new uploads isolate editing state."
     }
   ],
   "screenFilePolicy": {

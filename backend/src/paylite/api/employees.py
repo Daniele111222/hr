@@ -83,23 +83,6 @@ def _append_effective_record(db: Session, model, employee_id: int, payload) -> N
     db.add(model(employee_id=employee_id, **payload.model_dump()))
 
 
-def _validate_salary_policy(
-    probation_status: str, salary, current_salary=None, preserve_fixed: bool = False
-) -> None:
-    if probation_status == "in_probation" and salary and salary.performance_base != 0:
-        raise HTTPException(400, "试用期员工不应有绩效基数")
-    if salary and probation_status != "in_probation":
-        if salary.performance_base * 4 != salary.fixed_salary:
-            raise HTTPException(400, "固定薪资和绩效基数必须按 80%/20% 表达")
-    if (
-        preserve_fixed
-        and current_salary
-        and salary
-        and salary.fixed_salary != current_salary.fixed_salary
-    ):
-        raise HTTPException(400, "转正前后固定薪资必须保持不变")
-
-
 @router.get("", response_model=list[EmployeeOut])
 def list_employees(company_id: int | None = Query(default=None), db: Session = Depends(get_db)):
     query = select(Employee).order_by(Employee.employee_no)
@@ -121,7 +104,6 @@ def create_employee(payload: EmployeeIn, db: Session = Depends(get_db)):
     if not db.get(Company, payload.company_id):
         raise HTTPException(404, "目标公司不存在")
     _validate_related(payload.company_id, payload.assignment, payload.base, db)
-    _validate_salary_policy(payload.probation_status, payload.salary)
     employee = Employee(
         **payload.model_dump(exclude={"assignment", "salary", "base", "bank_account"})
     )
@@ -167,12 +149,14 @@ def update_employee(employee_id: int, payload: EmployeePatch, db: Session = Depe
             and payload.salary.effective_from.day != 1
         ):
             raise HTTPException(400, "普通调薪须从适用工资期间的首日生效")
-        _validate_salary_policy(
-            target_status,
-            salary,
-            current_salary,
-            previous_probation_status == "in_probation" and target_status != "in_probation",
-        )
+        if (
+            previous_probation_status == "in_probation"
+            and target_status != "in_probation"
+            and current_salary
+            and salary
+            and salary.fixed_salary != current_salary.fixed_salary
+        ):
+            raise HTTPException(400, "转正前后固定薪资必须保持不变")
         current_assignment = _latest(db, EmployeeAssignment, employee.id)
         current_base = _latest(db, EmployeeBase, employee.id)
         assignment = payload.assignment or current_assignment
@@ -188,9 +172,6 @@ def update_employee(employee_id: int, payload: EmployeePatch, db: Session = Depe
             _append_effective_record(db, EmployeeBase, employee.id, payload.base)
         if payload.bank_account:
             _append_effective_record(db, EmployeeBankAccount, employee.id, payload.bank_account)
-    elif "probation_status" in values:
-        current_salary = _latest(db, EmployeeSalary, employee.id)
-        _validate_salary_policy(values["probation_status"], current_salary)
     db.commit()
     db.refresh(employee)
     return _to_out(employee, db)

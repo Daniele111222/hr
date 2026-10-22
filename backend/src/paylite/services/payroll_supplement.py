@@ -94,7 +94,9 @@ def _employee_snapshot(
             "level_code": normal.snapshot_level_code,
             "level_number": normal.snapshot_level_number,
             "fixed_salary": str(normal.snapshot_fixed_salary),
-            "performance_base": str(normal.snapshot_performance_base),
+            "performance_base": str(normal.snapshot_performance_base)
+            if normal.snapshot_performance_base is not None
+            else None,
             "base_city_name": normal.snapshot_base_city_name,
             "bank_account": normal.snapshot_bank_account,
         }
@@ -121,7 +123,9 @@ def _employee_snapshot(
         "level_code": assignment.level_code,
         "level_number": assignment.level_number,
         "fixed_salary": str(salary.fixed_salary),
-        "performance_base": str(salary.performance_base),
+        "performance_base": str(salary.performance_base)
+        if salary.performance_base is not None
+        else None,
         "base_city_name": city.name if city else None,
         "bank_account": bank.account_number if bank else None,
     }

@@ -9,7 +9,7 @@ PayLite 当前使用本机 PostgreSQL 保存单一目标公司的工资数据。
 - `backend/src/paylite/db/models/`：按主题拆分的规范化 SQLAlchemy 模型；`models/__init__.py` 保持公开导入路径。
 - `backend/alembic/versions/0001_initial_schema.py`：应用迁移入口。
 - `backend/sql/001_initial_schema.sql`：可独立审查和执行的 PostgreSQL DDL，保留具体 SQL 语句。
-- `backend/alembic/versions/0002`—`0011` 与 `backend/sql/002`—`011`：后续竖切迁移及可审查 SQL；当前 head 为 `0011_duplicate_employee_ids`，共 28 张 ORM 表。
+- `backend/alembic/versions/0002`—`0014` 与 `backend/sql/002`—`014`：后续竖切迁移及可审查 SQL；功能分支当前 head 为 `0014_workbook_import`，共 29 张 ORM 表，开发库未随本轮变更升级。
 
 ## 实体关系
 
@@ -18,6 +18,7 @@ PayLite 当前使用本机 PostgreSQL 保存单一目标公司的工资数据。
 - `employee` 的生效关系拆为 `employee_assignment`、`employee_salary`、`employee_base` 和 `employee_bank_account`，支持月中变化。
 - `payroll_period` → `payroll_batch`；批次属于主体和工资期间；`payroll_trial_run` 保存独立试算快照，`attendance_incentive_run` 保存全公司激励来源、候选与分配。
 - `import_batch` / `import_row` 保存原始文件和逐行校验；`attendance_record`、`performance_record` 保存规范化月度输入。
+- `workbook_import` 保存一份整本原文件及公司、期间、哈希、求值版本，关联花名册与考勤子批次；花名册子类型 `workbook_employee` 与单项员工导入分开，考勤来源仍参与既有核算指纹。行的原工作表、行号、字段位置、公式及解析值保留在原有追溯结构中。
 - `payroll_record` 保存员工工资结果和计算时快照；`payroll_item`、`payroll_calculation_detail` 保存项目和计算依据。
 - `correction_batch` 关联原批次与替代批次，`input_overrides` 保存历史输入修正及来源记录；`export_batch` / `export_warning` 保存输出和留空提示。
 
@@ -33,6 +34,7 @@ PayLite 当前使用本机 PostgreSQL 保存单一目标公司的工资数据。
 - 工资记录通过复合外键保证其主体和期间与所属批次一致；主体部门实例通过公司复合外键防止跨公司混用。
 - PostgreSQL trigger 自动刷新员工和工资批次的 `updated_at`，并禁止确认后工资结果及其项目、计算明细被直接更新、删除或追加；修正必须创建新批次。
 - `external_tax_data` 只表达外部税务字段，系统不计算个税。
+- `0013` 仅放宽员工薪资和工资快照的绩效基数字段为可空，缺失保留 NULL，不补零、不改历史金额。存在空值时降级明确拒绝，不能静默删除或伪造数据。计算口径保存在确认试算快照，旧快照缺少该标记时按历史结果解释。
 
 ## 规则维护迁移（0002）
 

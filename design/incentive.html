@@ -192,7 +192,7 @@
       return '<tr>' +
         '<td><span class="strong">' + esc(ent.short) + '</span><span class="tbl-sub mono">' + e.code + ' · ' + ent.city + ' · ' + ent.headcount + ' 人</span></td>' +
         '<td>' + Q.badge(e.ok ? 'ok' : 'blocked', e.ok ? '已就绪' : '未就绪') + '</td>' +
-        '<td class="small">' + (e.ok ? '考勤与绩效均已导入，城市规则有效' : esc(e.st.note)) + '</td>' +
+        '<td class="small">' + (e.ok ? '考勤已导入，城市规则有效；月度不含绩效' : esc(e.st.note)) + '</td>' +
         '<td>' + (e.ok
           ? '<span class="meta">' + (att ? '考勤 ' + att.ok + '/' + att.total : '—') + '</span>'
           : '<a class="btn btn-sm btn-primary" href="' + src + '">去处理</a>') + '</td></tr>';

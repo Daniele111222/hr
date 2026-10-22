@@ -47,7 +47,6 @@
         <div class="card-head"><h2>本期操作</h2></div>
         <div class="card-body row-wrap">
           <a class="btn" href="import-center.html?type=att">导入考勤</a>
-          <a class="btn" href="import-center.html?type=perf">导入绩效</a>
           <a class="btn" href="incentive.html">考勤激励</a>
           <a class="btn" href="ledger.html">工资台账</a>
           <a class="btn" href="export-center.html">导出本期工资表</a>
@@ -162,12 +161,9 @@
 
   function prepareCell(entCode) {
     var att = Q.IMPORTS.filter(function (r) { return r.period === P && r.entity === entCode && r.type === '月度考勤'; })[0];
-    var perf = Q.IMPORTS.filter(function (r) { return r.period === P && r.entity === entCode && r.type === '月度绩效'; })[0];
     var s = Q.state();
-    if (entCode === 'SH01' && s.perfFixed && perf) perf = { ok: perf.total, total: perf.total, err: 0 };
     var parts = [];
     parts.push(att ? Q.badge(att.ok === att.total ? 'ok' : 'partial', '考勤 ' + att.ok + '/' + att.total) : Q.badge('missing', '考勤未导入'));
-    parts.push(perf ? Q.badge(perf.ok === perf.total ? 'ok' : 'partial', '绩效 ' + perf.ok + '/' + perf.total) : Q.badge('missing', '绩效未导入'));
     var rules = Q.cityRule(Q.ent(entCode).city, P);
     parts.push(rules ? Q.badge('ok', '城市规则 ' + rules.version) : Q.badge('expired', '城市规则已过期'));
     return parts.join(' ');
@@ -229,17 +225,17 @@
     '<div class="section-title">2026-07 北京主体整批更正 <span class="meta">PAY-202607-BJ01-V1 → PAY-202607-BJ01-V2</span></div>' +
     '<div class="callout is-warn" style="margin-bottom:12px">' +
     '<span data-icon="warn"></span><div><b class="callout-title">更正原因</b>' +
-    '<div>V1 录入时 2 名员工的绩效系数误填为 0.60（应为 1.00），导致该 2 人绩效金额偏低。更正后生成 V2，V1 标记为「已被新版本替代」，不再参与发放与导出。</div></div></div>' +
+    '<div>V1 保留原含绩效结果；V2 按月度不含绩效口径对整批重新计算，原绩效金额不计入新结果。V2 锁定后替代 V1，旧版本与来源仍可只读追溯。</div></div></div>' +
     '<dl class="kv is-wide" style="margin-bottom:14px">' +
     '<dt>有效版本</dt><dd class="mono">PAY-202607-BJ01-V2 <span class="meta">（已锁定）</span></dd>' +
     '<dt>替代版本</dt><dd class="mono">PAY-202607-BJ01-V1 <span class="meta">（已作废，保留追溯）</span></dd>' +
-    '<dt>涉及员工</dt><dd class="mono">2 人 <span class="meta">（绩效系数 0.60 → 1.00）</span></dd>' +
+    '<dt>涉及员工</dt><dd class="mono">整批员工 <span class="meta">（新口径排除绩效）</span></dd>' +
     '</dl>' +
     '<div class="tbl-wrap" style="border:1px solid var(--border);border-radius:var(--radius)">' +
     '<table class="tbl"><thead><tr><th>口径</th><th class="n">V1（原）</th><th class="n">V2（更正后）</th><th class="n">差异</th></tr></thead><tbody>' +
-    '<tr><td>未扣个税金额合计</td><td class="n mono diff-old">' + Q.money(v1.net) + '</td><td class="n mono diff-new">' + Q.money(v2.net) + '</td><td class="n mono">+' + Q.money(delta) + '</td></tr>' +
-    '<tr><td>应发金额合计</td><td class="n mono diff-old">' + Q.money(v1.gross) + '</td><td class="n mono diff-new">' + Q.money(v2.gross) + '</td><td class="n mono">+' + Q.money(Q.round2(v2.gross - v1.gross)) + '</td></tr>' +
-    '<tr><td>公司成本合计</td><td class="n mono diff-old">' + Q.money(v1.cost) + '</td><td class="n mono diff-new">' + Q.money(v2.cost) + '</td><td class="n mono">+' + Q.money(Q.round2(v2.cost - v1.cost)) + '</td></tr>' +
+    '<tr><td>未扣个税金额合计</td><td class="n mono diff-old">' + Q.money(v1.net) + '</td><td class="n mono diff-new">' + Q.money(v2.net) + '</td><td class="n mono">' + Q.money(delta) + '</td></tr>' +
+    '<tr><td>应发金额合计</td><td class="n mono diff-old">' + Q.money(v1.gross) + '</td><td class="n mono diff-new">' + Q.money(v2.gross) + '</td><td class="n mono">' + Q.money(Q.round2(v2.gross - v1.gross)) + '</td></tr>' +
+    '<tr><td>公司成本合计</td><td class="n mono diff-old">' + Q.money(v1.cost) + '</td><td class="n mono diff-new">' + Q.money(v2.cost) + '</td><td class="n mono">' + Q.money(Q.round2(v2.cost - v1.cost)) + '</td></tr>' +
     '</tbody></table></div>' +
     '<div class="callout is-info" style="margin-top:12px"><span data-icon="info"></span>' +
     '<div>社保与公积金按城市固定基数缴纳，与工资金额无关，因此更正前后个人社保、个人公积金金额不变；差异全部来自绩效金额。</div></div>';

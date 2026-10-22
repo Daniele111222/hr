@@ -1,11 +1,15 @@
 import calendar
+import hashlib
+import json
 import os
 from collections.abc import Generator
 from concurrent.futures import ThreadPoolExecutor
+from copy import deepcopy
 from datetime import date, datetime, timedelta
 from decimal import Decimal
 from io import BytesIO
 from pathlib import Path
+from threading import Event
 from zoneinfo import ZoneInfo
 
 import pytest
@@ -33,6 +37,7 @@ from paylite.db.models import (
     Department,
     Employee,
     EmployeeAssignment,
+    EmployeeBankAccount,
     EmployeeBase,
     EmployeeSalary,
     HousingFundRule,
@@ -75,6 +80,7 @@ from paylite.services.payroll_workbench import (
     create_batch,
     period_batch_counts,
 )
+from workbook_fixture import source_workbook
 
 TEST_DATABASE_URL = os.getenv("PAYLITE_TEST_DATABASE_URL")
 ALLOW_TEST_DATABASE_RESET = os.getenv("PAYLITE_ALLOW_TEST_DATABASE_RESET") == "1"
@@ -100,7 +106,7 @@ pytestmark = pytest.mark.skipif(
 )
 
 
-@pytest.fixture(scope="session")
+@pytest.fixture
 def postgres_engine():
     assert TEST_DATABASE_URL is not None
     validate_test_database_url(TEST_DATABASE_URL)
@@ -116,7 +122,15 @@ def postgres_engine():
 
     if engine.url.database != "paylite":
         with engine.begin() as connection:
-            connection.execute(text("TRUNCATE payroll_batch CASCADE"))
+            connection.execute(
+                text(
+                    "TRUNCATE workbook_import, payroll_batch, payroll_record, "
+                    "employee_salary CASCADE"
+                )
+            )
+            connection.execute(
+                text("DELETE FROM import_batch WHERE import_type = 'workbook_employee'")
+            )
         command.downgrade(alembic_config, "base")
     engine.dispose()
 
@@ -507,7 +521,6 @@ def test_organization_and_employee_api_flow(api_client: TestClient, postgres_eng
         },
         "salary": {
             "fixed_salary": "8000.00",
-            "performance_base": "2000.00",
             "effective_from": "2026-01-01",
         },
         "base": {"city_id": city.json()["id"], "effective_from": "2026-01-01"},
@@ -520,6 +533,8 @@ def test_organization_and_employee_api_flow(api_client: TestClient, postgres_eng
     created = api_client.post("/employees", json=employee_payload)
     assert created.status_code == 201
     employee_id = created.json()["id"]
+    assert created.json()["salary"]["performance_base"] is None
+    assert api_client.get(f"/employees/{employee_id}").json()["salary"]["performance_base"] is None
     assert created.json()["bank_account"]["account_number"] == "00006222000000000001"
     immutable_id = api_client.patch(f"/employees/{employee_id}", json={"id_number": "不可修改"})
     assert immutable_id.status_code == 422
@@ -995,7 +1010,7 @@ def test_employee_import_uploads_partial_rows_and_corrects_one_row(
     sheet.append([LEGACY_TEMPLATE_VERSION])
     sheet.append(LEGACY_HEADERS)
     sheet.append(row("11010119900101123X", "IMP001", fixed="=3000+5000", performance="0.00"))
-    sheet.append(row("11010119900101124X", "IMP002", performance="-1.00"))
+    sheet.append(row("11010119900101124X", "IMP002", fixed="-1.00", performance="-1.00"))
     sheet.append(row("11010119900101123X", "IMP003"))
     sheet.append(row(110101199001011250, "IMP004"))
     sheet.append(row(existing.id_number.lower(), "IGNORED", performance="-1.00"))
@@ -1022,7 +1037,7 @@ def test_employee_import_uploads_partial_rows_and_corrects_one_row(
 
     correction = api_client.post(
         f"/imports/{batch['id']}/rows/{batch['rows'][1]['id']}/correct",
-        json={"values": {"绩效基数": "1000.00"}},
+        json={"values": {"固定薪资": "8000.00"}},
     )
     assert correction.status_code == 200
     assert correction.json()["success_rows"] == 2
@@ -1031,7 +1046,7 @@ def test_employee_import_uploads_partial_rows_and_corrects_one_row(
     salaries = {employee["employee_no"]: employee["salary"] for employee in employees}
     assert salaries["IMP001"]["performance_base"] == "0.00"
     assert salaries["IMP002"]["fixed_salary"] == "8000.00"
-    assert salaries["IMP002"]["performance_base"] == "1000.00"
+    assert salaries["IMP002"]["performance_base"] is None
     repeated_file = api_client.post(
         f"/imports/employee-master?company_id={company.id}",
         files={"file": ("employees.xlsx", content.getvalue())},
@@ -1248,12 +1263,12 @@ def test_employee_import_27_columns_maps_subject_city_department_and_defaults(
     assert by_name["模板员工2"]["base"]["city_id"] == cities[1].id
     assert by_name["模板员工3"]["salary"]["fixed_salary"] == "8000.00"
     assert by_name["模板员工3"]["salary"]["performance_base"] == "1000.00"
-    assert by_name["模板员工8"]["salary"]["performance_base"] == "0.00"
+    assert by_name["模板员工8"]["salary"]["performance_base"] == "1234.00"
     assert by_name["模板员工8"]["probation_status"] == "in_probation"
     future = by_name["模板员工9"]
     assert future["probation_status"] == "in_probation"
     assert future["salary"]["effective_from"] == imported_on
-    assert future["salary"]["performance_base"] == "0.00"
+    assert future["salary"]["performance_base"] == "2000.00"
     updated_base = api_client.patch(
         f"/employees/{future['id']}",
         json={
@@ -1606,7 +1621,7 @@ def test_employee_import_creates_missing_department_paths_and_reuses_them(
         row(3, ("研发中心", "平台部", "后端组"), subject_index=1),
         row(4, ("研发中心", "应用部", "后端组")),
         row(5, ("行政部", "", "")),
-        row(6, ("错误行部门", "小组", ""), 转正绩效标准="-1.00"),
+        row(6, ("错误行部门", "小组", ""), 转正固定薪资="-1.00"),
         row(1, ("重复身份部门", "", "")),
         row(7, ("研发中心", "", "跳级组")),
         row(8, ("未维护主体部门", "", ""), 公司主体全称="未维护的主体"),
@@ -1665,14 +1680,14 @@ def test_employee_import_creates_missing_department_paths_and_reuses_them(
 
     failed = api_client.post(
         f"/imports/{batch['id']}/rows/{batch['rows'][5]['id']}/correct",
-        json={"values": {"转正绩效标准": "-2.00"}},
+        json={"values": {"转正固定薪资": "-2.00"}},
     )
     assert failed.status_code == 200
     assert failed.json()["success_rows"] == 5
     assert len(departments()) == 6
     corrected = api_client.post(
         f"/imports/{batch['id']}/rows/{batch['rows'][5]['id']}/correct",
-        json={"values": {"转正绩效标准": "2000.00"}},
+        json={"values": {"转正固定薪资": "8000.00"}},
     )
     assert corrected.status_code == 200
     assert corrected.json()["success_rows"] == 6
@@ -1681,7 +1696,7 @@ def test_employee_import_creates_missing_department_paths_and_reuses_them(
     assert (
         api_client.post(
             f"/imports/{batch['id']}/rows/{batch['rows'][5]['id']}/correct",
-            json={"values": {"转正绩效标准": "2000.00"}},
+            json={"values": {"转正固定薪资": "8000.00"}},
         ).status_code
         == 409
     )
@@ -2068,7 +2083,8 @@ def test_performance_import_partial_correction_and_probation(
     preparation = api_client.get("/payroll/workbench?period=2027-03").json()["batches"][0][
         "data_preparation"
     ]["performance"]
-    assert preparation["missing_count"] == 6  # 试用期员工不需要绩效记录
+    assert preparation["status"] == "not_required"
+    assert preparation["missing_count"] == 0
 
     workbook = load_workbook(BytesIO(make_performance_template()))
     sheet = workbook["月度绩效"]
@@ -2135,7 +2151,7 @@ def test_performance_import_partial_correction_and_probation(
         api_client.get("/payroll/workbench?period=2027-03").json()["batches"][0][
             "data_preparation"
         ]["performance"]["status"]
-        == "ready"
+        == "not_required"
     )
 
     another = load_workbook(BytesIO(make_performance_template()))
@@ -2286,7 +2302,7 @@ def test_ordinary_trial_is_partial_versioned_and_outside_ledger(
                 missed_punch_count=1 if index == 0 else 0,
             )
         )
-        if index != 1:
+        if index == 2:
             db_session.add(
                 PerformanceRecord(
                     import_batch_id=perf_import.id,
@@ -2301,14 +2317,15 @@ def test_ordinary_trial_is_partial_versioned_and_outside_ledger(
     batch_response = api_client.get(f"/payroll/batches/{batch.id}")
     assert batch_response.status_code == 200
     assert batch_response.json()["scope"]["employee_count"] == 3
+    assert batch_response.json()["data_preparation"]["performance"]["status"] == "not_required"
     response = api_client.post(f"/payroll/batches/{batch.id}/trial")
     assert response.status_code == 200, response.text
     trial = response.json()
     assert (trial["success_count"], trial["error_count"]) == (2, 1)
     assert trial["includes_final_incentive"] is False
     assert trial["ready_for_confirmation"] is False
-    assert trial["results"][0]["amounts"]["untaxed_amount"] == "9020.00"
-    assert trial["results"][1]["amounts"]["performance"] == "0.00"
+    assert trial["results"][0]["amounts"]["untaxed_amount"] == "7020.00"
+    assert "performance" not in trial["results"][1]["amounts"]
     assert trial["results"][2]["errors"][0]["code"] == "CITY_RULE_MISSING"
     assert trial["results"][0]["steps"]
     assert (
@@ -2323,6 +2340,12 @@ def test_ordinary_trial_is_partial_versioned_and_outside_ledger(
     salary = db_session.scalar(
         select(EmployeeSalary).where(EmployeeSalary.employee_id == employees[0].id)
     )
+    salary.performance_base = Decimal("9999")
+    db_session.get(PayrollPeriod, period.id).performance_input_revision += 1
+    db_session.commit()
+    unrelated = api_client.get(f"/payroll/batches/{batch.id}/trial").json()
+    assert unrelated["stale"] is False
+    assert api_client.post(f"/payroll/batches/{batch.id}/trial").json()["id"] == trial["id"]
     salary.fixed_salary = Decimal("8800")
     salary.performance_base = Decimal("2200")
     db_session.commit()
@@ -2351,7 +2374,7 @@ def test_ordinary_trial_is_partial_versioned_and_outside_ledger(
     rerun = api_client.post(f"/payroll/batches/{batch.id}/trial")
     assert rerun.status_code == 200, rerun.text
     assert rerun.json()["id"] != trial["id"]
-    assert rerun.json()["results"][0]["amounts"]["untaxed_amount"] == "9975.00"
+    assert rerun.json()["results"][0]["amounts"]["untaxed_amount"] == "7775.00"
     assert db_session.scalar(
         select(PayrollTrialRun.id).where(PayrollTrialRun.payroll_batch_id == batch.id)
     )
@@ -2382,7 +2405,7 @@ def test_ordinary_trial_is_partial_versioned_and_outside_ledger(
     db_session.commit()
     promoted = api_client.post(f"/payroll/batches/{batch.id}/trial").json()
     assert promoted["results"][1]["amounts"]["fixed"] == "8000.00"
-    assert promoted["results"][1]["amounts"]["performance"] == "2000.00"
+    assert "performance" not in promoted["results"][1]["amounts"]
 
     item_rule = db_session.scalar(
         select(SocialSecurityItemRule).where(
@@ -2826,12 +2849,64 @@ def test_payroll_confirmation_lock_and_ledger_use_snapshot(
     assert api_client.get("/payroll/ledger/records/999999999").status_code == 404
 
 
+@pytest.mark.parametrize("legacy_source", [False, True])
 def test_correction_switches_effective_version_without_rewriting_ledger(
-    api_client: TestClient, db_session: Session
+    api_client: TestClient, db_session: Session, legacy_source: bool, monkeypatch, tmp_path
 ) -> None:
+    from uuid import uuid4
+
+    monkeypatch.setattr(get_settings(), "export_directory", tmp_path)
     company, city, subject, period, employee = create_base_records(
         db_session, "CORR", month=8, year=2031
     )
+    employee.id_number = "11010119900101123X"
+    db_session.add(
+        EmployeeBankAccount(
+            employee_id=employee.id,
+            account_number="000012345678901234",
+            account_name=employee.name,
+            is_primary=True,
+            effective_from=date(2020, 1, 1),
+        )
+    )
+
+    def verify_exports(*, old_performance: bool = False):
+        ledger = api_client.get(f"/payroll/ledger?period_id={period.id}").json()
+        gross = Decimal(ledger["records"][0]["amounts"]["gross"])
+        untaxed = Decimal(ledger["totals"]["untaxed_amount"])
+        for kind in ("payroll", "bank", "labor-cost", "tax"):
+            preview = api_client.get(
+                f"/exports/{kind}/preview", params={"period_id": period.id}
+            ).json()
+            body = {"period_id": period.id, "request_id": str(uuid4())}
+            if kind == "bank":
+                body["subject_templates"] = {str(subject.id): preview["template_sheets"][0]}
+            report = api_client.post(f"/exports/{kind}", json=body).json()
+            assert report["status"] == "completed", report
+            assert Decimal(report["parameters"]["untaxed_amount"]) == untaxed
+            downloaded = api_client.get(f"/exports/{kind}/{report['id']}/file")
+            assert downloaded.status_code == 200, (
+                downloaded.text[:200] if downloaded.status_code != 200 else ""
+            )
+            book = load_workbook(BytesIO(downloaded.content))
+            if kind == "payroll":
+                sheet = book["工资表明细"]
+                assert Decimal(str(sheet["AO5"].value)) == gross
+                assert Decimal(str(sheet["AX5"].value)) == untaxed
+                assert sheet["AC5"].value == (2000 if old_performance else None)
+                assert sheet["AJ5"].value == (2000 if old_performance else None)
+            elif kind == "bank":
+                sheet = book[preview["template_sheets"][0]]
+                column = next(cell.column for cell in sheet[1] if cell.value == "未扣个税金额")
+                assert Decimal(str(sheet.cell(2, column).value)) == untaxed
+            elif kind == "labor-cost":
+                assert Decimal(str(book["工资明细"]["BF5"].value)) == Decimal(
+                    ledger["totals"]["employer_cost"]
+                )
+            else:
+                assert Decimal(str(book["Sheet1"]["G2"].value)) == gross
+                assert book["Sheet1"]["AF2"].value is None
+
     previous = PayrollPeriod(
         year=2031, month=7, period_start=date(2031, 7, 1), period_end=date(2031, 7, 31)
     )
@@ -2985,11 +3060,94 @@ def test_correction_switches_effective_version_without_rewriting_ledger(
     first_trial = api_client.post(f"/payroll/batches/{original.id}/trial")
     assert first_trial.status_code == 200, first_trial.text
     assert first_trial.json()["error_count"] == 0
+    if not legacy_source:
+        old_unconfirmed = db_session.get(PayrollTrialRun, first_trial.json()["id"])
+        old_snapshot = deepcopy(old_unconfirmed.input_snapshot)
+        old_snapshot.pop("calculation_mode")
+        old_unconfirmed.input_snapshot = old_snapshot
+        old_unconfirmed.input_fingerprint = hashlib.sha256(
+            json.dumps(
+                old_snapshot, sort_keys=True, ensure_ascii=False, separators=(",", ":")
+            ).encode()
+        ).hexdigest()
+        old_unconfirmed.ordinary_input_fingerprint = old_unconfirmed.input_fingerprint
+        db_session.commit()
+        assert api_client.get(f"/payroll/batches/{original.id}/trial").json()["stale"] is True
+        assert api_client.post(f"/payroll/periods/{period.id}/confirmation").status_code == 409
+        refreshed = api_client.post(f"/payroll/batches/{original.id}/trial")
+        assert refreshed.status_code == 200, refreshed.text
+        assert refreshed.json()["id"] != first_trial.json()["id"]
+        assert refreshed.json()["stale"] is False
     first_incentive = api_client.post(f"/payroll/periods/{period.id}/attendance-incentive")
     assert first_incentive.status_code == 200, first_incentive.text
     assert api_client.get(f"/payroll/batches/{original.id}/trial").json()["ready_for_confirmation"]
-    assert api_client.post(f"/payroll/periods/{period.id}/confirmation").status_code == 200
+    if legacy_source:
+        # Seed a pre-feature confirmed version, including its historical performance income.
+        source_trial = db_session.scalar(
+            select(PayrollTrialRun)
+            .where(PayrollTrialRun.payroll_batch_id == original.id)
+            .order_by(PayrollTrialRun.id.desc())
+        )
+        historical = deepcopy(source_trial.input_snapshot)
+        historical.pop("calculation_mode")
+        historical["period"]["performance_input_revision"] = period.performance_input_revision
+        historical["salaries"][0]["performance_base"] = "2000.00"
+        for category, records, excluded in (
+            ("performance", db_session.scalars(select(PerformanceRecord)).all(), {"created_at"}),
+            ("imports", [performance_import], {"original_file", "uploaded_at"}),
+        ):
+            historical[category] += [
+                json.loads(
+                    json.dumps(
+                        {
+                            col.name: getattr(row, col.name)
+                            for col in row.__table__.columns
+                            if col.name not in excluded
+                        },
+                        default=str,
+                    )
+                )
+                for row in records
+            ]
+        ordinary = {k: v for k, v in historical.items() if k != "attendance_incentive"}
+        source_trial.ordinary_input_fingerprint = hashlib.sha256(
+            json.dumps(ordinary, ensure_ascii=False, sort_keys=True, separators=(",", ":")).encode()
+        ).hexdigest()
+        results = deepcopy(source_trial.results)
+        results[0]["snapshot"].pop("calculation_mode")
+        results[0]["snapshot"]["performance_base"] = "2000.00"
+        results[0]["amounts"]["performance"] = "2000.00"
+        for key in ("gross", "untaxed_amount", "employer_cost"):
+            results[0]["amounts"][key] = str(Decimal(results[0]["amounts"][key]) + 2000)
+        results[0]["items"].append(
+            {"code": "performance", "name": "绩效", "category": "income", "amount": "2000.00"}
+        )
+        source_trial.input_snapshot = historical
+        source_trial.results = results
+        db_session.flush()
+        payroll_confirmation_service._create_records(db_session, original, source_trial)
+        original.status = "confirmed"
+        original.confirmed_trial_id = source_trial.id
+        db_session.commit()
+        # The historical incentive records bind the same legacy ordinary inputs.
+        incentive = db_session.get(AttendanceIncentiveRun, source_trial.incentive_run_id)
+        incentive.input_fingerprint = api_client.get(
+            f"/payroll/periods/{period.id}/attendance-incentive"
+        ).json()["input_fingerprint"]
+        historical["attendance_incentive"]["fingerprint"] = incentive.input_fingerprint
+        source_trial.input_snapshot = deepcopy(historical)
+        source_trial.input_fingerprint = hashlib.sha256(
+            json.dumps(
+                historical, ensure_ascii=False, sort_keys=True, separators=(",", ":")
+            ).encode()
+        ).hexdigest()
+        original.confirmed_input_fingerprint = source_trial.input_fingerprint
+        db_session.commit()
+        assert api_client.get(f"/payroll/batches/{original.id}/trial").json()["stale"] is False
+    else:
+        assert api_client.post(f"/payroll/periods/{period.id}/confirmation").status_code == 200
     assert api_client.post(f"/payroll/periods/{period.id}/lock").status_code == 200
+    verify_exports(old_performance=legacy_source)
     db_session.expire_all()
     original_record = db_session.scalar(
         select(PayrollRecord).where(PayrollRecord.payroll_batch_id == original.id)
@@ -3039,18 +3197,31 @@ def test_correction_switches_effective_version_without_rewriting_ledger(
         f"/payroll/corrections/{requested['id']}/inputs",
         json={
             "employee_id": employee.id,
-            "source_note": "考勤绩效核对单",
+            "source_note": "考勤核对单",
             "attendance": {"late_minutes": 20},
-            "performance_coefficient": "1.5",
         },
     )
     assert updated.status_code == 200, updated.text
-    assert updated.json()[0]["performance_coefficient"] == "1.5"
+    assert updated.json()[0]["performance_coefficient"] is None
+    rejected_performance = api_client.put(
+        f"/payroll/corrections/{requested['id']}/inputs",
+        json={
+            "employee_id": employee.id,
+            "source_note": "独立绩效",
+            "performance_coefficient": "1.5",
+        },
+    )
+    assert rejected_performance.status_code == 422
     correction_trial = api_client.post(f"/payroll/batches/{replacement_id}/trial")
     assert correction_trial.status_code == 200, correction_trial.text
     assert correction_trial.json()["error_count"] == 0
     assert correction_trial.json()["results"][0]["snapshot"]["name"] == "测试员工"
     assert Decimal(correction_trial.json()["results"][0]["snapshot"]["fixed_salary"]) == 8000
+    assert correction_trial.json()["results"][0]["snapshot"]["performance_base"] is None
+    assert "performance" not in correction_trial.json()["results"][0]["amounts"]
+    assert Decimal(correction_trial.json()["results"][0]["amounts"]["gross"]) == Decimal("7983.33")
+    if legacy_source:
+        assert original_amount == Decimal("9100.00")
     replacement_detail = api_client.get(f"/payroll/batches/{replacement_id}").json()
     assert replacement_detail["scope"]["source"] == "confirmed_trial_snapshot"
     assert replacement_detail["scope"]["employee_ids"] == [employee.id]
@@ -3063,7 +3234,7 @@ def test_correction_switches_effective_version_without_rewriting_ledger(
         source_snapshot["correction"]["input_overrides"]["attendance"][str(employee.id)][
             "source_note"
         ]
-        == "考勤绩效核对单"
+        == "考勤核对单"
     )
     assert get_ledger(db_session, period.id)["records"][0]["payroll_batch_id"] == original.id
 
@@ -3124,6 +3295,7 @@ def test_correction_switches_effective_version_without_rewriting_ledger(
             )
         )
     assert all(response.status_code == 200 for response in locks)
+    verify_exports()
     assert (
         api_client.get(f"/payroll/batches/{replacement_id}/corrections").json()[0]["status"]
         == "applied"
@@ -4063,11 +4235,15 @@ def test_company_monthly_import_groups_and_creates_batches(api_client, db_sessio
         assert trial.status_code == 200, trial.text
         db_session.expire_all()
         snapshot = db_session.get(PayrollTrialRun, trial.json()["id"]).input_snapshot
-        assert [item["id"] for item in snapshot["imports"]] == [result["id"]]
-        assert [item["id"] for item in snapshot["import_rows"]] == [row["id"]]
-        assert snapshot["import_rows"][0]["subject_id"] == subjects[index].id
-        assert snapshot["import_rows"][0]["raw_data"] == row["raw_data"]
-        assert snapshot["import_rows"][0]["correction_history"] == row["correction_history"]
+        if kind == "performance":
+            assert snapshot["imports"] == []
+            assert snapshot["import_rows"] == []
+        else:
+            assert [item["id"] for item in snapshot["imports"]] == [result["id"]]
+            assert [item["id"] for item in snapshot["import_rows"]] == [row["id"]]
+            assert snapshot["import_rows"][0]["subject_id"] == subjects[index].id
+            assert snapshot["import_rows"][0]["raw_data"] == row["raw_data"]
+            assert snapshot["import_rows"][0]["correction_history"] == row["correction_history"]
     db_session.expire_all()
     protected = db_session.scalar(
         select(PayrollBatch).where(
@@ -4158,3 +4334,691 @@ def test_company_monthly_import_downgrade_refuses_loss(api_client, db_session):
     db_session.expire_all()
     assert db_session.get(ImportRow, row_id).payroll_batch_id == payroll_id
     assert api_client.get(f"/imports/attendance/{batch_id}/file").content == b"original file"
+
+
+def test_nullable_performance_migration_refuses_loss(api_client, db_session: Session) -> None:
+    from sqlalchemy.exc import DBAPIError
+
+    company, _, _, _, employee = create_base_records(db_session, "NULLPERF")
+    db_session.add(
+        EmployeeSalary(
+            employee_id=employee.id,
+            fixed_salary=Decimal("8000"),
+            performance_base=None,
+            effective_from=date(2020, 1, 1),
+        )
+    )
+    db_session.commit()
+    config = Config(str(Path(__file__).parents[1] / "alembic.ini"))
+    with pytest.raises(DBAPIError, match="月度不含绩效数据无法回退"):
+        command.downgrade(config, "0012_company_monthly_import")
+    employees = api_client.get(f"/employees?company_id={company.id}").json()
+    assert employees[0]["salary"]["performance_base"] is None
+    assert employees[0]["salary"]["fixed_salary"] == "8000.00"
+
+
+def test_workbook_structure_or_engine_failure_does_not_save_inputs(
+    api_client, db_session: Session, monkeypatch
+):
+    from paylite.excel import engine
+
+    company, _, subject, period, _ = create_base_records(db_session, "WBFAIL", month=8)
+    subject.name = "北京合成有限公司"
+    db_session.commit()
+    params = {"company_id": company.id, "payroll_period_id": period.id}
+    response = api_client.post(
+        "/imports/workbook", params=params, files={"file": ("broken.xlsx", b"broken")}
+    )
+    assert response.status_code == 400, response.text
+    assert api_client.get("/imports/workbook", params={"company_id": company.id}).json() == []
+
+    def unavailable(*args, **kwargs):
+        raise engine.EngineFailure("合成引擎不可用")
+
+    monkeypatch.setattr(engine, "recalculate", unavailable)
+    response = api_client.post(
+        "/imports/workbook", params=params, files={"file": ("original.xlsx", source_workbook())}
+    )
+    assert response.status_code == 503, response.text
+    assert api_client.get("/imports/workbook", params={"company_id": company.id}).json() == []
+    assert len(api_client.get("/employees", params={"company_id": company.id}).json()) == 1
+    assert (
+        api_client.get(
+            "/organization/departments/options", params={"company_id": company.id}
+        ).json()
+        == []
+    )
+    assert api_client.get("/imports/attendance", params={"company_id": company.id}).json() == []
+    monkeypatch.setattr(
+        engine,
+        "recalculate",
+        lambda *args, **kwargs: engine.EngineResult(
+            b"invalid output", "LibreOffice 25.2.3.2 520(Build:2)"
+        ),
+    )
+    invalid = api_client.post(
+        "/imports/workbook",
+        params=params,
+        files={"file": ("invalid-result.xlsx", source_workbook())},
+    )
+    assert invalid.status_code == 503, invalid.text
+    assert "引擎输出无法读取" in invalid.json()["detail"]
+    assert api_client.get("/imports/workbook", params={"company_id": company.id}).json() == []
+    assert len(api_client.get("/employees", params={"company_id": company.id}).json()) == 1
+
+
+def test_workbook_engine_wait_keeps_health_responsive(api_client, db_session: Session, monkeypatch):
+    from paylite.excel import engine
+
+    company, _, subject, period, _ = create_base_records(db_session, "WBHEALTH", month=8)
+    subject.name = "北京合成有限公司"
+    db_session.commit()
+    started, release = Event(), Event()
+
+    def waiting_engine(*args, **kwargs):
+        started.set()
+        release.wait(5)
+        raise engine.EngineFailure("合成引擎结束等待")
+
+    monkeypatch.setattr(engine, "recalculate", waiting_engine)
+    with ThreadPoolExecutor(max_workers=2) as executor:
+        uploading = executor.submit(
+            api_client.post,
+            "/imports/workbook",
+            params={"company_id": company.id, "payroll_period_id": period.id},
+            files={"file": ("waiting.xlsx", source_workbook())},
+        )
+        assert started.wait(3)
+        try:
+            health = executor.submit(api_client.get, "/health").result(timeout=1)
+            assert health.status_code == 200
+        finally:
+            release.set()
+        assert uploading.result(timeout=5).status_code == 503
+
+
+@pytest.mark.skipif(
+    os.getenv("PAYLITE_TEST_EXCEL_ENGINE") != "1", reason="Pinned Calc/UNO runtime is required"
+)
+@pytest.mark.parametrize(
+    "hire_date,expected_effective",
+    [(date(2026, 8, 12), "2026-08-12"), (date(2025, 1, 1), "2026-08-01")],
+)
+def test_workbook_upload_initializes_period_then_saves_attendance(
+    api_client, db_session: Session, hire_date, expected_effective
+):
+    company, _, subject, period, _ = create_base_records(db_session, "WBUPLOAD", month=8)
+    subject.name = "北京合成有限公司"
+    db_session.commit()
+    source = load_workbook(BytesIO(source_workbook(oversized_dimension=True)))
+    source["花名册"]["N2"] = hire_date
+    saved = BytesIO()
+    source.save(saved)
+    content = saved.getvalue()
+    response = api_client.post(
+        "/imports/workbook",
+        params={"company_id": company.id, "payroll_period_id": period.id},
+        files={"file": ("original.xlsx", content)},
+    )
+    assert response.status_code == 201, response.text
+    task = response.json()
+    assert task["period"] == "2026-08"
+    assert task["revision"] == 1
+    assert task["evaluation"]["engine_version"].startswith("LibreOffice 25.2.3.2 ")
+    assert task["employee_import"]["success_rows"] == 1
+    assert task["employee_import"]["error_rows"] == 1
+    assert task["attendance_import"]["success_rows"] == 1
+    assert task["attendance_import"]["error_rows"] == 0
+    assert task["attendance_import"]["subjects"][0]["subject_id"] == subject.id
+    row = task["attendance_import"]["rows"][0]
+    assert row["sheet_name"] == "考勤表" and row["source_row_number"] == 3
+    assert row["raw_data"]["身份证号"] == "=花名册!B2"
+    assert row["normalized_data"]["expected_work_days"] == "21"
+    assert row["normalized_data"]["evaluated_values"]["身份证号"] == "11010120000101002X"
+    employee = api_client.get(
+        "/employees", params={"company_id": company.id, "keyword": "合成员工"}
+    ).json()
+    employee = next(item for item in employee if item["id_number"] == "11010120000101002X")
+    for field in ("assignment", "salary", "base", "bank_account"):
+        assert employee[field]["effective_from"] == expected_effective
+    assert employee["salary"]["performance_base"] is None
+    assert employee["salary"]["fixed_salary"] == "8000.00"
+    assert employee["bank_account"]["account_number"] == "000123456789012345"
+    assert api_client.get(f"/imports/workbook/{task['id']}").json() == task
+    assert api_client.get(f"/imports/workbook/{task['id']}/file").content == content
+    assert (
+        api_client.get(f"/imports/attendance/{task['attendance_import']['id']}/file").content
+        == content
+    )
+    failed_row = task["employee_import"]["rows"][1]
+    assert failed_row["sheet_name"] == "花名册" and failed_row["source_row_number"] == 3
+    assert next(e for e in failed_row["errors"] if e["field"] == "证件号码")["cell"] == "B3"
+    repeated = api_client.post(
+        "/imports/workbook",
+        params={"company_id": company.id, "payroll_period_id": period.id},
+        files={"file": ("renamed.xlsx", content)},
+    )
+    assert repeated.json()["id"] == task["id"]
+    assert repeated.json()["attendance_import"]["rows"][0]["id"] == row["id"]
+
+    # A new file cannot overwrite an existing employee or saved attendance.
+    source["花名册"]["T2"] = 7777
+    source["花名册"]["V2"] = 7777
+    source["花名册"]["F2"] = "不得创建的来源部门"
+    changed = BytesIO()
+    source.save(changed)
+    another = api_client.post(
+        "/imports/workbook",
+        params={"company_id": company.id, "payroll_period_id": period.id},
+        files={"file": ("changed.xlsx", changed.getvalue())},
+    )
+    assert another.status_code == 201, another.text
+    assert another.json()["employee_import"]["total_rows"] == 1
+    assert another.json()["employee_import"]["success_rows"] == 0
+    assert another.json()["attendance_import"]["success_rows"] == 0
+    assert "DUPLICATE_PERIOD" in [
+        e["code"] for e in another.json()["attendance_import"]["rows"][0]["errors"]
+    ]
+    current = api_client.get(f"/employees/{employee['id']}").json()
+    assert current["salary"]["fixed_salary"] == "8000.00"
+    assert current["salary"]["effective_from"] == expected_effective
+    departments = api_client.get(
+        "/organization/departments/options", params={"company_id": company.id}
+    ).json()
+    assert [d["name"] for d in departments] == ["研发"]
+    cleared = api_client.post(
+        f"/imports/workbook/{task['id']}/rows/{failed_row['id']}/correct",
+        json={"values": {"姓名": ""}, "expected_revision": 1},
+    )
+    assert cleared.status_code == 200, cleared.text
+    cleared_row = next(
+        row for row in cleared.json()["employee_import"]["rows"] if row["id"] == failed_row["id"]
+    )
+    assert cleared_row["normalized_data"]["evaluated_values"]["姓名"] == ""
+    assert any(
+        error["field"] == "姓名" and error["cell"] == "C3" for error in cleared_row["errors"]
+    )
+    assert cleared_row["raw_data"]["姓名"] == failed_row["raw_data"]["姓名"]
+    assert cleared_row["correction_history"][-1]["evaluated_values"]["姓名"] == ""
+    # Legacy single-row correction cannot bypass the workbook dependency/version boundary.
+    assert (
+        api_client.post(
+            f"/imports/attendance/{another.json()['attendance_import']['id']}/rows/{another.json()['attendance_import']['rows'][0]['id']}/correct",
+            json={"values": {"应出勤天数": "20"}},
+        ).status_code
+        == 409
+    )
+
+
+@pytest.mark.skipif(
+    os.getenv("PAYLITE_TEST_EXCEL_ENGINE") != "1", reason="Pinned Calc/UNO runtime is required"
+)
+def test_workbook_failed_employee_blocks_only_its_attendance(api_client, db_session: Session):
+    company, _, subject, period, _ = create_base_records(db_session, "WBDEP", month=8)
+    subject.name = "北京合成有限公司"
+    db_session.commit()
+    source = load_workbook(BytesIO(source_workbook()))
+    source["花名册"]["T2"] = "未核实薪资"
+    for column in range(1, 29):
+        source["花名册"].cell(4, column, source["花名册"].cell(2, column).value)
+    source["花名册"]["B4"] = "11010120000101003X"
+    source["花名册"]["C4"] = "合法合成员工"
+    source["花名册"]["O4"] = "=EDATE(N4,3)"
+    source["花名册"]["T4"] = 8000
+    source["考勤表"]["A4"] = "=花名册!B4"
+    source["考勤表"]["B4"] = "=花名册!C4"
+    source["考勤表"]["C4"] = "=花名册!E4"
+    source["考勤表"]["T4"] = "=NETWORKDAYS($Q$1,$P$1)"
+    saved = BytesIO()
+    source.save(saved)
+    response = api_client.post(
+        "/imports/workbook",
+        params={"company_id": company.id, "payroll_period_id": period.id},
+        files={"file": ("dependency.xlsx", saved.getvalue())},
+    )
+    assert response.status_code == 201, response.text
+    task = response.json()
+    assert task["employee_import"]["success_rows"] == 1
+    assert task["employee_import"]["error_rows"] == 2
+    assert task["attendance_import"]["success_rows"] == 1
+    assert task["attendance_import"]["error_rows"] == 1
+    failed = next(row for row in task["attendance_import"]["rows"] if row["source_row_number"] == 3)
+    assert failed["validation_status"] == "invalid"
+    assert any(e["code"] == "DEPENDENCY_NOT_READY" and e["cell"] == "A3" for e in failed["errors"])
+    assert failed["payroll_batch_id"] is None
+    saved_row = next(
+        row for row in task["attendance_import"]["rows"] if row["source_row_number"] == 4
+    )
+    assert (
+        saved_row["validation_status"] == "imported" and saved_row["payroll_batch_id"] is not None
+    )
+    assert saved_row["normalized_data"]["expected_work_days"] == "21"
+
+    employee_row = next(
+        row for row in task["employee_import"]["rows"] if row["source_row_number"] == 2
+    )
+    previous_trial = api_client.post(f"/payroll/batches/{saved_row['payroll_batch_id']}/trial")
+    assert previous_trial.status_code == 200, previous_trial.text
+    corrected = api_client.post(
+        f"/imports/workbook/{task['id']}/rows/{employee_row['id']}/correct",
+        json={"values": {"转正固定薪资": "8000"}, "expected_revision": 1},
+    )
+    assert corrected.status_code == 200, corrected.text
+    updated = corrected.json()
+    assert updated["revision"] == updated["evaluation"]["revision"] == 2
+    assert updated["employee_import"]["success_rows"] == 2
+    assert updated["employee_import"]["error_rows"] == 1
+    assert updated["attendance_import"]["success_rows"] == 2
+    assert updated["attendance_import"]["error_rows"] == 0
+    assert (
+        api_client.get(f"/payroll/batches/{saved_row['payroll_batch_id']}/trial").json()["stale"]
+        is True
+    )
+    employee_row = next(
+        row for row in updated["employee_import"]["rows"] if row["id"] == employee_row["id"]
+    )
+    assert employee_row["raw_data"]["转正固定薪资"] == "未核实薪资"
+    assert employee_row["correction_values"] == {"转正固定薪资": "8000"}
+    assert employee_row["normalized_data"]["effective_from"] == "2026-08-12"
+    assert employee_row["correction_history"][-1]["revision"] == 2
+    retried = next(row for row in updated["attendance_import"]["rows"] if row["id"] == failed["id"])
+    assert retried["validation_status"] == "imported"
+    assert retried["raw_data"]["身份证号"] == "=花名册!B2"
+    assert retried["correction_history"][-1]["source_row_id"] == employee_row["id"]
+    unchanged = next(
+        row for row in updated["attendance_import"]["rows"] if row["id"] == saved_row["id"]
+    )
+    assert unchanged == saved_row
+    assert api_client.get(f"/imports/workbook/{task['id']}").json() == updated
+    assert api_client.get(f"/imports/workbook/{task['id']}/file").content == saved.getvalue()
+    repeated = api_client.post(
+        f"/imports/workbook/{task['id']}/rows/{employee_row['id']}/correct",
+        json={"values": {"转正固定薪资": "8000"}, "expected_revision": 2},
+    )
+    assert repeated.status_code == 409
+    assert api_client.get(f"/imports/workbook/{task['id']}").json() == updated
+
+
+@pytest.mark.skipif(
+    os.getenv("PAYLITE_TEST_EXCEL_ENGINE") != "1", reason="Pinned Calc/UNO runtime is required"
+)
+def test_workbook_database_failure_rolls_back_both_children_and_parent(
+    api_client, db_session: Session
+):
+    from sqlalchemy import event
+
+    company, _, subject, period, _ = create_base_records(db_session, "WBROLLBACK", month=8)
+    subject.name = "北京合成有限公司"
+    db_session.commit()
+
+    def unavailable_storage(*args, **kwargs):
+        raise IntegrityError("synthetic database failure", None, Exception("storage unavailable"))
+
+    event.listen(AttendanceRecord, "after_insert", unavailable_storage)
+    try:
+        response = api_client.post(
+            "/imports/workbook",
+            params={"company_id": company.id, "payroll_period_id": period.id},
+            files={"file": ("rollback.xlsx", source_workbook())},
+        )
+        assert response.status_code == 409, response.text
+    finally:
+        event.remove(AttendanceRecord, "after_insert", unavailable_storage)
+    assert api_client.get("/imports/workbook", params={"company_id": company.id}).json() == []
+    assert api_client.get("/imports/attendance", params={"company_id": company.id}).json() == []
+    assert (
+        api_client.get(
+            "/organization/departments/options", params={"company_id": company.id}
+        ).json()
+        == []
+    )
+    assert len(api_client.get("/employees", params={"company_id": company.id}).json()) == 1
+
+
+@pytest.mark.skipif(
+    os.getenv("PAYLITE_TEST_EXCEL_ENGINE") != "1", reason="Pinned Calc/UNO runtime is required"
+)
+def test_workbook_concurrent_upload_returns_one_task(api_client, db_session: Session):
+    company, _, subject, period, _ = create_base_records(db_session, "WBCONCURRENT", month=8)
+    subject.name = "北京合成有限公司"
+    db_session.commit()
+    company_id, period_id = company.id, period.id
+    content = source_workbook()
+
+    def upload(index):
+        response = api_client.post(
+            "/imports/workbook",
+            params={"company_id": company_id, "payroll_period_id": period_id},
+            files={"file": (f"same-{index}.xlsx", content)},
+        )
+        assert response.status_code == 201, response.text
+        return response.json()
+
+    with ThreadPoolExecutor(max_workers=3) as executor:
+        results = list(executor.map(upload, range(3)))
+    assert len({item["id"] for item in results}) == 1
+    assert len({item["employee_import"]["id"] for item in results}) == 1
+    assert len({item["attendance_import"]["id"] for item in results}) == 1
+    tasks = api_client.get("/imports/workbook", params={"company_id": company_id}).json()
+    assert len(tasks) == 1 and tasks[0]["attendance_import"]["success_rows"] == 1
+
+
+@pytest.mark.skipif(
+    os.getenv("PAYLITE_TEST_EXCEL_ENGINE") != "1", reason="Pinned Calc/UNO runtime is required"
+)
+def test_workbook_lookup_does_not_accept_multiple_identity_matches(api_client, db_session: Session):
+    company, _, subject, period, _ = create_base_records(db_session, "WBAMBIG", month=8)
+    subject.name = "北京合成有限公司"
+    db_session.commit()
+    source = load_workbook(BytesIO(source_workbook()))
+    for column in range(1, 29):
+        source["花名册"].cell(3, column, source["花名册"].cell(2, column).value)
+    saved = BytesIO()
+    source.save(saved)
+    response = api_client.post(
+        "/imports/workbook",
+        params={"company_id": company.id, "payroll_period_id": period.id},
+        files={"file": ("ambiguous.xlsx", saved.getvalue())},
+    )
+    assert response.status_code == 201, response.text
+    task = response.json()
+    assert task["employee_import"]["total_rows"] == 1
+    assert task["employee_import"]["success_rows"] == 1
+    assert task["employee_import"]["error_rows"] == 0
+    assert task["attendance_import"]["success_rows"] == 0
+    assert task["attendance_import"]["error_rows"] == 1
+    assert any(
+        e["code"] == "DEPENDENCY_NOT_UNIQUE" and e["cell"] == "A3"
+        for e in task["attendance_import"]["rows"][0]["errors"]
+    )
+
+
+@pytest.mark.skipif(
+    os.getenv("PAYLITE_TEST_EXCEL_ENGINE") != "1", reason="Pinned Calc/UNO runtime is required"
+)
+def test_workbook_recalculation_does_not_hold_business_row_locks(
+    api_client, db_session: Session, postgres_engine, monkeypatch
+):
+    from paylite.excel import engine
+
+    company, _, subject, period, _ = create_base_records(db_session, "WBLOCKS", month=8)
+    subject.name = "北京合成有限公司"
+    db_session.commit()
+    company_id, period_id = company.id, period.id
+    real_engine = engine.recalculate
+
+    def observed_engine(content):
+        with Session(postgres_engine) as observer:
+            assert (
+                observer.scalar(
+                    select(Company.id).where(Company.id == company_id).with_for_update(nowait=True)
+                )
+                == company_id
+            )
+            assert (
+                observer.scalar(
+                    select(PayrollPeriod.id)
+                    .where(PayrollPeriod.id == period_id)
+                    .with_for_update(nowait=True)
+                )
+                == period_id
+            )
+            observer.rollback()
+        return real_engine(content)
+
+    monkeypatch.setattr(engine, "recalculate", observed_engine)
+    response = api_client.post(
+        "/imports/workbook",
+        params={"company_id": company_id, "payroll_period_id": period_id},
+        files={"file": ("unlocked.xlsx", source_workbook())},
+    )
+    assert response.status_code == 201, response.text
+    assert response.json()["attendance_import"]["success_rows"] == 1
+
+
+@pytest.mark.skipif(
+    os.getenv("PAYLITE_TEST_EXCEL_ENGINE") != "1", reason="Pinned Calc/UNO runtime is required"
+)
+def test_workbook_correction_concurrency_and_complete_payroll_flow(
+    api_client, db_session: Session, monkeypatch, tmp_path
+):
+    from uuid import uuid4
+
+    from paylite.excel import engine as excel_engine
+
+    monkeypatch.setattr(get_settings(), "export_directory", tmp_path)
+    company, city, subject, period, _ = create_base_records(db_session, "WBFLOW", month=8)
+    subject.name = "北京合成有限公司"
+    social = SocialSecurityRule(
+        city_id=city.id, effective_from=date(2026, 1, 1), version="wb", fixed_base=Decimal("5000")
+    )
+    db_session.add_all(
+        [
+            AttendanceRule(
+                effective_from=date(2026, 1, 1),
+                version="wb",
+                standard_hours=8,
+                missed_punch_amount=30,
+                exempt_level_number=7,
+                makeup_punch_exempt=True,
+            ),
+            social,
+            HousingFundRule(
+                city_id=city.id,
+                effective_from=date(2026, 1, 1),
+                company_rate=Decimal("0.05"),
+                employee_rate=Decimal("0.05"),
+                base_min=0,
+                base_max=0,
+                version="wb",
+                base_source="fixed_salary",
+            ),
+        ]
+    )
+    db_session.flush()
+    db_session.add(
+        SocialSecurityItemRule(
+            social_security_rule_id=social.id,
+            item_code="pension",
+            item_name="养老",
+            employee_rate=Decimal("0.10"),
+            company_rate=Decimal("0.20"),
+            base_min=0,
+            base_max=0,
+        )
+    )
+    previous = PayrollPeriod(
+        year=2026, month=7, period_start=date(2026, 7, 1), period_end=date(2026, 7, 31)
+    )
+    db_session.add(previous)
+    db_session.flush()
+    previous_batch = PayrollBatch(
+        subject_id=subject.id, payroll_period_id=previous.id, batch_type="normal", status="locked"
+    )
+    db_session.add(previous_batch)
+    db_session.flush()
+    db_session.add(
+        PayrollTrialRun(
+            payroll_batch_id=previous_batch.id,
+            input_fingerprint="workbook-previous",
+            input_snapshot={},
+            results=[
+                {"employee_id": _.id, "errors": [], "amounts": {"attendance_deduction": "30.00"}}
+            ],
+        )
+    )
+    db_session.commit()
+    source = load_workbook(BytesIO(source_workbook()))
+    source["花名册"]["N2"] = date(2025, 1, 1)
+    source["花名册"]["T2"] = "待核实"
+    source["考勤表"]["T3"] = '=INDIRECT("Q1")'
+    output = BytesIO()
+    source.save(output)
+    content = output.getvalue()
+    uploaded = api_client.post(
+        "/imports/workbook",
+        params={"company_id": company.id, "payroll_period_id": period.id},
+        files={"file": ("flow.xlsx", content)},
+    )
+    assert uploaded.status_code == 201, uploaded.text
+    task = uploaded.json()
+    employee_row = task["employee_import"]["rows"][0]
+    attendance_row = task["attendance_import"]["rows"][0]
+    employee_url = f"/imports/workbook/{task['id']}/rows/{employee_row['id']}/correct"
+    attendance_url = f"/imports/workbook/{task['id']}/rows/{attendance_row['id']}/correct"
+    assert (
+        api_client.post(
+            employee_url, json={"values": {"转正绩效标准": "2000"}, "expected_revision": 1}
+        ).status_code
+        == 400
+    )
+    with monkeypatch.context() as patch:
+
+        def unavailable(_):
+            raise excel_engine.EngineFailure("synthetic engine failure")
+
+        patch.setattr(excel_engine, "recalculate", unavailable)
+        assert (
+            api_client.post(
+                employee_url, json={"values": {"转正固定薪资": "8000"}, "expected_revision": 1}
+            ).status_code
+            == 503
+        )
+    assert api_client.get(f"/imports/workbook/{task['id']}").json() == task
+    invalid = api_client.post(
+        employee_url, json={"values": {"转正固定薪资": "仍未核实"}, "expected_revision": 1}
+    )
+    assert invalid.status_code == 200, invalid.text
+    assert invalid.json()["revision"] == 2
+    history = invalid.json()["employee_import"]["rows"][0]["correction_history"][0]
+    assert history["before_values"]["转正固定薪资"] == "待核实"
+    assert history["evaluated_values"]["转正固定薪资"] == "仍未核实"
+    assert (
+        api_client.post(
+            employee_url, json={"values": {"转正固定薪资": "8000"}, "expected_revision": 1}
+        ).status_code
+        == 409
+    )
+    with ThreadPoolExecutor(max_workers=2) as executor:
+        results = list(
+            executor.map(
+                lambda _: api_client.post(
+                    employee_url, json={"values": {"转正固定薪资": "8000"}, "expected_revision": 2}
+                ),
+                range(2),
+            )
+        )
+    assert sorted(item.status_code for item in results) == [200, 409]
+    task = next(item.json() for item in results if item.status_code == 200)
+    assert task["revision"] == 3 and task["attendance_import"]["error_rows"] == 1
+    assert task["attendance_import"]["rows"][0]["errors"][0]["cell"] == "T3"
+    # A valid new employee creates no payroll batch until its attendance passes.
+    assert task["attendance_import"]["rows"][0]["payroll_batch_id"] is None
+    with ThreadPoolExecutor(max_workers=2) as executor:
+        results = list(
+            executor.map(
+                lambda _: api_client.post(
+                    attendance_url, json={"values": {"应出勤天数": "21"}, "expected_revision": 3}
+                ),
+                range(2),
+            )
+        )
+    assert sorted(item.status_code for item in results) == [200, 409]
+    task = next(item.json() for item in results if item.status_code == 200)
+    assert task["revision"] == 4 and task["attendance_import"]["success_rows"] == 1
+    row = task["attendance_import"]["rows"][0]
+    assert row["raw_data"]["应出勤天数"] == '=INDIRECT("Q1")'
+    assert row["normalized_data"]["expected_work_days"] == "21"
+    batch_id = row["payroll_batch_id"]
+    trial = api_client.post(f"/payroll/batches/{batch_id}/trial")
+    assert trial.status_code == 200 and trial.json()["error_count"] == 0, trial.text
+    assert "performance" not in trial.json()["results"][0]["amounts"]
+    incentive = api_client.post(f"/payroll/periods/{period.id}/attendance-incentive")
+    assert incentive.status_code == 200, incentive.text
+    api_client.get(f"/payroll/batches/{batch_id}/trial")
+    confirmed = api_client.post(f"/payroll/periods/{period.id}/confirmation")
+    assert confirmed.status_code == 200, confirmed.text
+    assert api_client.post(f"/payroll/periods/{period.id}/lock").status_code == 200
+    original_ledger = api_client.get(f"/payroll/ledger?period_id={period.id}").json()
+    employee_id = original_ledger["records"][0]["employee_id"]
+    original_record = original_ledger["records"][0]
+
+    def verify_exports():
+        ledger = api_client.get(f"/payroll/ledger?period_id={period.id}").json()
+        for kind in ("payroll", "bank", "labor-cost", "tax"):
+            preview = api_client.get(
+                f"/exports/{kind}/preview", params={"period_id": period.id}
+            ).json()
+            body = {"period_id": period.id, "request_id": str(uuid4())}
+            if kind == "bank":
+                body["subject_templates"] = {str(subject.id): preview["template_sheets"][0]}
+            report = api_client.post(f"/exports/{kind}", json=body)
+            assert report.status_code == 200, report.text
+            report = report.json()
+            assert report["status"] == "completed", report
+            assert Decimal(report["parameters"]["untaxed_amount"]) == Decimal(
+                ledger["totals"]["untaxed_amount"]
+            )
+            downloaded = api_client.get(f"/exports/{kind}/{report['id']}/file")
+            assert downloaded.status_code == 200
+            book = load_workbook(BytesIO(downloaded.content))
+            if kind == "payroll":
+                assert book["工资表明细"]["AC5"].value is None
+                assert Decimal(str(book["工资表明细"]["AX5"].value)) == Decimal(
+                    ledger["totals"]["untaxed_amount"]
+                )
+            if kind == "tax":
+                assert book["Sheet1"]["AF2"].value is None
+
+    verify_exports()
+    # A changed file or row retry cannot overwrite locked facts or open a correction implicitly.
+    source["考勤表"]["T3"] = 20
+    another = BytesIO()
+    source.save(another)
+    rejected = api_client.post(
+        "/imports/workbook",
+        params={"company_id": company.id, "payroll_period_id": period.id},
+        files={"file": ("locked.xlsx", another.getvalue())},
+    )
+    assert rejected.status_code == 201, rejected.text
+    locked = rejected.json()
+    blocked_row = locked["attendance_import"]["rows"][0]
+    assert any(error["code"] == "BATCH_NOT_EDITABLE" for error in blocked_row["errors"])
+    retried = api_client.post(
+        f"/imports/workbook/{locked['id']}/rows/{blocked_row['id']}/correct",
+        json={"values": {"应出勤天数": "21"}, "expected_revision": 1},
+    )
+    assert retried.status_code == 200, retried.text
+    assert retried.json()["attendance_import"]["success_rows"] == 0
+    assert api_client.get(f"/payroll/ledger?period_id={period.id}").json() == original_ledger
+    correction = api_client.post(
+        f"/payroll/batches/{batch_id}/corrections", json={"reason": "整本考勤核对"}
+    )
+    assert correction.status_code == 201, correction.text
+    correction = correction.json()
+    replacement = correction["replacement_batch_id"]
+    updated = api_client.put(
+        f"/payroll/corrections/{correction['id']}/inputs",
+        json={
+            "employee_id": employee_id,
+            "source_note": "整本任务核对",
+            "attendance": {"late_minutes": 20},
+        },
+    )
+    assert updated.status_code == 200, updated.text
+    trial = api_client.post(f"/payroll/batches/{replacement}/trial")
+    assert trial.status_code == 200 and trial.json()["error_count"] == 0, trial.text
+    assert "performance" not in trial.json()["results"][0]["amounts"]
+    assert api_client.post(f"/payroll/periods/{period.id}/attendance-incentive").status_code == 200
+    api_client.get(f"/payroll/batches/{replacement}/trial")
+    assert api_client.post(f"/payroll/periods/{period.id}/confirmation").status_code == 200
+    assert api_client.post(f"/payroll/periods/{period.id}/lock").status_code == 200
+    verify_exports()
+    ledger = api_client.get(f"/payroll/ledger?period_id={period.id}").json()
+    assert ledger["record_count"] == 1 and ledger["records"][0]["payroll_batch_id"] == replacement
+    old = api_client.get(f"/payroll/ledger/records/{original_record['id']}").json()
+    assert old["record"]["is_effective"] is False
+    assert all(
+        old["record"]["amounts"][key] == value for key, value in original_record["amounts"].items()
+    )
+    assert api_client.get(f"/imports/workbook/{task['id']}/file").content == content

@@ -184,7 +184,7 @@ test("员工页面转正时提交保持不变的固定薪资和新绩效基数",
     "2026-07-01",
   );
   const performanceBase = screen.getByRole("spinbutton", {
-    name: "绩效基数（20%）",
+    name: "独立绩效资料（可留空）",
   });
   await user.clear(performanceBase);
   await user.type(performanceBase, "2000");
@@ -227,12 +227,12 @@ test("员工页面普通调薪提交整月生效日期", async () => {
 
   await user.click(await screen.findByRole("button", { name: "编辑" }));
   const fixedSalary = screen.getByRole("spinbutton", {
-    name: "固定薪资（80%）",
+    name: "固定薪资",
   });
   await user.clear(fixedSalary);
   await user.type(fixedSalary, "8800");
   const performanceBase = screen.getByRole("spinbutton", {
-    name: "绩效基数（20%）",
+    name: "独立绩效资料（可留空）",
   });
   await user.clear(performanceBase);
   await user.type(performanceBase, "2200");

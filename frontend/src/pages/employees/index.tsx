@@ -163,6 +163,8 @@ export function EmployeesPage() {
     setOpen(true);
   };
   const submit = (values: Record<string, unknown>) => {
+    const performanceBase =
+      values.performance_base == null ? null : String(values.performance_base);
     if (editing) {
       const data: Record<string, unknown> = {
         name: values.name,
@@ -178,13 +180,15 @@ export function EmployeesPage() {
       if (confirming) {
         data.salary = {
           fixed_salary: String(values.fixed_salary),
-          performance_base: String(values.performance_base),
+          performance_base: performanceBase,
           effective_from: values.probation_date,
         };
       } else if (
         Number(values.fixed_salary) !== Number(editing.salary?.fixed_salary) ||
-        Number(values.performance_base) !==
-          Number(editing.salary?.performance_base)
+        (performanceBase === null
+          ? editing.salary?.performance_base != null
+          : editing.salary?.performance_base == null ||
+            Number(performanceBase) !== Number(editing.salary.performance_base))
       ) {
         if (!values.salary_effective_from) {
           message.error("请填写调薪生效工资期间（月初）");
@@ -192,7 +196,7 @@ export function EmployeesPage() {
         }
         data.salary = {
           fixed_salary: String(values.fixed_salary),
-          performance_base: String(values.performance_base),
+          performance_base: performanceBase,
           effective_from: values.salary_effective_from,
         };
       }
@@ -271,7 +275,7 @@ export function EmployeesPage() {
       },
       salary: {
         fixed_salary: String(values.fixed_salary),
-        performance_base: String(values.performance_base),
+        performance_base: performanceBase,
         effective_from: values.hire_date,
       },
       base: { city_id: values.city_id, effective_from: values.hire_date },
@@ -647,16 +651,12 @@ export function EmployeesPage() {
           <div className={styles.formGrid}>
             <Form.Item
               name="fixed_salary"
-              label="固定薪资（80%）"
+              label="固定薪资"
               rules={[{ required: true }]}
             >
               <InputNumber min={0} className={styles.fullWidth} />
             </Form.Item>
-            <Form.Item
-              name="performance_base"
-              label="绩效基数（20%）"
-              rules={[{ required: true }]}
-            >
+            <Form.Item name="performance_base" label="独立绩效资料（可留空）">
               <InputNumber min={0} className={styles.fullWidth} />
             </Form.Item>
             <Form.Item

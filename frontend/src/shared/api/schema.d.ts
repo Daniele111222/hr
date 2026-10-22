@@ -325,6 +325,75 @@ export interface paths {
         patch: operations["update_employee_employees__employee_id__patch"];
         trace?: never;
     };
+    "/imports/workbook": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** List Workbooks */
+        get: operations["list_workbooks_imports_workbook_get"];
+        put?: never;
+        /** Upload Workbook */
+        post: operations["upload_workbook_imports_workbook_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/imports/workbook/{task_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Get Workbook */
+        get: operations["get_workbook_imports_workbook__task_id__get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/imports/workbook/{task_id}/file": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Download Workbook */
+        get: operations["download_workbook_imports_workbook__task_id__file_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/imports/workbook/{task_id}/rows/{row_id}/correct": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Correct Workbook Row */
+        post: operations["correct_workbook_row_imports_workbook__task_id__rows__row_id__correct_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/imports/performance-template": {
         parameters: {
             query?: never;
@@ -1195,6 +1264,11 @@ export interface components {
             /** File */
             file: string;
         };
+        /** Body_upload_workbook_imports_workbook_post */
+        Body_upload_workbook_imports_workbook_post: {
+            /** File */
+            file: string;
+        };
         /** CityIn */
         CityIn: {
             /** Code */
@@ -1628,6 +1702,10 @@ export interface components {
             message: string;
             /** Column */
             column?: string | null;
+            /** Cell */
+            cell?: string | null;
+            /** Sheet Name */
+            sheet_name?: string | null;
         };
         /** ImportRowOut */
         ImportRowOut: {
@@ -2158,6 +2236,8 @@ export interface components {
         };
         /** PayrollSnapshotOut */
         PayrollSnapshotOut: {
+            /** Calculation Mode */
+            calculation_mode?: string | null;
             /** Employee No */
             employee_no?: string | null;
             /** Name */
@@ -2314,7 +2394,7 @@ export interface components {
             /** Fixed Salary */
             fixed_salary: number | string;
             /** Performance Base */
-            performance_base: number | string;
+            performance_base?: number | string | null;
             /**
              * Effective From
              * Format: date
@@ -2328,7 +2408,7 @@ export interface components {
             /** Fixed Salary */
             fixed_salary: string;
             /** Performance Base */
-            performance_base: string;
+            performance_base?: string | null;
             /**
              * Effective From
              * Format: date
@@ -2469,6 +2549,47 @@ export interface components {
             input?: unknown;
             /** Context */
             ctx?: Record<string, never>;
+        };
+        /** WorkbookImportOut */
+        WorkbookImportOut: {
+            /** Id */
+            id: number;
+            /** Company Id */
+            company_id: number;
+            /** Payroll Period Id */
+            payroll_period_id: number;
+            /** Period */
+            period: string;
+            /** Original Filename */
+            original_filename: string;
+            /** File Sha256 */
+            file_sha256: string;
+            /** Template Version */
+            template_version: string;
+            /** Status */
+            status: string;
+            /** Revision */
+            revision: number;
+            /**
+             * Uploaded At
+             * Format: date-time
+             */
+            uploaded_at: string;
+            /** Evaluation */
+            evaluation: {
+                [key: string]: unknown;
+            };
+            employee_import: components["schemas"]["ImportBatchOut"];
+            attendance_import: components["schemas"]["MonthlyImportBatchOut"];
+        };
+        /** WorkbookRowCorrection */
+        WorkbookRowCorrection: {
+            /** Values */
+            values: {
+                [key: string]: string;
+            };
+            /** Expected Revision */
+            expected_revision: number;
         };
     };
     responses: never;
@@ -3424,6 +3545,171 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["EmployeeOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    list_workbooks_imports_workbook_get: {
+        parameters: {
+            query: {
+                company_id: number;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["WorkbookImportOut"][];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    upload_workbook_imports_workbook_post: {
+        parameters: {
+            query: {
+                company_id: number;
+                payroll_period_id: number;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "multipart/form-data": components["schemas"]["Body_upload_workbook_imports_workbook_post"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["WorkbookImportOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_workbook_imports_workbook__task_id__get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                task_id: number;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["WorkbookImportOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    download_workbook_imports_workbook__task_id__file_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                task_id: number;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": unknown;
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    correct_workbook_row_imports_workbook__task_id__rows__row_id__correct_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                task_id: number;
+                row_id: number;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["WorkbookRowCorrection"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["WorkbookImportOut"];
                 };
             };
             /** @description Validation Error */

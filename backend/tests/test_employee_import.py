@@ -14,6 +14,26 @@ from paylite.excel.employee_template import (
 )
 
 
+def test_non_monthly_performance_formulas_do_not_block_employee_facts() -> None:
+    workbook = load_workbook(BytesIO(make_template()))
+    values = {
+        "证件号码": "11010119900101123X",
+        "姓名": "测试员工",
+        "转正固定薪资": "8000",
+        "转正绩效标准": "=SUM(1,2)",
+        "试用期绩效": "#REF!",
+        "年薪（万元）": "=SUM(S3:T3)",
+    }
+    workbook.active.append([values.get(field) for field in HEADERS])
+    output = BytesIO()
+    workbook.save(output)
+    row = parse_workbook(output.getvalue())[0]
+    assert row.errors == []
+    assert row.raw["转正固定薪资"] == "8000"
+    assert row.raw["转正绩效标准"] == "=SUM(1,2)"
+    assert row.raw["试用期绩效"] == "#REF!"
+
+
 def test_employee_template_round_trip_and_preserves_text_identifiers() -> None:
     workbook = load_workbook(BytesIO(make_template()))
     sheet = workbook[SHEET_NAME]
@@ -109,7 +129,7 @@ def test_employee_import_calculates_salary_references_and_arithmetic_chains() ->
     assert rows[0].raw["试用期底薪"] == "3803.01"
     assert rows[1].raw["转正固定薪资"] == "3803.01"
     assert rows[1].raw["试用期底薪"] == "3803.01"
-    assert rows[1].raw["年薪（万元）"] == "5.76"
+    assert rows[1].raw["年薪（万元）"] == "=ROUND((S72+T72)*12/10000,2)"
     assert all(row.errors == [] for row in rows)
 
 
@@ -193,56 +213,20 @@ def test_employee_import_calculates_legacy_edate_probation_date() -> None:
 
 
 @pytest.mark.parametrize(
-    ("fixed", "performance", "formula", "expected"),
-    [
-        (8000, 2000, "=ROUND((S3+T3)*12/10000,2)", "12.00"),
-        ("1000.00", "4.17", "=ROUND((S3+T3)*12/10000,2)", "1.21"),
-        ("1000.00", "4.16", "=ROUND((S3+T3)*12/10000,2)", "1.20"),
-        ("837.50", "0", "= round( ($S$3 + $T3) * 12 / 10000 , 2 )", "1.01"),
-        (0, 0, "=ROUND((S3+T3)*12/10000,2)", "0.00"),
-        ("=1+1", 2000, "=ROUND((S3+T3)*12/10000,2)", "2.40"),
-    ],
+    "formula", ["=ROUND((S3+T3)*12/10000,2)", "=SUM(S3:T3)", "=[other.xlsx]Sheet1!A1"]
 )
-def test_employee_import_calculates_annual_salary(fixed, performance, formula, expected) -> None:
+def test_employee_import_retains_non_monthly_annual_salary(formula) -> None:
     workbook = load_workbook(BytesIO(make_template()))
     sheet = workbook[SHEET_NAME]
-    sheet["S3"] = fixed
-    sheet["T3"] = performance
-    sheet["Z3"] = formula
-    output = BytesIO()
-    workbook.save(output)
-
-    row = parse_workbook(output.getvalue())[0]
-    assert row.raw["年薪（万元）"] == expected
-    assert row.errors == []
-
-
-@pytest.mark.parametrize(
-    ("fixed", "performance", "formula", "code"),
-    [
-        (None, 2000, "=ROUND((S3+T3)*12/10000,2)", "INVALID_AMOUNT"),
-        (8000, "不是金额", "=ROUND((S3+T3)*12/10000,2)", "INVALID_AMOUNT"),
-        ("NaN", 2000, "=ROUND((S3+T3)*12/10000,2)", "INVALID_AMOUNT"),
-        ("Infinity", 2000, "=ROUND((S3+T3)*12/10000,2)", "INVALID_AMOUNT"),
-        (-8000, 2000, "=ROUND((S3+T3)*12/10000,2)", "INVALID_AMOUNT"),
-        (8000, 2000, "=ROUND((S4+T4)*12/10000,2)", "FORMULA_NOT_ALLOWED"),
-        (8000, 2000, "=ROUND((S3+U3)*12/10000,2)", "INVALID_AMOUNT"),
-    ],
-)
-def test_employee_import_rejects_invalid_annual_salary_formulas(
-    fixed, performance, formula, code
-) -> None:
-    workbook = load_workbook(BytesIO(make_template()))
-    sheet = workbook[SHEET_NAME]
-    sheet["S3"] = fixed
-    sheet["T3"] = performance
+    sheet["S3"] = "8000"
+    sheet["T3"] = "不是月度输入"
     sheet["Z3"] = formula
     output = BytesIO()
     workbook.save(output)
 
     row = parse_workbook(output.getvalue())[0]
     assert row.raw["年薪（万元）"] == formula
-    assert any(error["cell"] == "Z3" and error["code"] == code for error in row.errors)
+    assert row.errors == []
 
 
 @pytest.mark.parametrize(
@@ -306,5 +290,5 @@ def test_employee_import_reports_circular_formula_dependencies() -> None:
     workbook.save(output)
 
     row = parse_workbook(output.getvalue())[0]
-    assert {error["cell"] for error in row.errors} == {"S3", "T3"}
+    assert {error["cell"] for error in row.errors} == {"S3"}
     assert all("循环引用" in error["message"] for error in row.errors)

@@ -61,7 +61,16 @@ export function PayrollBatchDetailPage() {
   });
   const trial = useQuery({
     queryKey: ["payroll", "trial", batchId],
-    queryFn: () => resources.payrollTrial(batchId),
+    queryFn: async () => {
+      const value = await resources.payrollTrial(batchId);
+      await queryClient.cancelQueries({
+        queryKey: ["payroll", "confirmation"],
+      });
+      void queryClient.invalidateQueries({
+        queryKey: ["payroll", "confirmation"],
+      });
+      return value;
+    },
     enabled: Number.isInteger(batchId) && batchId > 0,
   });
   const confirmation = useQuery({
@@ -181,16 +190,10 @@ export function PayrollBatchDetailPage() {
             ),
           )
         : undefined;
-      const performance =
-        inputValues.performance_coefficient !==
-        editingInput.performance_coefficient
-          ? inputValues.performance_coefficient
-          : undefined;
       return resources.updatePayrollCorrectionInputs(replacementCorrection.id, {
         employee_id: editingInput.employee_id,
         source_note: inputSource.trim(),
         attendance,
-        performance_coefficient: performance,
       });
     },
     onSuccess: (rows) => {
@@ -277,15 +280,14 @@ export function PayrollBatchDetailPage() {
             ? 1
             : 0;
   const inputChanged = editingInput
-    ? Object.entries(inputValues).some(([key, value]) =>
-        key === "performance_coefficient"
-          ? value !== editingInput.performance_coefficient
-          : value !==
-            String(
-              editingInput.attendance?.[
-                key as keyof typeof editingInput.attendance
-              ],
-            ),
+    ? Object.entries(inputValues).some(
+        ([key, value]) =>
+          value !==
+          String(
+            editingInput.attendance?.[
+              key as keyof typeof editingInput.attendance
+            ],
+          ),
       )
     : false;
   const openInput = (row: PayrollCorrectionInput) => {
@@ -308,9 +310,6 @@ export function PayrollBatchDetailPage() {
             ]),
           )
         : {}),
-      ...(row.performance_coefficient !== null
-        ? { performance_coefficient: row.performance_coefficient }
-        : {}),
     });
   };
   const preparationRows = [
@@ -320,13 +319,6 @@ export function PayrollBatchDetailPage() {
       value: preparation.attendance,
       path: `/imports?${navigationParams}&type=attendance&source_batch_id=${detail.id}`,
       action: "导入考勤",
-    },
-    {
-      key: "performance",
-      label: "绩效记录",
-      value: preparation.performance,
-      path: `/imports?${navigationParams}&type=performance&source_batch_id=${detail.id}`,
-      action: "导入绩效",
     },
     {
       key: "city_rules",
@@ -516,7 +508,7 @@ export function PayrollBatchDetailPage() {
                         type="info"
                         showIcon
                         title="替代版本沿用原确认快照"
-                        description="本次仅修正考勤与绩效；薪酬和规则沿用原确认快照，员工现况不会改写原工资事实。"
+                        description="本次仅修正考勤，按月度不含绩效口径计算；原绩效金额不计入新结果。固定薪资和规则沿用原确认快照，旧结果只读保留。"
                       />
                       {correctionInputs.error ? (
                         <Alert
@@ -541,11 +533,6 @@ export function PayrollBatchDetailPage() {
                               row.attendance
                                 ? `迟到 ${row.attendance.late_minutes} 分钟 · 忘打卡 ${row.attendance.missed_punch_count} 次`
                                 : "—",
-                          },
-                          {
-                            title: "绩效系数",
-                            dataIndex: "performance_coefficient",
-                            render: (value: string | null) => value ?? "—",
                           },
                           {
                             title: "修正来源",
@@ -683,7 +670,6 @@ export function PayrollBatchDetailPage() {
                       },
                       ...[
                         ["固定薪资", "fixed"],
-                        ["绩效金额", "performance"],
                         ["考勤扣款", "attendance_deduction"],
                         ["应发金额", "gross"],
                         ["个人社保", "employee_social"],
@@ -722,7 +708,7 @@ export function PayrollBatchDetailPage() {
               ) : (
                 <Empty
                   className={styles.empty}
-                  description="尚未试算，准备好考勤、绩效及城市规则后发起普通工资试算"
+                  description="尚未试算，准备好考勤及城市规则后发起月度工资试算；绩效独立处理"
                 />
               ),
             },
@@ -971,13 +957,8 @@ export function PayrollBatchDetailPage() {
             ["unpaid_leave_days", "无薪请假天数"],
             ["missed_punch_count", "忘打卡次数"],
             ["corrected_punch_count", "补卡次数"],
-            ["performance_coefficient", "绩效系数"],
           ]
-            .filter(([key]) =>
-              key === "performance_coefficient"
-                ? editingInput?.performance_coefficient !== null
-                : Boolean(editingInput?.attendance),
-            )
+            .filter(() => Boolean(editingInput?.attendance))
             .map(([key, label]) => (
               <label key={key}>
                 <span>{label}</span>

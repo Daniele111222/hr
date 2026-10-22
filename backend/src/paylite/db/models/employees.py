@@ -139,7 +139,7 @@ class EmployeeSalary(Base):
         ForeignKey("employee.id", ondelete="RESTRICT"), nullable=False
     )
     fixed_salary: Mapped[Decimal] = mapped_column(Money, nullable=False)
-    performance_base: Mapped[Decimal] = mapped_column(Money, nullable=False)
+    performance_base: Mapped[Decimal | None] = mapped_column(Money)
     effective_from: Mapped[date] = mapped_column(Date, nullable=False)
     effective_to: Mapped[date | None] = mapped_column(Date)
     source: Mapped[str | None] = mapped_column(String(50))

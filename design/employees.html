@@ -91,7 +91,7 @@
         <div class="field"><label>薪酬标准（元 / 月）<span class="req">*</span></label><input class="input" id="n-salary" value="20000">
           <span class="hint" id="n-split"></span>
         </div>
-        <div class="field"><label>薪酬结构</label><input class="input" value="固定薪资 80% + 绩效基数 20%" disabled></div>
+        <div class="field"><label>月度工资口径</label><input class="input" value="按实际固定薪资维护；绩效资料独立且可留空" disabled></div>
         <div class="field"><label>试用期薪酬</label><input class="input" value="仅发放固定薪资，无绩效" disabled></div>
         <div class="field"><label>base 城市<span class="req">*</span></label><select class="select" id="n-city"></select><span class="hint">决定适用社保与公积金规则</span></div>
       </div>
@@ -170,7 +170,7 @@
 
   document.querySelector('input#n-salary').addEventListener('input', function () {
     var v = Number(this.value) || 0;
-    document.getElementById('n-split').textContent = '固定薪资 ' + Q.money(v * 0.8) + ' 元 · 绩效基数 ' + Q.money(v * 0.2) + ' 元';
+    document.getElementById('n-split').textContent = '固定薪资 ' + Q.money(v) + ' 元 · 月度不含绩效';
   });
 
   /* ── 筛选与分页 ─────────────────────────────────────────── */

@@ -82,9 +82,14 @@ def employee_payload(*, probation_status: str, performance_base: str) -> dict:
     }
 
 
-def test_salary_policy_requires_eighty_twenty_and_no_probation_performance() -> None:
-    with pytest.raises(ValidationError, match="试用期"):
-        EmployeeIn(**employee_payload(probation_status="in_probation", performance_base="2000"))
-    with pytest.raises(ValidationError, match="80%/20%"):
-        EmployeeIn(**employee_payload(probation_status="confirmed", performance_base="1000"))
-    EmployeeIn(**employee_payload(probation_status="confirmed", performance_base="2000"))
+def test_monthly_employee_salary_does_not_require_performance() -> None:
+    payload = employee_payload(probation_status="confirmed", performance_base="2000")
+    payload["salary"].pop("performance_base")
+    employee = EmployeeIn(**payload)
+    assert employee.salary.fixed_salary == Decimal("8000")
+    assert employee.salary.performance_base is None
+
+
+def test_optional_performance_data_does_not_define_fixed_salary_ratio() -> None:
+    EmployeeIn(**employee_payload(probation_status="confirmed", performance_base="1000"))
+    EmployeeIn(**employee_payload(probation_status="in_probation", performance_base="2000"))

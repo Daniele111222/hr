@@ -1,0 +1,44 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
+<title>整本导入 · 轻算薪</title><link rel="stylesheet" href="assets/app.css">
+</head>
+<body data-page="import-center" data-crumb="数据导入/整本导入" data-title="整本导入">
+<div class="app"><aside class="sidebar" id="sidebar"></aside><div class="main">
+<header class="topbar" id="topbar"></header>
+<main class="content">
+  <section class="row between"><div><h1>整本工资工作簿导入</h1><p class="page-lead">先处理花名册，再保存全公司考勤。工资、扣款、绩效和税务结果只保留来源，不成为月度输入。</p></div><a class="btn btn-sm" href="periods.html">返回本期工资核算</a></section>
+  <section class="card"><div class="card-head"><h2>导入流程</h2><span class="sub">一次上传 · 两类输入</span></div><div class="card-body"><div class="steps">
+    <div class="step is-done"><span class="step-dot">1</span><span class="step-label">选择工资期间</span></div><span class="step-line"></span>
+    <div class="step is-current"><span class="step-dot">2</span><span class="step-label">上传原工作簿</span></div><span class="step-line"></span>
+    <div class="step"><span class="step-dot">3</span><span class="step-label">花名册初始化</span></div><span class="step-line"></span>
+    <div class="step"><span class="step-dot">4</span><span class="step-label">考勤保存与归集</span></div>
+  </div></div></section>
+  <section class="card"><div class="card-head"><h2>导入设置</h2><span class="spacer"></span><a class="btn btn-sm" href="import-center.html">单项导入</a></div><div class="card-body stack">
+    <div class="filters"><div class="filter"><label>工资期间</label><select class="select" id="period"></select></div><div class="filter"><label>导入范围</label><span class="tag">全公司所有主体</span></div></div>
+    <div class="callout is-info"><span data-icon="info"></span><div><b>直接上传已约定的整本 .xlsx</b><p>固定花名册和考勤结构，必要跨表公式在本机重新计算。新增员工以期间月初和入职日中较晚者生效；已有员工不覆盖、不回填历史。文件月份须与所选期间一致。</p><p>支持 20MB，每个输入工作表最多 5,000 条有效记录；其他工作表仅保留来源。</p></div></div>
+    <input type="file" id="file" accept=".xlsx" hidden>
+    <button class="drop" id="upload"><span data-icon="upload"></span><strong>上传原工资工作簿</strong><span class="meta">无需拆表或整表粘贴为值</span></button>
+    <div class="callout is-danger hidden" id="error"></div>
+  </div></section>
+  <section class="card"><div class="card-head"><h2>整本导入结果</h2><span class="sub" id="result-state">尚未上传</span></div><div class="card-body" id="empty-result"><div class="empty"><h3>上传后查看两类输入结果</h3><p>有效行先保存，原文件、公式和失败原因保留追溯。</p></div></div><div class="card-body stack hidden" id="result">
+    <div class="callout is-warn"><span data-icon="warn"></span><div>合法行已保存。依赖未就绪的考勤尚未保存，失败原因按原工作表和单元格显示。</div></div>
+    <div><h3>花名册</h3><div class="metrics" style="margin-top:10px"><div class="metric"><div class="metric-label">处理行数</div><div class="metric-value">2</div></div><div class="metric"><div class="metric-label">新增员工</div><div class="metric-value">1</div></div><div class="metric is-warn"><div class="metric-label">失败行数</div><div class="metric-value">1</div></div></div></div>
+    <div><h3>考勤表</h3><div class="metrics" style="margin-top:10px"><div class="metric"><div class="metric-label">处理行数</div><div class="metric-value">2</div></div><div class="metric"><div class="metric-label">已保存考勤</div><div class="metric-value">1</div></div><div class="metric is-warn"><div class="metric-label">未保存行数</div><div class="metric-value">1</div></div></div></div>
+    <div class="tbl-wrap"><table class="tbl"><thead><tr><th>工作表 / 原行</th><th>字段 / 单元格</th><th>原始值</th><th>失败原因</th></tr></thead><tbody><tr class="is-invalid"><td>花名册 · 3</td><td>证件号码（B3）</td><td>（空）</td><td>证件号码不能为空</td></tr><tr class="is-invalid"><td>考勤表 · 4</td><td>身份证号（A4）</td><td class="mono">=花名册!B3</td><td>依赖员工或本期任职未就绪，尚未保存</td></tr></tbody></table></div>
+    <div class="row-wrap"><button class="btn btn-sm" data-open="correction">修正花名册第3行</button><button class="btn btn-sm" data-toast="原文件下载（原型演示）">下载原工作簿</button><button class="btn btn-sm" data-open="history-detail">查看详情</button><a class="btn btn-sm btn-primary" href="periods.html">返回本期工资核算</a></div>
+  </div></section>
+  <section class="card"><div class="card-head"><h2>整本导入历史</h2><span class="sub">历史详情只读</span></div><div class="card-body"><div class="tbl-wrap"><table class="tbl"><thead><tr><th>期间</th><th>原文件</th><th>花名册 新增 / 失败</th><th>考勤 保存 / 失败</th><th>操作</th></tr></thead><tbody id="history"><tr><td colspan="5"><div class="empty">暂无整本导入任务</div></td></tr></tbody></table></div></div></section>
+</main><footer class="pagefoot"></footer></div></div>
+<div class="overlay" id="history-detail"><div class="drawer"><div class="drawer-head"><h2>整本来源详情</h2><span class="spacer"></span><button class="btn btn-sm" data-close>关闭</button></div><div class="drawer-body stack"><div class="callout is-info">历史详情只读；原始公式、解析值、原单元格及各次修正记录保留追溯。</div><div class="tbl-wrap"><table class="tbl"><thead><tr><th>位置</th><th>原始值 / 公式</th><th>解析值</th><th>结果</th></tr></thead><tbody><tr><td>考勤表!T3</td><td class="mono">=R3+S3</td><td>21</td><td>已保存</td></tr></tbody></table></div></div></div></div>
+<div class="overlay" id="correction"><div class="drawer"><div class="drawer-head"><h2>修正花名册 · 原始行 3</h2><span class="spacer"></span><button class="btn btn-sm" data-close>关闭</button></div><div class="drawer-body stack"><div class="callout is-info">仅编辑失败行的有效输入。按任务期间重新计算，只重验依赖的失败考勤；已保存事实不重写。</div><label>证件号码（B3）<input class="input" aria-label="证件号码" placeholder="填写核实值"></label><div class="callout is-danger hidden" id="correction-error">任务已有新版本，请刷新任务结果后重试。</div><div class="row-wrap"><button class="btn btn-primary" data-toast="修正已保存，依赖考勤已重验（演示）">保存并重验</button><button class="btn" data-toast="刷新任务结果（演示）">刷新任务结果</button></div><p class="sub">原工作簿、原公式及每次修正前后值保留。历史详情只读；请求失败保留填写内容，处理中禁用操作。</p></div></div></div>
+<script src="assets/app.js"></script><script>
+(function(){var Q=window.QSX, button=Q.q('#upload'), file=Q.q('#file');
+Q.q('#period').innerHTML=Q.PERIODS.map(function(p){return '<option>'+Q.esc(p.code)+'</option>';}).join('');
+button.addEventListener('click',function(){file.click();});
+file.addEventListener('change',function(){if(!file.files.length)return;var name=file.files[0].name;if(!name.toLowerCase().endsWith('.xlsx')){Q.q('#error').classList.remove('hidden');Q.q('#error').textContent='整本导入仅支持 .xlsx 工作簿';return;}
+Q.q('#error').classList.add('hidden');button.disabled=true;button.querySelector('strong').textContent='正在上传并处理…';
+setTimeout(function(){button.disabled=false;button.querySelector('strong').textContent='上传原工资工作簿';Q.q('#empty-result').classList.add('hidden');Q.q('#result').classList.remove('hidden');Q.q('#result-state').textContent='部分成功（演示）';Q.q('#history').innerHTML='<tr><td>'+Q.esc(Q.q('#period').value)+'</td><td>'+Q.esc(name)+'</td><td>1 / 1</td><td>1 / 1</td><td><button class="btn btn-sm" data-open="history-detail">查看详情</button></td></tr>';},400);});
+})();
+</script></body></html>

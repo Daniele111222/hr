@@ -236,7 +236,7 @@ class PayrollRecord(Base):
     snapshot_level_code: Mapped[str | None] = mapped_column(String(30))
     snapshot_level_number: Mapped[int | None] = mapped_column(Integer)
     snapshot_fixed_salary: Mapped[Decimal] = mapped_column(Money, nullable=False)
-    snapshot_performance_base: Mapped[Decimal] = mapped_column(Money, nullable=False)
+    snapshot_performance_base: Mapped[Decimal | None] = mapped_column(Money)
     snapshot_base_city_name: Mapped[str | None] = mapped_column(String(100))
     snapshot_bank_account: Mapped[str | None] = mapped_column(Text)
 

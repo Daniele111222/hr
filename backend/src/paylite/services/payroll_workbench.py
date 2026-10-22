@@ -19,7 +19,6 @@ from paylite.db.models import (
     PayrollBatch,
     PayrollPeriod,
     PayrollTrialRun,
-    PerformanceRecord,
     SocialSecurityRule,
     Subject,
 )
@@ -267,14 +266,6 @@ def data_preparation(db: Session, period: PayrollPeriod, scope: EmployeeScope) -
             )
         )
     )
-    performance_ids = set(
-        db.scalars(
-            select(PerformanceRecord.employee_id).where(
-                PerformanceRecord.payroll_period_id == period.id,
-                PerformanceRecord.employee_id.in_(employee_ids or [-1]),
-            )
-        )
-    )
     city_rule_exists = exists(
         select(SocialSecurityRule.id)
         .join(EmployeeBase, EmployeeBase.city_id == SocialSecurityRule.city_id)
@@ -315,24 +306,14 @@ def data_preparation(db: Session, period: PayrollPeriod, scope: EmployeeScope) -
         message="存在期间内跨主体任职员工" if scope_blocked else None,
         blocked=scope_blocked,
     )
-    performance_required_ids = [
-        employee.id
-        for employee in db.scalars(select(Employee).where(Employee.id.in_(employee_ids)))
-        if requires_performance(employee, period)
-    ]
-    performance = _preparation_item(
-        employee_ids=performance_required_ids,
-        prepared_ids=performance_ids,
-        message="存在期间内跨主体任职员工" if scope_blocked else None,
-        blocked=scope_blocked,
-    )
+    performance = PreparationItem("not_required", 0, 0, "绩效由独立流程处理，不参与月度核算")
     city_rules = _preparation_item(
         employee_ids=employee_ids,
         prepared_ids=city_rule_ids,
         message="存在期间内跨主体任职员工" if scope_blocked else None,
         blocked=scope_blocked,
     )
-    statuses = {attendance.status, performance.status, city_rules.status}
+    statuses = {attendance.status, city_rules.status}
     overall = (
         "blocked"
         if scope_blocked or "blocked" in statuses

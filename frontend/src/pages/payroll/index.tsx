@@ -274,9 +274,6 @@ export function PayrollPage() {
             <Link to={`/imports?${periodParams}&type=attendance`}>
               导入考勤
             </Link>
-            <Link to={`/imports?${periodParams}&type=performance`}>
-              导入绩效
-            </Link>
             <Link to={`/payroll/incentive?period=${currentPeriod.period}`}>
               考勤激励
             </Link>
@@ -427,7 +424,6 @@ export function PayrollPage() {
                   render: (_, row) => (
                     <Space wrap>
                       {preparationTag("考勤", row.data_preparation.attendance)}
-                      {preparationTag("绩效", row.data_preparation.performance)}
                       {preparationTag("规则", row.data_preparation.city_rules)}
                     </Space>
                   ),
@@ -463,9 +459,6 @@ export function PayrollPage() {
                           <>
                             <Link to={importPath(row, "attendance")}>
                               导入考勤
-                            </Link>
-                            <Link to={importPath(row, "performance")}>
-                              导入绩效
                             </Link>
                           </>
                         )}

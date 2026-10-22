@@ -196,7 +196,7 @@ class AssignmentIn(BaseModel):
 class SalaryIn(BaseModel):
     model_config = ConfigDict(from_attributes=True)
     fixed_salary: Decimal = Field(ge=0)
-    performance_base: Decimal = Field(ge=0)
+    performance_base: Decimal | None = Field(default=None, ge=0)
     effective_from: date
     effective_to: date | None = None
 
@@ -262,13 +262,6 @@ class EmployeeIn(BaseModel):
             raise ValueError("离职日期不能早于入职日期")
         if self.probation_date and self.probation_date < self.hire_date:
             raise ValueError("转正日期不能早于入职日期")
-        if self.probation_status == "in_probation" and self.salary.performance_base != 0:
-            raise ValueError("试用期员工不应有绩效基数")
-        if (
-            self.probation_status != "in_probation"
-            and self.salary.performance_base * 4 != self.salary.fixed_salary
-        ):
-            raise ValueError("固定薪资和绩效基数必须按 80%/20% 表达")
         return self
 
 
@@ -407,6 +400,7 @@ class PayrollWorkbenchOut(BaseModel):
 
 
 class PayrollSnapshotOut(BaseModel):
+    calculation_mode: str | None = None
     model_config = ConfigDict(extra="allow")
     employee_no: str | None = None
     name: str | None = None

@@ -368,6 +368,8 @@ def correct_row(db: Session, batch_id: int, row_id: int, values: dict[str, str])
     batch = db.get(ImportBatch, batch_id)
     if batch is None or batch.import_type != "attendance":
         raise ImportFailure(404, "考勤导入批次不存在")
+    if batch.template_version == "TPL-WORKBOOK-v1":
+        raise ImportFailure(409, "整本来源请在原整本任务中修正，以保留依赖和修正版本")
     scope = monthly_import.load_scope(db, batch.company_id, batch.payroll_period_id)
     period = scope.period
     legacy_batch = db.get(PayrollBatch, batch.payroll_batch_id) if batch.payroll_batch_id else None

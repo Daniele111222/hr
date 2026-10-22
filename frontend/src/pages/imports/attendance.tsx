@@ -168,10 +168,12 @@ export function MonthlyImportsPage({ kind }: { kind: MonthlyKind }) {
       {contextHolder}
       <div className={styles.lead}>
         <div>
-          <Typography.Title level={2}>月度{label}导入</Typography.Title>
+          <Typography.Title level={2}>
+            {performance ? "绩效导入历史" : "月度考勤导入"}
+          </Typography.Title>
           <Typography.Paragraph type="secondary">
             {performance
-              ? "按工资期间导入全公司绩效系数，有效行按当期任职归集并自动补齐草稿正常批次。试用期不考核绩效；转正当月需填写系数。正确行先保存，错误行可逐行修正；历史详情只读。"
+              ? "仅查看既有绩效导入及失败原因，历史详情只读。绩效由独立流程处理，不参与月度工资，也不构成月度核算阻断。"
               : "按工资期间导入全公司考勤事实，有效行按当期任职归集并自动补齐草稿正常批次。正确行先保存，错误行可逐行修正；历史详情只读，扣款由试算统一计算。"}
           </Typography.Paragraph>
         </div>
@@ -188,171 +190,180 @@ export function MonthlyImportsPage({ kind }: { kind: MonthlyKind }) {
         </Space>
       </div>
 
-      <Card title="导入流程">
-        <Steps
-          size="small"
-          current={preview ? 3 : 2}
-          items={[
-            "选择类型与范围",
-            "下载固定模板",
-            "上传并导入",
-            "查看导入结果",
-            "修正后返回试算",
-          ].map((title) => ({ title }))}
-        />
-      </Card>
+      {!performance && (
+        <>
+          <Card title="导入流程">
+            <Steps
+              size="small"
+              current={preview ? 3 : 2}
+              items={[
+                "选择类型与范围",
+                "下载固定模板",
+                "上传并导入",
+                "查看导入结果",
+                "修正后返回试算",
+              ].map((title) => ({ title }))}
+            />
+          </Card>
 
-      <Card title="导入设置" extra={<Tag color="geekblue">月度{label}</Tag>}>
-        <div className={styles.settings}>
-          <Space wrap>
-            <label>
-              工资期间{" "}
-              <Select
-                aria-label="工资期间"
-                style={{ minWidth: 150 }}
-                value={period ?? workbench.data?.period?.period}
-                loading={workbench.isLoading}
-                onChange={(value) => {
-                  setParams((current) => {
-                    const next = new URLSearchParams(current);
-                    next.set("period", value);
-                    next.delete("batch_id");
-                    next.delete("source_batch_id");
-                    next.delete("subject_id");
-                    return next;
-                  });
-                }}
-                options={
-                  workbench.data?.periods.map((item) => ({
-                    label: item.period,
-                    value: item.period,
-                  })) ?? []
-                }
-                placeholder="选择期间"
-              />
-            </label>
-            <Tag color="blue">全公司所有主体</Tag>
-          </Space>
-          {(workbench.isError || otherPeriod.isError) && (
-            <Alert type="error" showIcon message="工资期间读取失败" />
-          )}
-          {!workbench.isLoading &&
-            !otherPeriod.isLoading &&
-            !selectedPeriod && (
+          <Card
+            title="导入设置"
+            extra={<Tag color="geekblue">月度{label}</Tag>}
+          >
+            <div className={styles.settings}>
+              <Space wrap>
+                <label>
+                  工资期间{" "}
+                  <Select
+                    aria-label="工资期间"
+                    style={{ minWidth: 150 }}
+                    value={period ?? workbench.data?.period?.period}
+                    loading={workbench.isLoading}
+                    onChange={(value) => {
+                      setParams((current) => {
+                        const next = new URLSearchParams(current);
+                        next.set("period", value);
+                        next.delete("batch_id");
+                        next.delete("source_batch_id");
+                        next.delete("subject_id");
+                        return next;
+                      });
+                    }}
+                    options={
+                      workbench.data?.periods.map((item) => ({
+                        label: item.period,
+                        value: item.period,
+                      })) ?? []
+                    }
+                    placeholder="选择期间"
+                  />
+                </label>
+                <Tag color="blue">全公司所有主体</Tag>
+              </Space>
+              {(workbench.isError || otherPeriod.isError) && (
+                <Alert type="error" showIcon message="工资期间读取失败" />
+              )}
+              {!workbench.isLoading &&
+                !otherPeriod.isLoading &&
+                !selectedPeriod && (
+                  <Alert
+                    type="info"
+                    showIcon
+                    message="请先建立并选择工资期间，无需提前建立主体批次"
+                    action={<Link to="/payroll">去建立工资期间</Link>}
+                  />
+                )}
               <Alert
                 type="info"
                 showIcon
-                message="请先建立并选择工资期间，无需提前建立主体批次"
-                action={<Link to="/payroll">去建立工资期间</Link>}
+                message={performance ? "固定模板 TPL-PERF-v1" : "考勤导入模版"}
+                description={
+                  performance
+                    ? "身份证号按文本填写；系数须为非负数，不设固定上限。缺失和零值不同；公式按行报错。"
+                    : "新版 TPL-ATT-v3 固定 19 列，首行为表头；仅填写员工标识、应出勤、考勤异常及各类假期，不填写薪资或扣款。身份证号按文本填写，公司须与员工当期归属主体一致。应出勤天数填写考勤表核定的工作日合计，须大于零且不超过当月自然日天数；迟到、早退按分钟填写，未补卡次数不包含已补卡。事假、旷工为无薪，其余假期为有薪并参与激励资格判断。原工作簿请将所需列粘贴为值到模板；继续兼容 48 列 v2 及 v1。有效输入支持本行引用、四则运算、括号、ROUND；旧模板日期依赖支持 EDATE。只计算有效输入及其必要依赖，无关公式仅保留原文；SUM、IF、跨表等无法求值的有效输入请转为实际值。"
+                }
+                action={
+                  <Button
+                    size="small"
+                    icon={<DownloadOutlined />}
+                    href={`${API_BASE}/imports/${kind}-template`}
+                  >
+                    下载模板
+                  </Button>
+                }
               />
-            )}
-          <Alert
-            type="info"
-            showIcon
-            message={performance ? "固定模板 TPL-PERF-v1" : "考勤导入模版"}
-            description={
-              performance
-                ? "身份证号按文本填写；系数须为非负数，不设固定上限。缺失和零值不同；公式按行报错。"
-                : "新版 TPL-ATT-v3 固定 19 列，首行为表头；仅填写员工标识、应出勤、考勤异常及各类假期，不填写薪资或扣款。身份证号按文本填写，公司须与员工当期归属主体一致。应出勤天数填写考勤表核定的工作日合计，须大于零且不超过当月自然日天数；迟到、早退按分钟填写，未补卡次数不包含已补卡。事假、旷工为无薪，其余假期为有薪并参与激励资格判断。原工作簿请将所需列粘贴为值到模板；继续兼容 48 列 v2 及 v1。有效输入支持本行引用、四则运算、括号、ROUND；旧模板日期依赖支持 EDATE。只计算有效输入及其必要依赖，无关公式仅保留原文；SUM、IF、跨表等无法求值的有效输入请转为实际值。"
-            }
-            action={
-              <Button
-                size="small"
-                icon={<DownloadOutlined />}
-                href={`${API_BASE}/imports/${kind}-template`}
-              >
-                下载模板
-              </Button>
-            }
-          />
-          <button
-            type="button"
-            className={styles.dropzone}
-            disabled={!company.data || !selectedPeriod || upload.isPending}
-            onClick={() => fileInput.current?.click()}
-            onDragOver={(event) => event.preventDefault()}
-            onDrop={(event) => {
-              event.preventDefault();
-              chooseFile(event.dataTransfer.files[0]);
-            }}
-          >
-            <UploadOutlined className={styles.dropIcon} />
-            <strong>
-              {upload.isPending
-                ? "正在上传并校验…"
-                : "把 Excel 拖到这里，或点击选择文件"}
-            </strong>
-            <span>支持 .xlsx，单次不超过 20MB；原文件与失败原因会保留</span>
-          </button>
-          <input
-            ref={fileInput}
-            className={styles.hiddenInput}
-            type="file"
-            accept=".xlsx"
-            onChange={(event) => {
-              chooseFile(event.target.files?.[0]);
-              event.currentTarget.value = "";
-            }}
-          />
-        </div>
-      </Card>
-
-      <Card title="导入结果" extra={preview && <StatusTag batch={preview} />}>
-        {preview ? (
-          <>
-            <div className={styles.metrics}>
-              <Metric label="总行数" value={preview.total_rows} />
-              <Metric label="已保存" value={preview.success_rows} />
-              <Metric label="失败行" value={preview.error_rows} warning />
-            </div>
-            <Alert
-              className={styles.notice}
-              showIcon
-              type={preview.error_rows ? "warning" : "success"}
-              message={
-                preview.error_rows
-                  ? `正确行已保存，错误行未进入有效${label}`
-                  : `全部行已保存为${label}事实`
-              }
-              description={`${label}变化会使旧试算失效，后续需要重新试算并核对。${performance ? "" : "本页仅展示考勤事实，扣款由工资试算统一计算。"}`}
-            />
-            <SubjectSummary batch={preview} />
-            <Table<ImportRow>
-              size="small"
-              rowKey="id"
-              pagination={false}
-              scroll={{ x: performance ? 760 : 1400 }}
-              expandable={
-                performance
-                  ? undefined
-                  : {
-                      expandedRowRender: (row) => (
-                        <RawAttendanceRow row={row} batch={preview} />
-                      ),
-                    }
-              }
-              dataSource={preview.rows?.slice(0, 8)}
-              columns={rowColumns(preview)}
-            />
-            <div className={styles.previewActions}>
-              <Button
-                onClick={() => {
-                  setReadOnly(false);
-                  setSelected(preview);
+              <button
+                type="button"
+                className={styles.dropzone}
+                disabled={!company.data || !selectedPeriod || upload.isPending}
+                onClick={() => fileInput.current?.click()}
+                onDragOver={(event) => event.preventDefault()}
+                onDrop={(event) => {
+                  event.preventDefault();
+                  chooseFile(event.dataTransfer.files[0]);
                 }}
               >
-                查看导入批次详情与纠错
-              </Button>
+                <UploadOutlined className={styles.dropIcon} />
+                <strong>
+                  {upload.isPending
+                    ? "正在上传并校验…"
+                    : "把 Excel 拖到这里，或点击选择文件"}
+                </strong>
+                <span>支持 .xlsx，单次不超过 20MB；原文件与失败原因会保留</span>
+              </button>
+              <input
+                ref={fileInput}
+                className={styles.hiddenInput}
+                type="file"
+                accept=".xlsx"
+                onChange={(event) => {
+                  chooseFile(event.target.files?.[0]);
+                  event.currentTarget.value = "";
+                }}
+              />
             </div>
-          </>
-        ) : (
-          <Empty
-            image={Empty.PRESENTED_IMAGE_SIMPLE}
-            description={`上传月度${label}模板后显示导入结果`}
-          />
-        )}
-      </Card>
+          </Card>
 
+          <Card
+            title="导入结果"
+            extra={preview && <StatusTag batch={preview} />}
+          >
+            {preview ? (
+              <>
+                <div className={styles.metrics}>
+                  <Metric label="总行数" value={preview.total_rows} />
+                  <Metric label="已保存" value={preview.success_rows} />
+                  <Metric label="失败行" value={preview.error_rows} warning />
+                </div>
+                <Alert
+                  className={styles.notice}
+                  showIcon
+                  type={preview.error_rows ? "warning" : "success"}
+                  message={
+                    preview.error_rows
+                      ? `正确行已保存，错误行未进入有效${label}`
+                      : `全部行已保存为${label}事实`
+                  }
+                  description={`${label}变化会使旧试算失效，后续需要重新试算并核对。${performance ? "" : "本页仅展示考勤事实，扣款由工资试算统一计算。"}`}
+                />
+                <SubjectSummary batch={preview} />
+                <Table<ImportRow>
+                  size="small"
+                  rowKey="id"
+                  pagination={false}
+                  scroll={{ x: performance ? 760 : 1400 }}
+                  expandable={
+                    performance
+                      ? undefined
+                      : {
+                          expandedRowRender: (row) => (
+                            <RawAttendanceRow row={row} batch={preview} />
+                          ),
+                        }
+                  }
+                  dataSource={preview.rows?.slice(0, 8)}
+                  columns={rowColumns(preview)}
+                />
+                <div className={styles.previewActions}>
+                  <Button
+                    onClick={() => {
+                      setReadOnly(false);
+                      setSelected(preview);
+                    }}
+                  >
+                    查看导入批次详情与纠错
+                  </Button>
+                </div>
+              </>
+            ) : (
+              <Empty
+                image={Empty.PRESENTED_IMAGE_SIMPLE}
+                description={`上传月度${label}模板后显示导入结果`}
+              />
+            )}
+          </Card>
+        </>
+      )}
       <Card
         title="导入历史"
         extra={

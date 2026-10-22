@@ -27,7 +27,7 @@
         </div>
       </section>
 
-      <!-- 流程步骤是导航：跳转保持期间和批次，不能自动试算、确认或锁定。数据准备入口分别进入考勤、绩效导入并自动带入范围；返回保留筛选。 -->
+      <!-- 流程步骤是导航：跳转保持期间和批次，不能自动试算、确认或锁定。月度只要求考勤与规则；绩效独立处理，新更正也排除绩效，旧确认快照只读保留。 -->
       <section class="card" data-od-id="batch-steps-card">
         <div class="card-body" style="padding:14px 16px">
           <div class="steps" id="steps"></div>
@@ -133,7 +133,7 @@
         <dt>更正范围</dt><dd class="mono">全体员工 · 重新核对</dd>
       </dl>
       <div class="field"><label>更正原因<span class="req">*</span></label>
-        <textarea class="textarea" id="correct-reason" rows="3" placeholder="例如：3 名员工绩效系数录入有误，需修正后重新核算"></textarea>
+        <textarea class="textarea" id="correct-reason" rows="3" placeholder="填写考勤更正原因；新更正按月度不含绩效口径计算"></textarea>
         <span class="hint">更正原因会写入版本记录，便于后续追溯。</span>
         <span class="err" id="correct-err" hidden></span></div>
       <div class="callout is-warn"><span data-icon="warn"></span><div>
@@ -172,9 +172,6 @@
     var blockedInput = Q.missingRuleIn(P, ent).length && !s.szRuleAdded;
     if (blockedInput) {
       return { key: 'blocked', label: '存在阻断项', note: '缺有效城市规则，无法完成试算', show: true };
-    }
-    if (ent === 'SH01' && !s.perfFixed) {
-      return { key: 'partial', label: '部分员工试算完成', note: '绩效导入 3 行错误待修复，2 名员工暂无法核算', show: true };
     }
     if (!s.recalculated) {
       return { key: 'invalid', label: '试算已失效', note: '输入已更新，原试算结果不再有效，请重新试算', show: true };
@@ -267,9 +264,7 @@
   /* ── Tab 1：数据准备 ────────────────────────────────────── */
   function renderPrepare() {
     var s = Q.state();
-    var att = importOf(ENT, '月度考勤'), perf = importOf(ENT, '月度绩效');
-    var perfOk = perf ? (ENT === 'SH01' && s.perfFixed ? perf.total : perf.ok) : 0;
-    var perfBad = perf ? perf.total - perfOk : 0;
+    var att = importOf(ENT, '月度考勤');
     var rule = Q.cityRule(Q.ent(ENT).city, P);
     var missing = Q.missingRuleIn(P, ENT);
     var roster = Q.scope(P, ENT);
@@ -284,12 +279,6 @@
         detail: att ? att.ok + ' / ' + att.total + ' 行入库' : '尚未导入',
         sub: att ? '<span class="mono">' + att.id + '</span> · ' + att.time : '前往导入中心上传考勤表',
         href: att ? 'import-batch.html' : 'import-center.html', hrefText: att ? '查看导入批次' : '去导入'
-      },
-      {
-        name: '月度绩效导入', state: perfBad ? 'partial' : 'ok',
-        detail: perf ? perfOk + ' / ' + perf.total + ' 行入库' : '尚未导入',
-        sub: perf ? '<span class="mono">' + perf.id + '</span> · ' + (perfBad ? perfBad + ' 行待修正' : '全部成功') : '前往导入中心上传绩效表',
-        href: perfBad ? 'import-batch.html' : 'import-center.html', hrefText: perfBad ? '去修正错误行' : '查看导入批次'
       },
       {
         name: '城市社保与公积金规则', state: rule ? 'ok' : 'expired',
@@ -320,9 +309,8 @@
       }).join('') + '</tbody></table></div>' +
       '<div class="section-title" style="margin-top:6px">本期试算口径 <span class="meta">与「考勤与薪酬规则」一致</span></div>' +
       '<div class="calc">固定薪资　　= 固定月薪 × (计薪自然日 ÷ 当月自然日)　<span class="cm">// 入离职当月折算；转正前后固定薪资不变</span>\n' +
-      '绩效金额　　= 转正后绩效基数 × 绩效系数 × (计薪自然日 ÷ 当月自然日)　<span class="cm">// 试用期无绩效；转正当月采用整月转正后标准</span>\n' +
       '考勤扣款　　= (迟到分钟 + 早退分钟) × 分钟单价 + 忘打卡次数 × 30　<span class="cm">// P7 及以上不参与</span>\n' +
-      '普通试算应发金额 = 固定薪资 + 绩效金额 − 考勤扣款　<span class="cm">// 考勤激励在全公司数据齐备后另行计算</span>\n' +
+      '普通试算应发金额 = 固定薪资 − 考勤扣款　<span class="cm">// 绩效独立处理；考勤激励在全公司数据齐备后另行计算</span>\n' +
       '未扣个税金额 = 应发金额 − 个人社保 − 个人公积金　<span class="cm">// 个税请在导出后于 Excel 中手工计算</span>\n' +
       '公司成本　　= 应发金额 + 公司社保 + 公司公积金</div>' +
       '<div class="callout is-info"><span>' + Q.icon('info') + '</span><div>员工名册以<b>本期全部应发薪员工</b>为准，而不是仅以导入成功的行数为准；因此导入部分成功时，名单不会缩小。</div></div>';
@@ -347,14 +335,14 @@
     } else if (info.key === 'partial') {
       banner = '<div class="card-body"><div class="callout is-danger"><span>' + Q.icon('block') + '</span><div>' +
         '<b class="callout-title">2 名员工无法参与试算，结果不完整</b>' +
-        '<div>上海绩效导入仍有 3 行错误（含 2 名员工绩效系数异常）。下表已展示其余 ' + sum.ok + ' 名员工的试算结果，但<b>未通过整批校验前不能确认</b>。</div>' +
+        '<div>本主体仍有员工资料、考勤或城市规则错误。下表已展示其余 ' + sum.ok + ' 名员工的试算结果，但<b>未通过整批校验前不能确认</b>。</div>' +
         '<div style="margin-top:6px"><a href="import-batch.html">前往导入批次修正错误行 →</a></div></div></div></div>';
     }
 
     document.getElementById('trial-body').innerHTML = banner +
       '<div class="card-body" style="padding-bottom:0"><div class="metrics is-5">' +
       '<div class="metric"><div class="metric-label">试算成功人数</div><div class="metric-value mono">' + sum.ok + '</div><div class="metric-foot">本主体员工 ' + sum.count + ' 人</div></div>' +
-      '<div class="metric' + (sum.fail ? ' is-warn' : '') + '"><div class="metric-label">试算失败人数</div><div class="metric-value mono">' + sum.fail + '</div><div class="metric-foot">' + (sum.fail ? '绩效系数异常或城市规则缺失' : '无失败员工') + '</div></div>' +
+      '<div class="metric' + (sum.fail ? ' is-warn' : '') + '"><div class="metric-label">试算失败人数</div><div class="metric-value mono">' + sum.fail + '</div><div class="metric-foot">' + (sum.fail ? '资料、考勤或城市规则缺失' : '无失败员工') + '</div></div>' +
       '<div class="metric"><div class="metric-label">应发金额合计</div><div class="metric-value mono">' + Q.money(sum.gross) + '</div><div class="metric-foot">成功员工口径</div></div>' +
       '<div class="metric is-accent"><div class="metric-label">未扣个税金额合计</div><div class="metric-value mono">' + Q.money(sum.net) + '</div><div class="metric-foot">已扣个人社保与公积金</div></div>' +
       '<div class="metric"><div class="metric-label">公司成本合计</div><div class="metric-value mono">' + Q.money(sum.cost) + '</div><div class="metric-foot">含公司社保与公积金</div></div>' +
@@ -362,7 +350,7 @@
       '<div class="card-body tight" style="padding-top:14px"><div class="tbl-wrap" style="max-height:520px;overflow-y:auto">' +
       '<table class="tbl"><thead><tr>' +
       '<th class="sticky-col" style="min-width:132px">员工</th><th>部门</th>' +
-      '<th class="n">固定薪资</th><th class="n">绩效金额</th><th class="n">考勤扣款</th><th class="n">考勤激励</th>' +
+      '<th class="n">固定薪资</th><th class="n">考勤扣款</th><th class="n">考勤激励</th>' +
       '<th class="n">应发金额</th><th class="n">个人社保</th><th class="n">个人公积金</th>' +
       '<th class="n">未扣个税金额</th><th class="n">公司成本</th><th style="width:80px">操作</th>' +
       '</tr></thead><tbody id="trial-rows"></tbody></table></div></div>' +
@@ -380,7 +368,7 @@
         return '<tr class="is-invalid"' + dim + '>' +
           '<td class="sticky-col"><span class="strong">' + esc(c.emp.name) + '</span><span class="tbl-sub mono">' + c.emp.id + '</span></td>' +
           '<td>' + esc(Q.dept(c.emp.dept).name) + '</td>' +
-          '<td colspan="9" class="small">' + Q.badge('failed', '试算失败') + ' ' + esc(c.invalid.join('、')) +
+          '<td colspan="8" class="small">' + Q.badge('failed', '试算失败') + ' ' + esc(c.invalid.join('、')) +
           ' <a href="import-batch.html">前往修复</a></td>' +
           '<td><a class="btn btn-sm btn-ghost" href="ledger-employee.html?id=' + c.emp.id + '">明细</a></td></tr>';
       }
@@ -388,7 +376,6 @@
         '<td class="sticky-col"><a class="strong" href="ledger-employee.html?id=' + c.emp.id + '">' + esc(c.emp.name) + '</a><span class="tbl-sub mono">' + c.emp.id + ' · ' + c.emp.grade + '</span></td>' +
         '<td>' + esc(Q.dept(c.emp.dept).name) + '</td>' +
         '<td class="n mono">' + Q.money(c.fixed) + '</td>' +
-        '<td class="n mono">' + (c.perfAmount ? Q.money(c.perfAmount) : '—') + '</td>' +
         '<td class="n mono">' + (c.attTotal ? '−' + Q.money(c.attTotal) : '—') + '</td>' +
         '<td class="n mono">' + (c.incentive ? Q.money(c.incentive) : '—') + '</td>' +
         '<td class="n mono">' + Q.money(c.gross) + '</td>' +
@@ -417,12 +404,6 @@
     var blockedRows = [];
     var warns = [], passes = [];
 
-    if (ENT === 'SH01' && !s.perfFixed) {
-      blockedRows.push({
-        t: '绩效导入存在 3 行错误', d: '第 38、59、81 行未通过校验，其中 2 名员工绩效系数缺失或为负数，无法参与本期核算。',
-        href: 'import-batch.html', hrefText: '前往导入批次修正'
-      });
-    }
     if (blockedN && !s.szRuleAdded) {
       blockedRows.push({
         t: blockedN + ' 名员工缺有效城市规则', d: Q.ent(ENT).city + ' 规则在 2026-08 期间无有效版本，社保与公积金无法计算。',
@@ -449,7 +430,7 @@
     var p7 = list.filter(function (c) { return c.ok && !c.penalized; }).length;
     if (p7) passes.push({ t: p7 + ' 名 P7 及以上员工已正确排除考勤罚款与激励', d: '按职级规则处理，已通过校验。' });
     passes.push({ t: '员工名单完整，无重复员工', d: '本期名册 ' + sum.count + ' 人，与组织管理中的主体人数一致。' });
-    passes.push({ t: '固定薪资与绩效结构校验通过', d: '全体正式员工固定薪资 = 薪酬标准 × 80%，绩效基数 = 20%。' });
+    passes.push({ t: '月度固定薪资口径', d: '固定薪资按员工生效资料维护，绩效独立处理，不作为月度阻断。' });
     if (!blockedRows.length) passes.push({ t: '城市规则命中校验通过', d: '本主体全体员工均匹配到 2026-08 有效规则。' });
 
     document.getElementById('verify-body').innerHTML =

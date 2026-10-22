@@ -162,7 +162,6 @@ export function OverviewPage() {
   const done = [
     !!company.data && allBatches && allPrepared("city_rules"),
     allPrepared("attendance"),
-    allPrepared("performance"),
     trialDone,
     incentiveDone,
     confirmation.data?.locked === true,
@@ -171,7 +170,6 @@ export function OverviewPage() {
   const titles = [
     "资料准备",
     "考勤导入",
-    "绩效导入",
     "工资试算",
     "考勤激励",
     "确认锁定",
@@ -205,7 +203,6 @@ export function OverviewPage() {
         });
       for (const [key, label, href] of [
         ["attendance", "考勤", "/imports?type=attendance"],
-        ["performance", "绩效", "/imports?type=performance"],
         ["city_rules", "城市规则", "/rules"],
       ] as const)
         if (!ready(batch.data_preparation[key].status))
@@ -424,24 +421,24 @@ export function OverviewPage() {
                   render: (_, row) =>
                     row.batch ? (
                       <Space wrap>
-                        {(
-                          ["attendance", "performance", "city_rules"] as const
-                        ).map((key, index) => (
-                          <Tag
-                            key={key}
-                            color={
-                              ready(row.batch!.data_preparation[key].status)
-                                ? "success"
-                                : "warning"
-                            }
-                          >
-                            {["考勤", "绩效", "规则"][index]}{" "}
-                            {row.batch!.data_preparation[key].status ===
-                            "not_required"
-                              ? "无需准备"
-                              : `${row.batch!.data_preparation[key].prepared_count}/${row.batch!.data_preparation[key].prepared_count + row.batch!.data_preparation[key].missing_count}`}
-                          </Tag>
-                        ))}
+                        {(["attendance", "city_rules"] as const).map(
+                          (key, index) => (
+                            <Tag
+                              key={key}
+                              color={
+                                ready(row.batch!.data_preparation[key].status)
+                                  ? "success"
+                                  : "warning"
+                              }
+                            >
+                              {["考勤", "规则"][index]}{" "}
+                              {row.batch!.data_preparation[key].status ===
+                              "not_required"
+                                ? "无需准备"
+                                : `${row.batch!.data_preparation[key].prepared_count}/${row.batch!.data_preparation[key].prepared_count + row.batch!.data_preparation[key].missing_count}`}
+                            </Tag>
+                          ),
+                        )}
                       </Space>
                     ) : (
                       "尚未建立批次"

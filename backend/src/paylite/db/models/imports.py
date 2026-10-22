@@ -31,7 +31,7 @@ class ImportBatch(Base):
     __tablename__ = "import_batch"
     __table_args__ = (
         CheckConstraint(
-            "import_type IN ('employee_master', 'attendance', 'performance')",
+            "import_type IN ('employee_master', 'attendance', 'performance', 'workbook_employee')",
             name="ck_import_batch_type",
         ),
         CheckConstraint(
@@ -83,6 +83,34 @@ class ImportBatch(Base):
         JSONB, nullable=False, default=dict, server_default=empty_json_default()
     )
     status: Mapped[str] = mapped_column(String(30), nullable=False, server_default="uploaded")
+    uploaded_at: Mapped[datetime] = created_at_column()
+
+
+class WorkbookImport(Base):
+    __tablename__ = "workbook_import"
+    __table_args__ = (
+        UniqueConstraint("company_id", "payroll_period_id", "file_sha256", name="uq_workbook_file"),
+        CheckConstraint("revision > 0", name="ck_workbook_revision"),
+    )
+
+    id: Mapped[int] = primary_key()
+    company_id: Mapped[int] = mapped_column(ForeignKey("company.id", ondelete="RESTRICT"))
+    payroll_period_id: Mapped[int] = mapped_column(
+        ForeignKey("payroll_period.id", ondelete="RESTRICT")
+    )
+    employee_import_id: Mapped[int] = mapped_column(
+        ForeignKey("import_batch.id", ondelete="RESTRICT"), unique=True
+    )
+    attendance_import_id: Mapped[int] = mapped_column(
+        ForeignKey("import_batch.id", ondelete="RESTRICT"), unique=True
+    )
+    original_filename: Mapped[str] = mapped_column(String(255))
+    file_sha256: Mapped[str] = mapped_column(String(64))
+    original_file: Mapped[bytes] = mapped_column(LargeBinary)
+    revision: Mapped[int] = mapped_column(Integer, default=1, server_default="1")
+    evaluation: Mapped[dict[str, Any]] = mapped_column(
+        JSONB, default=dict, server_default=empty_json_default()
+    )
     uploaded_at: Mapped[datetime] = created_at_column()
 
 
@@ -202,4 +230,4 @@ class ImportRow(Base):
     created_at: Mapped[datetime] = created_at_column()
 
 
-__all__ = ["AttendanceRecord", "ImportBatch", "ImportRow", "PerformanceRecord"]
+__all__ = ["AttendanceRecord", "ImportBatch", "ImportRow", "PerformanceRecord", "WorkbookImport"]

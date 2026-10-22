@@ -97,6 +97,10 @@ test("工资工作台显示期间、员工范围、准备情况和未确认发�
   expect(await screen.findByText("期间有效任职关系")).toBeInTheDocument();
   expect(screen.getByText("2 人")).toBeInTheDocument();
   expect(screen.getByText("考勤 1/2")).toBeInTheDocument();
+  expect(
+    screen.queryByRole("link", { name: "导入绩效" }),
+  ).not.toBeInTheDocument();
+  expect(screen.queryByText(/绩效 0\/2/)).not.toBeInTheDocument();
   expect(screen.getAllByText("未确认").length).toBeGreaterThan(0);
 });
 

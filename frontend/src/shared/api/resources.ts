@@ -43,6 +43,7 @@ export type EmployeeImportBatch = components["schemas"]["ImportBatchOut"];
 export type AttendanceImportBatch =
   components["schemas"]["MonthlyImportBatchOut"];
 export type PerformanceImportBatch = AttendanceImportBatch;
+export type WorkbookImport = components["schemas"]["WorkbookImportOut"];
 
 export type PayrollPeriod = components["schemas"]["PayrollPeriodOut"];
 export type PayrollPreparationItem =
@@ -164,6 +165,28 @@ export const resources = {
   },
   employeeImport: (id: number) =>
     request<EmployeeImportBatch>(`/imports/${id}`),
+  workbookImports: (companyId: number) =>
+    request<WorkbookImport[]>(`/imports/workbook?company_id=${companyId}`),
+  workbookImport: (id: number) =>
+    request<WorkbookImport>(`/imports/workbook/${id}`),
+  uploadWorkbookImport: (companyId: number, periodId: number, file: File) => {
+    const form = new FormData();
+    form.set("file", file);
+    return upload<WorkbookImport>(
+      `/imports/workbook?company_id=${companyId}&payroll_period_id=${periodId}`,
+      form,
+    );
+  },
+  correctWorkbookRow: (
+    id: number,
+    rowId: number,
+    values: Record<string, string>,
+    expectedRevision: number,
+  ) =>
+    request<WorkbookImport>(
+      `/imports/workbook/${id}/rows/${rowId}/correct`,
+      json("POST", { values, expected_revision: expectedRevision }),
+    ),
   attendanceImports: (companyId: number) =>
     request<AttendanceImportBatch[]>(
       `/imports/attendance?company_id=${companyId}`,

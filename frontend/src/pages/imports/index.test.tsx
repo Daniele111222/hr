@@ -36,6 +36,25 @@ function renderPage(
   );
 }
 
+test("绩效历史只读，不提供月度上传入口", async () => {
+  vi.stubGlobal(
+    "fetch",
+    vi.fn(async (input: RequestInfo | URL) =>
+      String(input).endsWith("/organization/company")
+        ? Response.json({ id: 1, name: "测试公司" })
+        : String(input).includes("/payroll/workbench")
+          ? Response.json({ period: null, periods: [], batches: [] })
+          : Response.json([]),
+    ),
+  );
+  renderPage(undefined, "/imports?type=performance");
+  expect(await screen.findByText("绩效导入历史")).toBeInTheDocument();
+  expect(
+    screen.queryByRole("button", { name: /把 Excel 拖到这里/ }),
+  ).not.toBeInTheDocument();
+  expect(document.querySelector('input[type="file"]')).toBeNull();
+});
+
 test("员工导入页面显示固定模板说明并限制 xlsx 文件", async () => {
   vi.stubGlobal(
     "fetch",
@@ -54,7 +73,9 @@ test("员工导入页面显示固定模板说明并限制 xlsx 文件", async ()
   expect(screen.getByText(/固定 27 列/)).toBeInTheDocument();
   expect(screen.getByText(/生效日期为本次导入日期/)).toBeInTheDocument();
   expect(screen.getByText(/缺失部门会按层级自动创建/)).toBeInTheDocument();
-  expect(screen.getByText(/按实际金额填写，不限制比例/)).toBeInTheDocument();
+  expect(
+    screen.getByText(/绩效与年薪资料可留空，不参与月度核算/),
+  ).toBeInTheDocument();
   expect(screen.queryByText(/80%\/20%/)).not.toBeInTheDocument();
   expect(
     screen.getByText(/支持本行引用、四则运算、括号、ROUND 和 EDATE/),
@@ -63,6 +84,278 @@ test("员工导入页面显示固定模板说明并限制 xlsx 文件", async ()
     "accept",
     ".xlsx",
   );
+});
+
+function workbookTask() {
+  const employeeRow = {
+    id: 100,
+    sheet_name: "花名册",
+    source_row_number: 3,
+    validation_status: "invalid",
+    raw_data: { 证件号码: "", 姓名: "源员工" },
+    correction_values: null as Record<string, string> | null,
+    normalized_data: { evaluated_values: {} },
+    errors: [
+      {
+        code: "REQUIRED",
+        field: "证件号码",
+        cell: "B3",
+        column: "B",
+        message: "证件号码不能为空",
+      },
+    ],
+    correction_history: [],
+  };
+  const attendanceRow = {
+    ...employeeRow,
+    id: 101,
+    sheet_name: "考勤表",
+    source_row_number: 4,
+    raw_data: { 身份证号: "=花名册!B3", 姓名: "源员工" },
+    errors: [
+      {
+        code: "DEPENDENCY_NOT_READY",
+        field: "身份证号",
+        cell: "A4",
+        column: "A",
+        message: "花名册员工或本期任职未就绪，考勤尚未保存",
+      },
+    ],
+  };
+  const summary = {
+    company_id: 1,
+    template_version: "TPL-WORKBOOK-v1",
+    original_filename: "whole.xlsx",
+    file_sha256: "source",
+    status: "partially_imported",
+    uploaded_at: "2026-10-11T01:00:00Z",
+    total_rows: 2,
+    success_rows: 1,
+    error_rows: 1,
+  };
+  const task = {
+    id: 50,
+    company_id: 1,
+    payroll_period_id: 7,
+    period: "2026-07",
+    revision: 1,
+    original_filename: "whole.xlsx",
+    file_sha256: "source",
+    status: "partially_imported",
+    template_version: "TPL-WORKBOOK-v1",
+    uploaded_at: summary.uploaded_at,
+    evaluation: { engine_version: "LibreOffice test" },
+    employee_import: {
+      ...summary,
+      id: 51,
+      import_type: "workbook_employee",
+      field_mapping: { 证件号码: "B" },
+      rows: [employeeRow],
+    },
+    attendance_import: {
+      ...summary,
+      id: 52,
+      import_type: "attendance",
+      field_mapping: { 身份证号: "A" },
+      payroll_period_id: 7,
+      payroll_batch_id: null,
+      subject_name: "全公司",
+      rows: [attendanceRow],
+      subjects: [
+        {
+          subject_id: 2,
+          subject_name: "归属主体",
+          payroll_batch_id: 22,
+          success_rows: 1,
+          error_rows: 1,
+          batch_created: true,
+        },
+      ],
+    },
+  };
+  return task;
+}
+
+test("整本入口无期间时禁用上传", async () => {
+  const fetcher = vi.fn(async (input: RequestInfo | URL) =>
+    String(input).endsWith("/organization/company")
+      ? Response.json({ id: 1, name: "测试公司" })
+      : String(input).includes("/payroll/workbench")
+        ? Response.json({ period: null, periods: [], batches: [] })
+        : Response.json([]),
+  );
+  vi.stubGlobal("fetch", fetcher);
+  renderPage(undefined, "/imports?type=workbook");
+  expect(
+    await screen.findByText("请先建立工资期间，再上传原工作簿"),
+  ).toBeInTheDocument();
+  expect(
+    screen.getByRole("button", { name: /上传原工资工作簿/ }),
+  ).toBeDisabled();
+  expect(
+    fetcher.mock.calls.some((call) =>
+      String(call[0]).includes("payroll_batch_id"),
+    ),
+  ).toBe(false);
+});
+
+test("整本上传处理中禁用入口，接口错误可见且不显示成功", async () => {
+  let finish!: (response: Response) => void;
+  const fetcher = vi.fn((input: RequestInfo | URL, init?: RequestInit) => {
+    if (init?.method === "POST")
+      return new Promise<Response>((resolve) => {
+        finish = resolve;
+      });
+    const url = String(input);
+    return Promise.resolve(
+      url.endsWith("/organization/company")
+        ? Response.json({ id: 1, name: "测试公司" })
+        : url.includes("/payroll/workbench")
+          ? Response.json({
+              period: { id: 7, period: "2026-07" },
+              periods: [{ id: 7, period: "2026-07" }],
+              batches: [],
+            })
+          : Response.json([]),
+    );
+  });
+  vi.stubGlobal("fetch", fetcher);
+  renderPage(undefined, "/imports?type=workbook&period=2026-07");
+  await waitFor(() =>
+    expect(
+      screen.getByRole("button", { name: /上传原工资工作簿/ }),
+    ).toBeEnabled(),
+  );
+  await userEvent
+    .setup()
+    .upload(
+      document.querySelector('input[type="file"]')!,
+      new File(["original"], "whole.xlsx"),
+    );
+  expect(
+    await screen.findByRole("button", { name: /正在上传并处理/ }),
+  ).toBeDisabled();
+  await act(async () =>
+    finish(
+      Response.json(
+        { detail: "Excel 引擎不可用，本次没有导入业务数据" },
+        { status: 503 },
+      ),
+    ),
+  );
+  expect(
+    await screen.findByText("Excel 引擎不可用，本次没有导入业务数据"),
+  ).toBeInTheDocument();
+  expect(screen.queryByText("全部输入已保存")).not.toBeInTheDocument();
+  expect(
+    screen.getByText("上传后查看花名册与考勤处理结果"),
+  ).toBeInTheDocument();
+});
+
+test("整本历史详情只读且核算链接取任务期间", async () => {
+  const task = workbookTask();
+  vi.stubGlobal(
+    "fetch",
+    vi.fn(async (input: RequestInfo | URL) => {
+      const url = String(input);
+      if (url.endsWith("/organization/company"))
+        return Response.json({ id: 1, name: "测试公司" });
+      if (url.includes("/payroll/workbench"))
+        return Response.json({
+          period: { id: 9, period: "2026-09" },
+          periods: [{ id: 9, period: "2026-09" }],
+          batches: [],
+        });
+      if (url.endsWith("/imports/workbook/50")) return Response.json(task);
+      return Response.json([task]);
+    }),
+  );
+  renderPage(undefined, "/imports?type=workbook&period=2026-09");
+  await userEvent
+    .setup()
+    .click(await screen.findByRole("button", { name: "查看详情" }));
+  const drawer = await screen.findByRole("dialog");
+  expect(
+    await within(drawer).findByText(
+      "历史详情只读，原文件、公式和失败原因保留追溯",
+    ),
+  ).toBeInTheDocument();
+  expect(
+    within(drawer).getByRole("link", { name: "查看本期工资核算" }),
+  ).toHaveAttribute("href", "/payroll?period=2026-07");
+  expect(
+    within(drawer).getByRole("link", { name: /下载原工作簿/ }),
+  ).toHaveAttribute("href", "/api/imports/workbook/50/file");
+  expect(
+    within(drawer).queryByRole("button", { name: /修正|保存/ }),
+  ).not.toBeInTheDocument();
+  expect(
+    screen.getByText("上传后查看花名册与考勤处理结果"),
+  ).toBeInTheDocument();
+});
+
+test("整本入口按所选期间上传，分别显示两类结果和原位置", async () => {
+  const task = workbookTask();
+  const fetcher = vi.fn(
+    async (input: RequestInfo | URL, init?: RequestInit) => {
+      const url = String(input);
+      if (url.endsWith("/organization/company"))
+        return Response.json({ id: 1, name: "测试公司" });
+      if (url.includes("/payroll/workbench"))
+        return Response.json({
+          period: { id: 7, period: "2026-07" },
+          periods: [{ id: 7, period: "2026-07" }],
+          batches: [],
+        });
+      if (init?.method === "POST") return Response.json(task);
+      if (url.endsWith("/imports/workbook/50")) return Response.json(task);
+      return Response.json([]);
+    },
+  );
+  vi.stubGlobal("fetch", fetcher);
+  renderPage(
+    undefined,
+    "/imports?type=workbook&period=2026-07&source_batch_id=22",
+  );
+  expect(
+    await screen.findByRole("heading", { name: "整本工资工作簿导入" }),
+  ).toBeInTheDocument();
+  expect(
+    screen.queryByRole("combobox", { name: "主体与批次" }),
+  ).not.toBeInTheDocument();
+  expect(
+    screen.queryByRole("link", { name: "下载模板" }),
+  ).not.toBeInTheDocument();
+  await waitFor(() =>
+    expect(
+      screen.getByRole("button", { name: /上传原工资工作簿/ }),
+    ).toBeEnabled(),
+  );
+  await userEvent
+    .setup()
+    .upload(
+      document.querySelector('input[type="file"]')!,
+      new File(["original"], "whole.xlsx"),
+    );
+  expect(await screen.findByText("证件号码不能为空")).toBeInTheDocument();
+  expect(screen.getByText("证件号码（B3）")).toBeInTheDocument();
+  expect(screen.getByText("身份证号（A4）")).toBeInTheDocument();
+  expect(screen.getByRole("cell", { name: "归属主体" })).toBeInTheDocument();
+  expect(
+    screen.getByText("花名册员工或本期任职未就绪，考勤尚未保存"),
+  ).toBeInTheDocument();
+  expect(screen.getByRole("link", { name: "进入核算" })).toHaveAttribute(
+    "href",
+    "/payroll/batches/22?period=2026-07&subject_id=2",
+  );
+  expect(
+    fetcher.mock.calls.some(
+      ([url, init]) =>
+        String(url).endsWith(
+          "/imports/workbook?company_id=1&payroll_period_id=7",
+        ) && init?.method === "POST",
+    ),
+  ).toBe(true);
 });
 
 test.each([22, 999])(
@@ -144,20 +437,22 @@ test.each([22, 999])(
       expect(
         screen.queryByRole("link", { name: "返回来源批次核算" }),
       ).not.toBeInTheDocument();
-    await user.click(screen.getByRole("button", { name: "月度绩效" }));
+    await user.click(screen.getByRole("button", { name: "绩效历史" }));
+    expect(document.querySelector('input[type="file"]')).toBeNull();
+    await user.click(screen.getByRole("button", { name: "月度考勤" }));
     expect(await screen.findByText("2026-07")).toBeInTheDocument();
     await user.upload(
       document.querySelector('input[type="file"]')!,
-      new File(["xlsx"], "performance.xlsx"),
+      new File(["xlsx"], "attendance.xlsx"),
     );
     expect(
-      await screen.findByText("全部行已保存为绩效事实"),
+      await screen.findByText("全部行已保存为考勤事实"),
     ).toBeInTheDocument();
     expect(
       fetcher.mock.calls.some(
         ([url, init]) =>
           String(url).endsWith(
-            "/imports/performance?company_id=1&payroll_period_id=7",
+            "/imports/attendance?company_id=1&payroll_period_id=7",
           ) && init?.method === "POST",
       ),
     ).toBe(true);
@@ -432,7 +727,7 @@ test.each([
   },
   {
     kind: "performance",
-    label: "月度绩效",
+    label: "绩效历史",
     field: "绩效系数",
     value: "",
     reason: "绩效系数缺失；0 须明确填写",
@@ -730,7 +1025,7 @@ test("考勤导入在未建立工资期间时禁用上传并提示范围", async
   expect(screen.getByText("暂无月度考勤导入记录")).toBeInTheDocument();
 });
 
-test("绩效本次上传保留逐行修正功能", async () => {
+test("绩效历史失败行保留来源且禁止修正", async () => {
   const batch = {
     id: 17,
     company_id: 1,
@@ -748,7 +1043,7 @@ test("绩效本次上传保留逐行修正功能", async () => {
     rows: [
       {
         id: 1,
-        sheet_name: "月度绩效",
+        sheet_name: "绩效历史",
         source_row_number: 3,
         validation_status: "imported",
         raw_data: {
@@ -763,7 +1058,7 @@ test("绩效本次上传保留逐行修正功能", async () => {
       },
       {
         id: 2,
-        sheet_name: "月度绩效",
+        sheet_name: "绩效历史",
         source_row_number: 4,
         validation_status: "invalid",
         raw_data: {
@@ -804,7 +1099,7 @@ test("绩效本次上传保留逐行修正功能", async () => {
           ],
         });
       if (path.endsWith("/imports/performance?company_id=1"))
-        return Response.json([]);
+        return Response.json([batch]);
       if (path.endsWith("/imports/attendance?company_id=1"))
         return Response.json([]);
       if (
@@ -831,26 +1126,19 @@ test("绩效本次上传保留逐行修正功能", async () => {
   vi.stubGlobal("fetch", fetchMock);
   const user = userEvent.setup();
   renderPage();
-  await user.click(screen.getByRole("button", { name: "月度绩效" }));
-  expect(await screen.findByText("固定模板 TPL-PERF-v1")).toBeInTheDocument();
-  expect(screen.getByText(/试用期不考核绩效/)).toBeInTheDocument();
-  await user.upload(
-    document.querySelector('input[type="file"]')!,
-    new File(["xlsx"], "performance.xlsx"),
-  );
-  expect(
-    await screen.findByText("正确行已保存，错误行未进入有效绩效"),
-  ).toBeInTheDocument();
+  await user.click(screen.getByRole("button", { name: "绩效历史" }));
+  await screen.findByText("performance.xlsx");
+  await user.click(screen.getByRole("button", { name: "查看详情" }));
   expect(
     (await screen.findAllByText("绩效系数缺失；0 须明确填写")).length,
   ).toBeGreaterThan(0);
-  await user.click(await screen.findByRole("button", { name: "修正" }));
-  await user.type(screen.getByRole("textbox", { name: "修正绩效系数" }), "1.5");
-  await user.click(screen.getByRole("button", { name: "保存并重新校验" }));
-  expect(await screen.findByText("没有失败行")).toBeInTheDocument();
+  expect(
+    screen.queryByRole("button", { name: "修正" }),
+  ).not.toBeInTheDocument();
+  expect(document.querySelector('input[type="file"]')).toBeNull();
   expect(
     fetchMock.mock.calls.filter(([, init]) => init?.method === "POST"),
-  ).toHaveLength(2);
+  ).toHaveLength(0);
   await user.click(screen.getByRole("button", { name: "月度考勤" }));
   expect(
     screen.getByText("上传月度考勤模板后显示导入结果"),
@@ -939,3 +1227,216 @@ test("全公司月度输入无需预建批次，展示按主体归集及自动�
     ),
   ).toBe(true);
 });
+
+test("整本失败行修正携带任务版本并更新依赖结果，历史保持只读", async () => {
+  let task = workbookTask();
+  const fetcher = vi.fn(
+    async (input: RequestInfo | URL, init?: RequestInit) => {
+      const path = String(input);
+      if (path.endsWith("/organization/company"))
+        return Response.json({ id: 1, name: "测试公司" });
+      if (path.includes("/payroll/workbench"))
+        return Response.json({
+          period: { id: 7, period: "2026-07" },
+          periods: [{ id: 7, period: "2026-07" }],
+          batches: [],
+        });
+      if (path.endsWith("/imports/workbook/50/rows/100/correct")) {
+        expect(JSON.parse(String(init?.body))).toEqual({
+          values: { 证件号码: "11010120000101002X" },
+          expected_revision: 1,
+        });
+        task = {
+          ...task,
+          revision: 2,
+          employee_import: {
+            ...task.employee_import,
+            error_rows: 0,
+            success_rows: 2,
+            rows: task.employee_import.rows.map((row) => ({
+              ...row,
+              validation_status: "imported",
+              correction_values: { 证件号码: "11010120000101002X" },
+              errors: [],
+            })),
+          },
+          attendance_import: {
+            ...task.attendance_import,
+            error_rows: 0,
+            success_rows: 2,
+            rows: task.attendance_import.rows.map((row) => ({
+              ...row,
+              validation_status: "imported",
+              errors: [],
+            })),
+          },
+        } as typeof task;
+        return Response.json(task);
+      }
+      if (init?.method === "POST" || path.endsWith("/imports/workbook/50"))
+        return Response.json(task);
+      return Response.json([task]);
+    },
+  );
+  vi.stubGlobal("fetch", fetcher);
+  renderPage(undefined, "/imports?type=workbook&period=2026-07");
+  const user = userEvent.setup();
+  await waitFor(() =>
+    expect(
+      screen.getByRole("button", { name: /上传原工资工作簿/ }),
+    ).toBeEnabled(),
+  );
+  await user.upload(
+    screen.getByLabelText("原工资工作簿"),
+    new File(["xlsx"], "whole.xlsx"),
+  );
+  await user.click(
+    await screen.findByRole("button", { name: "修正花名册第3行" }),
+  );
+  await user.type(
+    screen.getByRole("textbox", { name: /证件号码（B3）/ }),
+    "11010120000101002X",
+  );
+  await user.click(screen.getByRole("button", { name: "保存并重验" }));
+  await screen.findByText("全部输入已保存");
+  expect(
+    screen.queryByRole("button", { name: "修正花名册第3行" }),
+  ).not.toBeInTheDocument();
+  await user.click(screen.getByRole("button", { name: "查看详情" }));
+  expect(
+    within(await screen.findByRole("dialog")).queryByRole("button", {
+      name: /修正/,
+    }),
+  ).not.toBeInTheDocument();
+});
+
+test.each([false, true])(
+  "新整本上传隔离上一任务的编辑状态及晚返回结果（保存中=%s）",
+  async (pending) => {
+    const first = workbookTask();
+    const second = {
+      ...workbookTask(),
+      id: 60,
+      original_filename: "next.xlsx",
+    };
+    let uploads = 0;
+    let finish!: (value: Response) => void;
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
+        const path = String(input);
+        if (path.endsWith("/organization/company"))
+          return Response.json({ id: 1, name: "测试公司" });
+        if (path.includes("/payroll/workbench"))
+          return Response.json({
+            period: { id: 7, period: "2026-07" },
+            periods: [{ id: 7, period: "2026-07" }],
+            batches: [],
+          });
+        if (path.endsWith("/rows/100/correct"))
+          return new Promise<Response>((resolve) => {
+            finish = resolve;
+          });
+        if (init?.method === "POST")
+          return Response.json(++uploads === 1 ? first : second);
+        return Response.json([]);
+      }),
+    );
+    renderPage(undefined, "/imports?type=workbook&period=2026-07");
+    const user = userEvent.setup();
+    await waitFor(() =>
+      expect(
+        screen.getByRole("button", { name: /上传原工资工作簿/ }),
+      ).toBeEnabled(),
+    );
+    await user.upload(
+      screen.getByLabelText("原工资工作簿"),
+      new File(["xlsx"], "whole.xlsx"),
+    );
+    await user.click(
+      await screen.findByRole("button", { name: "修正花名册第3行" }),
+    );
+    await user.type(
+      screen.getByRole("textbox", { name: /证件号码（B3）/ }),
+      "11010120000101002X",
+    );
+    if (pending)
+      await user.click(screen.getByRole("button", { name: "保存并重验" }));
+    await user.upload(
+      screen.getByLabelText("原工资工作簿"),
+      new File(["xlsx"], "next.xlsx"),
+    );
+    await screen.findByText("next.xlsx");
+    expect(
+      screen.queryByRole("textbox", { name: /证件号码（B3）/ }),
+    ).not.toBeInTheDocument();
+    if (pending) {
+      await act(async () => finish(Response.json(first)));
+      expect(screen.getByText("next.xlsx")).toBeInTheDocument();
+      expect(screen.queryByText("whole.xlsx")).not.toBeInTheDocument();
+    }
+  },
+);
+
+test.each([409, 503])(
+  "整本纠错失败保留填写内容，支持刷新任务结果（%s）",
+  async (status) => {
+    const task = workbookTask();
+    let refreshed = false;
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
+        const path = String(input);
+        if (path.endsWith("/organization/company"))
+          return Response.json({ id: 1, name: "测试公司" });
+        if (path.includes("/payroll/workbench"))
+          return Response.json({
+            period: { id: 7, period: "2026-07" },
+            periods: [{ id: 7, period: "2026-07" }],
+            batches: [],
+          });
+        if (path.endsWith("/rows/100/correct"))
+          return Response.json(
+            { detail: "任务已有新版本或引擎未就绪，请刷新后重试" },
+            { status },
+          );
+        if (path.endsWith("/imports/workbook/50")) {
+          refreshed = true;
+          return Response.json({ ...task, revision: 2 });
+        }
+        if (init?.method === "POST") return Response.json(task);
+        return Response.json([]);
+      }),
+    );
+    renderPage(undefined, "/imports?type=workbook&period=2026-07");
+    const user = userEvent.setup();
+    await waitFor(() =>
+      expect(
+        screen.getByRole("button", { name: /上传原工资工作簿/ }),
+      ).toBeEnabled(),
+    );
+    await user.upload(
+      screen.getByLabelText("原工资工作簿"),
+      new File(["xlsx"], "whole.xlsx"),
+    );
+    await user.click(
+      await screen.findByRole("button", { name: "修正花名册第3行" }),
+    );
+    await user.type(
+      screen.getByRole("textbox", { name: /证件号码（B3）/ }),
+      "核实值",
+    );
+    await user.click(screen.getByRole("button", { name: "保存并重验" }));
+    await screen.findByText("任务已有新版本或引擎未就绪，请刷新后重试");
+    expect(screen.getByRole("textbox", { name: /证件号码（B3）/ })).toHaveValue(
+      "核实值",
+    );
+    await user.click(screen.getByRole("button", { name: "刷新任务结果" }));
+    await waitFor(() =>
+      expect(
+        screen.queryByRole("textbox", { name: /证件号码（B3）/ }),
+      ).not.toBeInTheDocument(),
+    );
+    expect(refreshed).toBe(true);
+  },
+);

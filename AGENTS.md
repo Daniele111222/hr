@@ -1,6 +1,6 @@
 # AGENTS.md
 
-PayLite —— 单目标公司的工资数据管理系统。本机部署，数据不出本机。第一阶段维护员工月薪，以考勤表和绩效表为月度输入，生成工资记录，按主体与期间保存、查询、汇总，并导出四类工资 Excel。
+PayLite —— 单目标公司的工资数据管理系统。本机部署，数据不出本机。第一阶段维护员工固定月薪，以考勤事实为月度输入，生成不含绩效的工资记录，按主体与期间保存、查询、汇总，并导出四类工资 Excel。旧含绩效结果保留快照，后续新更正统一排除绩效。
 
 后端 `backend/src/paylite/`（Python 3.13、FastAPI、SQLAlchemy、Alembic、PostgreSQL 16），前端 `frontend/src/`（Vite + React + TypeScript + Less）。个税计算、远程部署、复杂权限明确不在范围内。
 
@@ -35,7 +35,7 @@ PayLite —— 单目标公司的工资数据管理系统。本机部署，数�
 | `/` | `design/index.html` |
 | `/organization` | `design/organization.html` |
 | `/employees` | `design/employees.html`；员工详情参考 `design/employee-detail.html` |
-| `/imports` | `design/import-center.html`、`design/import-batch.html` |
+| `/imports` | `design/import-center.html`、`design/import-batch.html`；整本入口参考 `design/workbook-import.html` |
 | `/payroll` | `design/periods.html`、`design/batch-detail.html`、`design/incentive.html` |
 | `/payroll/ledger` | `design/ledger.html` |
 | `/payroll/ledger/records/:recordId` | `design/ledger-employee.html`；正式结果使用计算时快照，保留已替代版本 |
@@ -47,7 +47,7 @@ PayLite —— 单目标公司的工资数据管理系统。本机部署，数�
 - **业务规则：** `CONTEXT.md` 与对应票高于原型文案和演示数据；原型冲突时先修正原型，再实现页面，避免错误规则继续传播。
 - **视觉与交互：** 原型高于框架默认样式；必须保持应用外壳、信息层级、紧凑数据密度、状态反馈和响应式行为，禁止先交付通用 Ant Design 页面再补视觉。
 - **真实数据：** 禁止把原型中的演示公司、人数、期间或薪资写入生产代码；只使用真实接口数据或明确的“未初始化/尚未实现”状态。
-- **核算导航：** 考勤与绩效按期间面向全公司导入，主体由员工当期任职推导；来源批次仅用于返回导航，切换类型保留期间。普通导入不得修改不可编辑批次，也不得自动切换至补发或更正批次，避免错期或错主体入库。整期阻断处理和工资表导出面向全部主体，不能被当前批次的主体筛选缩小范围。
+- **核算导航：** 考勤按期间面向全公司导入，主体由员工当期任职推导；绩效入口只读展示历史。来源批次仅用于返回导航，切换类型保留期间。普通导入不得修改不可编辑批次，也不得自动切换至补发或更正批次，避免错期或错主体入库。整期阻断处理和工资表导出面向全部主体，不能被当前批次的主体筛选缩小范围。
 - **技术落地：** 使用 React、Ant Design 与局部 `*.module.less` 重建原型；禁止让生产代码直接依赖 `design/` 的 HTML、CSS 或 JavaScript。
 - **页面边界：** 一个原型屏幕对应独立路由或页面职责；禁止把多个屏幕压成一个通用卡片页，因为这会丢失原型的信息架构。
 - **交付检查：** 页面首次实现时即对照对应原型检查默认、加载、空、错误、成功、禁用与窄屏状态；不得把原型对齐作为后续补充任务。
@@ -94,4 +94,4 @@ git config core.hooksPath .githooks
 - 发现文档与代码不一致时，以代码为准并更新本文档。
 - 新增公共组件、工具、约定或设计屏幕时，评估是否需要同步更新本文档及 `design/DESIGN-MANIFEST.json`。
 
-<!-- last-verified: 2026-09-21 -->
+<!-- last-verified: 2026-10-11 -->

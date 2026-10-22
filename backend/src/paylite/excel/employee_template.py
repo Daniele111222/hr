@@ -152,6 +152,7 @@ AMOUNT_FIELDS = {
     "固定薪资",
     "绩效基数",
 }
+NON_MONTHLY_FIELDS = {"转正绩效标准", "试用期绩效", "绩效基数", "年薪（万元）", "绩效支付周期"}
 
 
 def resolve_employee_formulas(
@@ -167,6 +168,7 @@ def resolve_employee_formulas(
         DATE_FIELDS,
         AMOUNT_FIELDS,
         formula_fields=formula_fields,
+        target_fields=set(headers) - NON_MONTHLY_FIELDS,
         number_error_code="INVALID_AMOUNT",
     )
 
@@ -208,7 +210,7 @@ def parse_workbook(content: bytes) -> list[WorkbookRow]:
                 if cell.data_type == "f":
                     formulas[field] = value
                 raw[field] = value
-                if error and cell.data_type != "f":
+                if error and cell.data_type != "f" and field not in NON_MONTHLY_FIELDS:
                     errors.append(error)
             if any(raw.values()):
                 raw, formula_errors = resolve_employee_formulas(raw, number, headers, set(formulas))

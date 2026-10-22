@@ -41,7 +41,7 @@ const detail = {
       {
         code: "fixed_salary",
         formula: "计薪自然日折算",
-        inputs: { month_days: "30" },
+        inputs: { month_days: "30", worked_days: "15" },
         amount: "8000.00",
       },
     ],
@@ -144,4 +144,56 @@ test("非法编号不请求接口", () => {
   renderPage("/payroll/ledger/records/invalid");
   expect(screen.getByText("工资记录编号无效")).toBeInTheDocument();
   expect(fetch).not.toHaveBeenCalled();
+});
+
+test("新月度明细展示固定薪资计薪天数和不含绩效口径", async () => {
+  vi.stubGlobal(
+    "fetch",
+    vi.fn(async () =>
+      Response.json({
+        ...detail,
+        record: {
+          ...detail.record,
+          snapshot: {
+            ...detail.record.snapshot,
+            calculation_mode: "monthly_without_performance_v1",
+            performance_base: null,
+          },
+        },
+      }),
+    ),
+  );
+  renderPage();
+  expect(await screen.findByText("月度不含绩效")).toBeInTheDocument();
+  expect(screen.getByText("15")).toBeInTheDocument();
+  expect(screen.queryByText("绩效基数")).not.toBeInTheDocument();
+});
+
+test("旧确认记录从原绩效步骤解释计薪自然日", async () => {
+  vi.stubGlobal(
+    "fetch",
+    vi.fn(async () =>
+      Response.json({
+        ...detail,
+        record: {
+          ...detail.record,
+          steps: [
+            {
+              ...detail.record.steps[0],
+              inputs: { month_days: "30", segments: "8000×15" },
+            },
+            {
+              code: "performance",
+              formula: "原绩效折算",
+              amount: "1000.00",
+              inputs: { worked_days: "15" },
+            },
+          ],
+        },
+      }),
+    ),
+  );
+  renderPage();
+  expect(await screen.findByText("15")).toBeInTheDocument();
+  expect(screen.getByText("绩效基数")).toBeInTheDocument();
 });

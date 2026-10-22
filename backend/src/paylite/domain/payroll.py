@@ -4,6 +4,7 @@ from dataclasses import dataclass
 from decimal import ROUND_DOWN, ROUND_HALF_UP, Decimal, localcontext
 
 CENT = Decimal("0.01")
+MONTHLY_CALCULATION_MODE = "monthly_without_performance_v1"
 
 
 def money(value: Decimal) -> Decimal:
@@ -38,8 +39,6 @@ class SocialItem:
 class PayrollInput:
     month_days: int
     salary_segments: tuple[SalarySegment, ...]
-    performance_base: Decimal
-    performance_coefficient: Decimal | None
     attendance: Attendance
     level_number: int | None
     social_base: Decimal
@@ -70,7 +69,6 @@ class CalculationStep:
 @dataclass(frozen=True)
 class PayrollResult:
     fixed: Decimal
-    performance: Decimal
     attendance_deduction: Decimal
     gross: Decimal
     employee_social: Decimal
@@ -138,8 +136,6 @@ def calculate(value: PayrollInput) -> PayrollResult:
         raise ValueError("自然日与应出勤天数必须大于零")
     if sum(segment.days for segment in value.salary_segments) > value.month_days:
         raise ValueError("计薪天数不能超过当月自然日")
-    if value.performance_coefficient is not None and value.performance_coefficient < 0:
-        raise ValueError("绩效系数不能为负数")
 
     items: list[PayrollItemResult] = []
     steps: list[CalculationStep] = []
@@ -150,12 +146,9 @@ def calculate(value: PayrollInput) -> PayrollResult:
         steps.append(CalculationStep(code, formula, inputs, rounded))
         return rounded
 
-    # Imported coefficients have no application-defined upper bound; adjust precision to their size.
     digits = sum(
         len(number.as_tuple().digits) + max(number.as_tuple().exponent, 0)
         for number in (
-            value.performance_base,
-            value.performance_coefficient or Decimal(0),
             value.housing_fixed_salary,
             value.social_base,
         )
@@ -176,26 +169,10 @@ def calculate(value: PayrollInput) -> PayrollResult:
             fixed_raw,
             "各生效区间固定月薪 × 计薪自然日 ÷ 当月自然日之和",
             month_days=str(value.month_days),
+            worked_days=str(sum(segment.days for segment in value.salary_segments)),
             segments=";".join(
                 f"{segment.fixed_salary}×{segment.days}" for segment in value.salary_segments
             ),
-        )
-        worked_days = sum(segment.days for segment in value.salary_segments)
-        performance_raw = (
-            value.performance_base * value.performance_coefficient * worked_days / value.month_days
-            if value.performance_coefficient is not None
-            else Decimal(0)
-        )
-        performance = add(
-            "performance",
-            "绩效金额",
-            "income",
-            performance_raw,
-            "转正后绩效基数 × 当月绩效系数 × 计薪自然日 ÷ 当月自然日",
-            base=str(value.performance_base),
-            coefficient=str(value.performance_coefficient or 0),
-            worked_days=str(worked_days),
-            month_days=str(value.month_days),
         )
         attendance_total = Decimal(0)
         exempt = value.level_number is not None and value.level_number >= value.exempt_level_number
@@ -273,11 +250,11 @@ def calculate(value: PayrollInput) -> PayrollResult:
             base=str(fixed_full),
             rate=str(value.housing_rate),
         )
-        gross = money(fixed + performance - attendance_total)
+        gross = money(fixed - attendance_total)
         untaxed = money(gross - employee_social - employee_housing)
         employer_cost = money(gross + company_social + company_housing)
         for code, amount, formula in (
-            ("gross", gross, "固定薪资 + 绩效金额 − 考勤扣款"),
+            ("gross", gross, "固定薪资 − 考勤扣款"),
             ("untaxed_amount", untaxed, "应发金额 − 个人社保 − 个人公积金"),
             ("employer_cost", employer_cost, "应发金额 + 公司社保 + 公司公积金"),
         ):
@@ -290,7 +267,6 @@ def calculate(value: PayrollInput) -> PayrollResult:
         warnings = ("未扣个税金额为零，请核对",) if untaxed == 0 else ()
         return PayrollResult(
             fixed,
-            performance,
             attendance_total,
             gross,
             employee_social,

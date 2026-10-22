@@ -25,8 +25,8 @@ class PayrollLedgerError(Exception):
         super().__init__(detail)
 
 
-def _money(value: Decimal) -> str:
-    return f"{value:.2f}"
+def _money(value: Decimal | None) -> str | None:
+    return f"{value:.2f}" if value is not None else None
 
 
 def get_record_detail(db: Session, record_id: int) -> dict[str, Any]:
@@ -129,6 +129,13 @@ def get_ledger(
     if employee_id is not None:
         query = query.where(PayrollRecord.employee_id == employee_id)
     rows = list(db.execute(query))
+    trial_ids = {batch.confirmed_trial_id for _, _, batch in rows if batch.confirmed_trial_id}
+    modes = {
+        trial.id: trial.input_snapshot.get("calculation_mode")
+        for trial in db.scalars(
+            select(PayrollTrialRun).where(PayrollTrialRun.id.in_(trial_ids or {-1}))
+        )
+    }
     record_ids = [record.id for record, _, _ in rows]
     batch_ids = {batch.id for _, _, batch in rows}
     correction_of = dict(
@@ -205,6 +212,7 @@ def get_ledger(
                 "subject_name": subject_name,
                 "employee_id": record.employee_id,
                 "snapshot": {
+                    "calculation_mode": modes.get(batch.confirmed_trial_id),
                     "id_number": record.snapshot_id_number,
                     "employee_no": record.snapshot_employee_no,
                     "name": record.snapshot_employee_name,

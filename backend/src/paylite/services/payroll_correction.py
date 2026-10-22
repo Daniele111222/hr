@@ -125,14 +125,12 @@ def get_correction_inputs(db: Session, correction_id: int) -> list[dict[str, Any
     source = db.get(PayrollTrialRun, original.confirmed_trial_id)
     snapshot = source.input_snapshot
     attendance = {row["employee_id"]: row for row in snapshot["attendance"]}
-    performance = {row["employee_id"]: row for row in snapshot["performance"]}
     overrides = correction.input_overrides or {}
     result = []
     for employee in snapshot["employees"]:
         employee_id = employee["id"]
         key = str(employee_id)
         attendance_row = attendance.get(employee_id)
-        performance_row = performance.get(employee_id)
         result.append(
             {
                 "employee_id": employee_id,
@@ -145,14 +143,7 @@ def get_correction_inputs(db: Session, correction_id: int) -> list[dict[str, Any
                     if attendance_row
                     else None
                 ),
-                "performance_coefficient": (
-                    overrides.get("performance", {})
-                    .get(key, {})
-                    .get("values", {})
-                    .get("coefficient", performance_row["coefficient"])
-                    if performance_row
-                    else None
-                ),
+                "performance_coefficient": None,
                 "source_note": overrides.get("attendance", {}).get(key, {}).get("source_note")
                 or overrides.get("performance", {}).get(key, {}).get("source_note"),
             }
@@ -179,6 +170,8 @@ def update_correction_inputs(
         raise PayrollCorrectionError(409, "只有未确认的替代版本可以修正输入")
     if not attendance and performance_coefficient is None:
         raise PayrollCorrectionError(422, "至少填写一项修正输入")
+    if performance_coefficient is not None:
+        raise PayrollCorrectionError(422, "绩效由独立流程处理，月度更正仅支持考勤输入")
     source_note = source_note.strip()
     if not source_note:
         raise PayrollCorrectionError(422, "修正输入必须填写来源说明")
@@ -237,13 +230,6 @@ def update_correction_inputs(
             }
         )
         overrides.setdefault("attendance", {})[key] = {"values": values, "source_note": source_note}
-    if performance_coefficient is not None:
-        if not any(row["employee_id"] == employee_id for row in snapshot["performance"]):
-            raise PayrollCorrectionError(422, "原批次没有该员工的绩效输入")
-        overrides.setdefault("performance", {})[key] = {
-            "values": {"coefficient": str(performance_coefficient)},
-            "source_note": source_note,
-        }
     overrides["history"] = [
         *overrides.get("history", []),
         {

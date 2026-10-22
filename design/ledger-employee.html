@@ -40,7 +40,7 @@
 
       <section class="metrics is-6" data-od-id="le-metrics">
         <div class="metric"><div class="metric-label">计薪天数</div><div class="metric-value mono" id="m-days"></div><div class="metric-foot" id="m-days-foot"></div></div>
-        <div class="metric"><div class="metric-label">应发金额</div><div class="metric-value mono" id="m-gross"></div><div class="metric-foot">固定薪资 + 绩效 + 激励 − 考勤扣款</div></div>
+        <div class="metric"><div class="metric-label">应发金额</div><div class="metric-value mono" id="m-gross"></div><div class="metric-foot">固定薪资 + 激励 − 考勤扣款；旧结果按历史快照</div></div>
         <div class="metric"><div class="metric-label">考勤扣款</div><div class="metric-value mono" id="m-att"></div><div class="metric-foot" id="m-att-foot"></div></div>
         <div class="metric"><div class="metric-label">个人扣缴</div><div class="metric-value mono" id="m-personal"></div><div class="metric-foot">个人社保 + 个人公积金</div></div>
         <div class="metric is-accent"><div class="metric-label">未扣个税金额</div><div class="metric-value mono" id="m-net"></div><div class="metric-foot">应发 − 个人社保 − 个人公积金</div></div>
@@ -149,8 +149,8 @@
 
   /* ── 指标 ───────────────────────────────────────────────── */
   function renderMetrics() {
-    document.getElementById('m-days').textContent = c.days + ' / ' + Q.STD_DAYS;
-    document.getElementById('m-days-foot').textContent = c.days === Q.STD_DAYS ? '全月计薪' :
+    document.getElementById('m-days').textContent = c.days + ' / ' + new Date(Number(P.slice(0, 4)), Number(P.slice(5, 7)), 0).getDate();
+    document.getElementById('m-days-foot').textContent = c.days === new Date(Number(P.slice(0, 4)), Number(P.slice(5, 7)), 0).getDate() ? '全月计薪' :
       (emp.hireDate.slice(0, 7) === P ? '本月入职，按实际计薪天数折算' : '本月离职，按实际计薪天数折算');
     document.getElementById('m-gross').textContent = Q.money(c.gross);
     document.getElementById('m-att').textContent = c.attTotal ? '−' + Q.money(c.attTotal) : '0.00';
@@ -170,17 +170,12 @@
   function renderCalc() {
     var h = '';
     var std = emp.salaryStandard;
-    h += row('固定薪资（薪酬标准的 80%）',
-      '<span class="mono">' + Q.money(std) + ' × 80% = ' + Q.money(c.fixedFull) + '</span>' +
-      (c.days === Q.STD_DAYS ? '' : '，再 × 计薪天数 <span class="mono">' + c.days + '/' + Q.STD_DAYS + '</span>') +
+    h += row('固定薪资（员工生效资料）',
+      '<span class="mono">' + Q.money(c.fixedFull) + '</span>' +
+      (c.days === new Date(Number(P.slice(0, 4)), Number(P.slice(5, 7)), 0).getDate() ? '' : '，再 × 计薪天数 <span class="mono">' + c.days + '/' + new Date(Number(P.slice(0, 4)), Number(P.slice(5, 7)), 0).getDate() + '</span>') +
       ' = <span class="mono">' + Q.money(c.fixed) + '</span>', Q.money(c.fixed));
 
-    h += row('绩效工资（薪酬标准的 20% × 系数）',
-      c.isRegular
-        ? '<span class="mono">' + Q.money(c.perfBase) + ' × ' + (c.coef == null ? '—' : c.coef.toFixed(2)) + '</span>' +
-          ' = <span class="mono">' + Q.money(c.perfAmount) + '</span>'
-        : '<span class="meta">' + (emp.probation ? '试用期不计算绩效工资' : '未转正，不计算绩效工资') + '</span>',
-      Q.money(c.perfAmount));
+    h += row('计算口径', '月度不含绩效；旧确认结果使用原快照', '—');
 
     var inc = c.incentive;
     h += row('考勤激励（全公司统一分配）',
@@ -232,7 +227,7 @@
     document.getElementById('att-sub').textContent = '来源：月度考勤导入';
     document.getElementById('att-kv').innerHTML = '<dl class="kv is-wide">' +
       kv('是否有考勤记录', a.hasRecord ? Q.badge('ok', '有') : Q.badge('warn', '无')) +
-      kv('应出勤 / 计薪天数', '<span class="mono">' + c.days + ' / ' + Q.STD_DAYS + '</span> 天') +
+      kv('应出勤 / 计薪天数', '<span class="mono">' + c.days + ' / ' + new Date(Number(P.slice(0, 4)), Number(P.slice(5, 7)), 0).getDate() + '</span> 天') +
       kv('迟到', a.lateMin ? '<span class="mono">' + a.lateMin + '</span> 分钟' : '无') +
       kv('早退', a.earlyMin ? '<span class="mono">' + a.earlyMin + '</span> 分钟' : '无') +
       kv('忘打卡', a.missPunch ? '<span class="mono">' + a.missPunch + '</span> 次（每次 ' + Q.money(30) + ' 元）' : '无') +

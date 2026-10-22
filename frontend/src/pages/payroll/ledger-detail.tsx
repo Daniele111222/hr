@@ -64,9 +64,10 @@ export function PayrollLedgerDetailPage() {
       String(item.code).startsWith("social_") ||
       String(item.code).startsWith("housing_"),
   );
-  const performanceStep = steps.get("performance");
-  const fixedInputs = performanceStep?.inputs as
-    Record<string, unknown> | undefined;
+  const fixedInputs = {
+    ...steps.get("performance")?.inputs,
+    ...steps.get("fixed_salary")?.inputs,
+  } as Record<string, unknown>;
   const attendanceStep = row.steps.find((step) =>
     String(step.code).startsWith("attendance_"),
   );
@@ -150,8 +151,16 @@ export function PayrollLedgerDetailPage() {
             },
             {
               key: "performance",
-              label: "绩效基数",
-              children: money(row.snapshot.performance_base),
+              label:
+                row.snapshot.calculation_mode ===
+                "monthly_without_performance_v1"
+                  ? "计算口径"
+                  : "绩效基数",
+              children:
+                row.snapshot.calculation_mode ===
+                "monthly_without_performance_v1"
+                  ? "月度不含绩效"
+                  : money(row.snapshot.performance_base),
             },
             {
               key: "payment",

@@ -52,7 +52,7 @@
           <section class="card" data-od-id="emp-pay">
             <div class="card-head">
               <h2>薪酬信息</h2>
-              <span class="sub">固定薪资 80% + 绩效基数 20%</span>
+              <span class="sub">固定薪资按实际金额维护；绩效独立处理</span>
               <span class="spacer"></span>
               <span class="meta">适用期间 2026-08 起</span>
             </div>
@@ -81,10 +81,10 @@
             <div class="card-head"><h2>薪酬规则</h2><span class="sub">只读约定</span></div>
             <div class="card-body">
               <div class="rule-list">
-                <div class="rule-item"><span class="idx">1</span><div>正式员工<b>固定薪资 = 薪酬标准的 80%</b>，<b>绩效基数 = 薪酬标准的 20%</b>。</div></div>
+                <div class="rule-item"><span class="idx">1</span><div>固定薪资按实际金额维护，不要求与独立绩效资料构成比例。</div></div>
                 <div class="rule-item"><span class="idx">2</span><div>试用期<b>只有固定薪资</b>，不发放绩效。</div></div>
                 <div class="rule-item"><span class="idx">3</span><div>转正前后<b>固定薪资保持不变</b>。</div></div>
-                <div class="rule-item"><span class="idx">4</span><div>转正当月绩效基数采用<b>转正后整月标准</b>，不做天数折算。</div></div>
+                <div class="rule-item"><span class="idx">4</span><div>月度不计算绩效；旧确认结果只读保留，新更正也按不含绩效口径计算。</div></div>
                 <div class="rule-item"><span class="idx">5</span><div>普通调薪按<b>适用工资期间整月</b>处理。</div></div>
                 <div class="rule-item"><span class="idx">6</span><div>身份证号创建后<b>不可修改</b>；只维护当前资料，历史工资通过当时的计算快照追溯。</div></div>
               </div>
@@ -208,14 +208,13 @@
   document.getElementById('d-pay').innerHTML =
     '<div class="metrics" style="grid-template-columns:repeat(3,minmax(0,1fr))">' +
     metric('薪酬标准', emp.salaryStandard, '元 / 月', '合同约定的月度标准') +
-    metric('固定薪资', c.fixedFull, '元 / 月', '薪酬标准 × 80%') +
-    metric('绩效基数', c.perfBase, '元 / 月', '薪酬标准 × 20%' + (emp.probation && !c.regularInPeriod ? '（试用期不发绩效）' : '')) +
+    metric('固定薪资', c.fixedFull, '元 / 月', '员工维护的实际固定薪资') +
+    metric('独立绩效资料', c.perfBase, '元', '可留空，不参与月度工资') +
     '</div>' +
     '<dl class="kv is-wide" style="margin-top:14px">' +
     '<dt>本期固定薪资</dt><dd class="mono">' + Q.money(c.fixed) + ' 元' +
     (c.days !== Q.STD_DAYS ? ' <span class="tag">按 ' + c.days + ' / ' + Q.STD_DAYS + ' 天折算</span>' : '') + '</dd>' +
-    '<dt>本期绩效系数</dt><dd>' + (c.coef == null ? '<span class="sev is-block">缺失 — 导致试算失败</span>' : '<span class="mono">' + c.coef.toFixed(2) + '</span>') + '</dd>' +
-    '<dt>本期绩效金额</dt><dd class="mono">' + Q.money(c.perfAmount) + ' 元</dd>' +
+    '<dt>本期口径</dt><dd>月度不含绩效；绩效缺失不阻断核算</dd>' +
     '<dt>适用期间</dt><dd>' + P + '（当前期间）</dd>' +
     '</dl>';
 

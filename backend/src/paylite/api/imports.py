@@ -6,6 +6,7 @@ from fastapi import APIRouter, Depends, File, HTTPException, Query, UploadFile
 from fastapi.responses import Response
 from pydantic import BaseModel, Field
 from sqlalchemy.orm import Session
+from starlette.concurrency import run_in_threadpool
 
 from paylite.api.deps import get_db
 from paylite.excel.attendance_template import (
@@ -16,7 +17,7 @@ from paylite.excel.performance_template import (
     TEMPLATE_VERSION as PERFORMANCE_TEMPLATE_VERSION,
 )
 from paylite.excel.performance_template import make_template as make_performance_template
-from paylite.services import attendance_import, performance_import
+from paylite.services import attendance_import, performance_import, workbook_import
 from paylite.services.employee_import import (
     ImportFailure,
     correct_row,
@@ -33,6 +34,8 @@ class ImportIssueOut(BaseModel):
     field: str
     message: str
     column: str | None = None
+    cell: str | None = None
+    sheet_name: str | None = None
 
 
 class ImportRowOut(BaseModel):
@@ -81,8 +84,88 @@ class MonthlyImportBatchOut(ImportBatchOut):
     subjects: list[SubjectImportOut] = Field(default_factory=list)
 
 
+class WorkbookImportOut(BaseModel):
+    id: int
+    company_id: int
+    payroll_period_id: int
+    period: str
+    original_filename: str
+    file_sha256: str
+    template_version: str
+    status: str
+    revision: int
+    uploaded_at: datetime
+    evaluation: dict[str, Any]
+    employee_import: ImportBatchOut
+    attendance_import: MonthlyImportBatchOut
+
+
 class RowCorrection(BaseModel):
     values: dict[str, str] = Field(min_length=1)
+
+
+class WorkbookRowCorrection(RowCorrection):
+    expected_revision: int = Field(gt=0)
+
+
+@router.post("/workbook", status_code=201, response_model=WorkbookImportOut)
+async def upload_workbook(
+    company_id: int = Query(..., gt=0),
+    payroll_period_id: int = Query(..., gt=0),
+    file: UploadFile = File(...),
+    db: Session = Depends(get_db),
+) -> dict[str, Any]:
+    if not file.filename or not file.filename.lower().endswith(".xlsx"):
+        raise HTTPException(400, "整本导入仅支持 .xlsx 工作簿")
+    content = await file.read(MAX_FILE_SIZE + 1)
+    if not content or len(content) > MAX_FILE_SIZE:
+        raise HTTPException(400, "文件为空或超过 20MB")
+    return await run_in_threadpool(
+        _run,
+        lambda: workbook_import.upload_task(
+            db,
+            company_id,
+            payroll_period_id,
+            file.filename or "",
+            content,
+        ),
+    )
+
+
+@router.get("/workbook", response_model=list[WorkbookImportOut])
+def list_workbooks(company_id: int = Query(..., gt=0), db: Session = Depends(get_db)):
+    return workbook_import.list_tasks(db, company_id)
+
+
+@router.get("/workbook/{task_id}", response_model=WorkbookImportOut)
+def get_workbook(task_id: int, db: Session = Depends(get_db)):
+    return _run(lambda: workbook_import.get_task(db, task_id))
+
+
+@router.get("/workbook/{task_id}/file")
+def download_workbook(task_id: int, db: Session = Depends(get_db)) -> Response:
+    task = _run(lambda: workbook_import.get_task(db, task_id, include_file=True))
+    return Response(
+        content=task["original_file"],
+        media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+        headers={
+            "Content-Disposition": (
+                f"attachment; filename=\"workbook-{task_id}.xlsx\"; filename*=UTF-8''"
+                + quote(task["original_filename"])
+            )
+        },
+    )
+
+
+@router.post("/workbook/{task_id}/rows/{row_id}/correct", response_model=WorkbookImportOut)
+def correct_workbook_row(
+    task_id: int, row_id: int, payload: WorkbookRowCorrection, db: Session = Depends(get_db)
+):
+    return _run(
+        lambda: workbook_import.correct_task_row(
+            db, task_id, row_id, payload.values, payload.expected_revision
+        )
+    )
 
 
 @router.get("/performance-template")
